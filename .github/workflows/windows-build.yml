@@ -1,0 +1,83 @@
+name: Windows build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Install FFmpeg (for the FFmpeg command test)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - run: npm test
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build ChurchStream.exe
+        run: npm run build:exe
+
+      - name: Smoke test the exe (UI, Bible, a 6-second recording through FFmpeg)
+        shell: pwsh
+        run: |
+          $env:CHURCHSTREAM_NO_BROWSER = "1"
+          $exe = Resolve-Path dist\ChurchStream\ChurchStream.exe
+          $p = Start-Process -FilePath $exe -ArgumentList '--port','8123' -PassThru -WorkingDirectory (Split-Path $exe)
+          Start-Sleep -Seconds 6
+          try {
+            $r = Invoke-WebRequest http://localhost:8123/control -UseBasicParsing
+            if ($r.StatusCode -ne 200) { throw "control panel returned $($r.StatusCode)" }
+            $s = Invoke-RestMethod "http://localhost:8123/api/search?q=John%203:16"
+            if (-not $s.bible) { throw "Bible lookup failed" }
+            $st = Invoke-RestMethod http://localhost:8123/api/state
+            if (-not $st.ffmpeg.ok) { throw "Bundled FFmpeg was not found" }
+            Write-Host "FFmpeg: $($st.ffmpeg.version)"
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none"}}' http://localhost:8123/api/config | Out-Null
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"name":"Test Name","title":"Test Title","visible":true}' http://localhost:8123/api/lower-third | Out-Null
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8123/api/stream/start | Out-Null
+            Start-Sleep -Seconds 8
+            $st = Invoke-RestMethod http://localhost:8123/api/state
+            Write-Host "Stream state: $($st.stream.state) encoder: $($st.stream.encoder) fps: $($st.stream.fps) problem: $($st.stream.problem)"
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
+            Start-Sleep -Seconds 2
+            $rec = Get-ChildItem dist\ChurchStream\ChurchStream-data\recordings\*.mkv
+            if (-not $rec -or $rec[0].Length -lt 50000) { throw "Recording was not created" }
+            Write-Host "Recording OK: $($rec[0].Name) $($rec[0].Length) bytes"
+          } finally {
+            Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
+          }
+          Remove-Item -Recurse -Force dist\ChurchStream\ChurchStream-data
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChurchStream-win-x64
+          path: dist/ChurchStream-win-x64.zip
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ChurchStream-win-x64.zip
+          generate_release_notes: true

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projector</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  /* Fill the whole output; the slide area stays 16:9-safe inside. */
+  .screen { position: fixed; inset: 0; width: 100vw; height: 100vh; aspect-ratio: auto; }
+  .offline { position: fixed; right: 12px; bottom: 10px; width: 10px; height: 10px; border-radius: 50%; background: #e5484d; opacity: 0; transition: opacity .3s; }
+  .offline.show { opacity: .8; }
+</style>
+</head>
+<body>
+<div class="screen" id="screen">
+  <div class="screen-bg" id="bg"></div>
+  <div class="screen-layer hidden" id="layerA"><div class="screen-text"></div></div>
+  <div class="screen-layer hidden" id="layerB"><div class="screen-text"></div></div>
+  <div class="screen-ref" id="ref"></div>
+  <div class="screen-tag" id="tag"></div>
+  <div class="screen-logo hidden" id="logo"></div>
+  <div class="screen-black hidden" id="black"></div>
+  <div class="screen-identify hidden" id="identify">Projector<small>This screen is showing ChurchStream</small></div>
+</div>
+<div class="offline" id="offline"></div>
+<script type="module" src="/display.js"></script>
+</body>
+</html>

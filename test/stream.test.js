@@ -1,0 +1,92 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { spawnSync } = require('child_process');
+const { buildFfmpegArgs, destinationsFor, teeEscape, redact, overlayGeometry, QUALITY } = require('../lib/stream');
+const config = require('../lib/config');
+
+const cfg = (patch) => config.merge(config.DEFAULTS, patch);
+const teeArg = (args) => args.find((a) => a.includes('[f=flv') || a.includes('[f=matroska'));
+
+test('YouTube + Facebook from one encode via tee', () => {
+  const c = cfg({ outputs: { youtube: { enabled: true, key: 'yt-key' }, facebook: { enabled: true, key: 'FB-KEY' } } });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'libx264' });
+  const tee = teeArg(args);
+  assert.ok(args.includes('-use_fifo'));
+  assert.equal(args.filter((a) => a === '-c:v').length, 1, 'video is encoded exactly once');
+  assert.match(tee, /\[f=flv:onfail=ignore\]rtmp:\/\/a\.rtmp\.youtube\.com\/live2\/yt-key/);
+  assert.match(tee, /\|\[f=flv:onfail=ignore\]rtmps:\/\/live-api-s\.facebook\.com:443\/rtmp\/FB-KEY/);
+  assert.ok(args.includes('preview.jpg'));
+});
+
+test('dshow camera + microphone use one capture input', () => {
+  const c = cfg({ video: { type: 'dshow', device: 'USB Capture HDMI' }, audio: { source: 'device', device: 'Line (USB Capture HDMI)' }, outputs: { youtube: { enabled: true, key: 'k' } } });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_qsv' });
+  assert.ok(args.includes('video=USB Capture HDMI:audio=Line (USB Capture HDMI)'));
+  const fc = args[args.indexOf('-filter_complex') + 1];
+  assert.match(fc, /\[0:a\]aresample/);
+  assert.match(fc, /format=nv12\[venc\]/, 'QSV gets NV12 frames');
+  assert.ok(args.includes('h264_qsv'));
+});
+
+test('RTSP camera without audio gets a silent track (Facebook requires audio)', () => {
+  const c = cfg({ video: { type: 'rtsp', rtspUrl: 'rtsp://cam/1' }, audio: { source: 'none' }, outputs: { facebook: { enabled: true, key: 'k' } } });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_nvenc' });
+  assert.ok(args.includes('rtsp://cam/1'));
+  assert.ok(args.some((a) => a.startsWith('anullsrc')));
+  assert.match(args[args.indexOf('-filter_complex') + 1], /\[1:a\]/);
+  assert.ok(args.includes('cbr'));
+});
+
+test('preview mode does not encode or stream', () => {
+  const args = buildFfmpegArgs({ cfg: cfg({}), mode: 'preview' });
+  assert.ok(!args.includes('-c:v'));
+  assert.ok(!args.includes('tee'));
+  assert.ok(args.includes('preview.jpg'));
+});
+
+test('no destinations is a friendly error', () => {
+  assert.throws(() => buildFfmpegArgs({ cfg: cfg({}), mode: 'live' }), /stream key/);
+});
+
+test('recording path is relative and uses forward slashes', () => {
+  const path = require('path');
+  const run = path.join('C', 'data', 'run');
+  const rec = path.join('C', 'data', 'recordings', 'Service.mkv');
+  const args = buildFfmpegArgs({ cfg: cfg({ record: true }), mode: 'live', runDir: run, recordFile: rec });
+  assert.ok(args.some((a) => a.includes('[f=matroska:onfail=ignore]../recordings/Service.mkv')));
+});
+
+test('escaping and redaction', () => {
+  assert.equal(teeEscape('a|b[c]'), 'a\\|b\\[c\\]');
+  assert.equal(redact('Error opening rtmp://x/live2/secret-key-1', ['secret-key-1']), 'Error opening rtmp://x/live2/••••');
+  const d = destinationsFor(cfg({ outputs: { youtube: { enabled: true, key: '' }, custom: { enabled: true, url: 'rtmp://example.org/app/k' } } }));
+  assert.deepEqual(d.map((x) => x.id), ['custom']);
+  assert.equal(d[0].host, 'example.org');
+});
+
+test('overlay geometry stays inside the frame', () => {
+  for (const q of Object.values(QUALITY)) {
+    const g = overlayGeometry(q);
+    assert.ok(g.yTitle + g.titleFs + g.padT < q.height);
+    assert.ok(g.captionMaxChars > 30);
+  }
+});
+
+test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync('ffmpeg', ['-version']).status !== 0 }, () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-ff-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  for (const f of ['lt_name.txt', 'lt_title.txt']) fs.writeFileSync(path.join(dir, f), '');
+  fs.writeFileSync(path.join(dir, 'caption.txt'), 'Amazing grace');
+  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
+  // Limit both outputs to one second.
+  const tee = args.indexOf(teeArg(args));
+  args.splice(tee, 0, '-t', '1');
+  args.splice(args.indexOf('preview.jpg'), 0, '-t', '1');
+  const r = spawnSync('ffmpeg', args, { cwd: dir, encoding: 'utf8', timeout: 30000 });
+  assert.equal(r.status, 0, r.stderr.split('\n').filter((l) => /error/i.test(l)).join('\n'));
+  assert.ok(fs.statSync(path.join(dir, 'out.mkv')).size > 1000);
+});

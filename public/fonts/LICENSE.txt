@@ -1,0 +1,4 @@
+Inter-SemiBold.otf — Inter typeface, Copyright 2016-2023 The Inter Project Authors (https://github.com/rsms/inter)
+Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+The same font file is used for the projector screen and for text drawn onto the live stream,
+so both look identical.

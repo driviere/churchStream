@@ -1,0 +1,67 @@
+/* The projected "screen". Used full-size on the projector and scaled down for thumbnails,
+   so what the operator sees is exactly what the congregation sees. Sizes are in container
+   units (cqh) so a 200px thumbnail and a 1920px projector render identically. */
+@font-face {
+  font-family: 'Inter ChurchStream';
+  src: url('/fonts/Inter-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-display: block;
+}
+
+.screen {
+  container-type: size;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font-family: 'Inter ChurchStream', 'Segoe UI', system-ui, sans-serif;
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
+}
+.screen-bg {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 0%, #1b2440 0%, #0b0f1a 55%, #05070c 100%);
+  background-size: cover; background-position: center;
+}
+.screen-bg.has-image::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.screen-layer {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 6cqh 6cqw 11cqh;
+  transition: opacity 300ms ease;
+}
+.screen-text {
+  text-align: center;
+  line-height: 1.28;
+  font-size: 7cqh;
+  white-space: pre-line;
+  text-wrap: balance;
+  text-shadow: 0 0.25cqh 1.2cqh rgba(0, 0, 0, 0.55);
+  max-width: 100%;
+  max-height: 100%;
+  overflow-wrap: break-word;
+}
+.screen-text.bible { white-space: normal; text-align: center; }
+.screen-text sup { font-size: 0.5em; opacity: 0.7; margin-right: 0.25em; vertical-align: 0.6em; line-height: 0; }
+.screen-ref {
+  position: absolute; left: 0; right: 0; bottom: 3.6cqh;
+  text-align: center; font-size: 3.4cqh; opacity: 0.78; letter-spacing: 0.02em;
+}
+.screen-tag {
+  position: absolute; right: 3cqw; bottom: 3.6cqh;
+  font-size: 2.6cqh; opacity: 0.5; letter-spacing: 0.03em;
+}
+.screen-logo {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqh;
+}
+.screen-logo img { max-width: 50cqw; max-height: 50cqh; object-fit: contain; }
+.screen-logo .name { font-size: 7cqh; letter-spacing: 0.01em; text-align: center; padding: 0 8cqw; }
+.screen-black { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
+.screen-identify {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #2563eb; color: #fff; font-size: 9cqh; gap: 2cqh; z-index: 5;
+}
+.screen-identify small { font-size: 3.6cqh; opacity: 0.85; }
+.hidden { opacity: 0; pointer-events: none; }
