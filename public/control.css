@@ -329,7 +329,18 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
   .omni { order: 5; flex: 1 0 100%; max-width: none; }
   .status .extra { display: none; }
   .plan-head span { display: none; }
-  .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 64px 52px; }
+  .shell { gap: 10px; padding: 10px 12px 12px; }
+  .tabs button { min-height: 36px; padding: 0 14px; }
+  .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 80px 60px; gap: 10px; }
+  .controls .btn { border-radius: 18px; }
+  .controls .btn small { font-size: 12px; }
+  .plan-card { padding: 8px 10px; gap: 0; }
+  .plan-head { display: none; }
+  .plan li { flex: 0 0 132px; min-height: 52px; padding: 6px 8px; }
+  .plan li.live { padding: 5px 7px; }
+  .plan .dots { margin-top: 2px; }
+  .plan-add { min-height: 52px; }
+  .item-head .sub { font-size: 13px; }
   .controls .next { grid-column: 2 / 4; grid-row: 1; }
   .controls > .btn:first-child { grid-column: 1; grid-row: 1; }
   .omni .input { min-height: 44px; }
