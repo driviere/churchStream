@@ -75,6 +75,19 @@ jobs:
             Write-Host "Stream state: $($st.stream.state) encoder: $($st.stream.encoder) speed: $($st.stream.speed)x problem: $($st.stream.problem)"
             if ($st.stream.problem -match 'struggling') { throw "False 'struggling' warning on the CI machine" }
             if ($st.stream.state -ne 'running') { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 60 | ForEach-Object { Write-Host "  log: $_" } }
+            # Play a short video into the live stream through the media relay (no restart allowed).
+            $ffx = Resolve-Path dist\ChurchStream\ffmpeg\ffmpeg.exe
+            & $ffx -hide_banner -loglevel error -f lavfi -i color=red:s=640x360:r=25:d=5 -f lavfi -i sine=frequency=660:d=5 -c:v libx264 -c:a aac -shortest -y "$env:RUNNER_TEMP\clip.mp4"
+            $clip = Invoke-RestMethod -Method Post -InFile "$env:RUNNER_TEMP\clip.mp4" -ContentType 'video/mp4' "http://localhost:8123/api/upload?name=clip.mp4"
+            Write-Host "Uploaded clip: $($clip.id) duration=$($clip.duration)s"
+            $item = @{ item = @{ key = 'ci-video'; kind = 'media'; title = 'CI video'; slides = @(@{ label = 'CI video'; text = '' }); media = @{ file = $clip.id; type = 'video'; duration = $clip.duration } }; index = 0 } | ConvertTo-Json -Depth 6
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $item http://localhost:8123/api/live | Out-Null
+            Start-Sleep -Seconds 3
+            $st = Invoke-RestMethod http://localhost:8123/api/state
+            Write-Host "While the video plays: media=$($st.media.now.title) stream=$($st.stream.state) since=$($st.stream.since)"
+            if (-not $st.media.now) { throw "The video did not start" }
+            if ($st.stream.state -ne 'running') { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 40 | ForEach-Object { Write-Host "  log: $_" }; throw "Stream stopped while the video played" }
+            Start-Sleep -Seconds 4
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
             Start-Sleep -Seconds 2
             $rec = Get-ChildItem dist\ChurchStream\ChurchStream-data\recordings\*.mkv

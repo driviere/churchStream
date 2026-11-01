@@ -34,6 +34,15 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **Names (lower thirds)** with one tap, on the stream and, if you like, the projector screens.
 - **Safety checks:** before going live, ChurchStream checks the camera and sound. It warns you if there's no sound, and reconnects a platform automatically if it drops.
 
+### 🎬 Before, during and after the service
+- **Countdown** to the start of the service, with announcements changing underneath on their own. It runs on the screens and the stream.
+- **Announcement loops:** any text slides can change automatically every few seconds.
+- **Sermon slides:** the pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides you step through with **Next**.
+- **Videos (Mission Spotlight, special music) and background music** play on the screens and *into the live stream* without interrupting it. Background music steps aside automatically while a video plays.
+- **Scrolling ticker** along the bottom of the stream, and optionally the screens too.
+- **Service templates:** save your usual order of service once, then start each Sabbath from it.
+- **Broadcast title** filled in from a pattern (`{church} · Sabbath Service · {date} · {sermon}`), ready to copy into YouTube and Facebook.
+
 ### 🙌 Made for volunteers
 - **No settings files:** a setup wizard in the browser handles everything.
 - **One search box** for hymn numbers, songs and verses.
@@ -76,6 +85,18 @@ Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the 
 
 **From a tablet or phone:** open `http://<computer-ip>:8080/control` on the church Wi-Fi. The address is shown in the console window and in Settings → Projector.
 **Stage screen for musicians:** `http://<computer-ip>:8080/stage` shows the current and next slide and a clock.
+
+## Videos, music and slides
+
+- **Add to the order of service:** use **+ Add**, then choose *Text or announcements*, *Sermon slides*, *Countdown* or *Video or music*.
+- **Videos:** upload MP4, MOV or WebM files (they stay on this computer).
+  - A video starts as soon as it goes on screen, or when you press **Play**.
+  - It fills the projector and the stream; names and the ticker stay on top. **Stop** returns to the normal view.
+- **Background music:** in the *Background music* card, add a few MP3/M4A tracks and press **Play**.
+  - The tracks loop under everything at the volume you set.
+  - The music also plays through the computer's speakers for the room, unless you turn that off.
+- **Sound routing:** if this computer's sound already goes into your sound desk, and the desk feeds the stream, choose *It already reaches the stream through our sound desk* in Settings → Camera & sound. Otherwise viewers would hear it twice.
+- **Sermon slides:** in PowerPoint choose **File → Save As → PDF**, then add that PDF. Each page becomes a slide. Picture files work too.
 
 ## What the stream shows
 
@@ -182,6 +203,7 @@ Node server (no deps) ── SSE ──► control panel (Preact + htm, 13 KB) �
 - `lib/app.js`: state and actions (live slide, plan, toggles, lower third, downloads).
 - `lib/stream.js`: the FFmpeg command builder (pure and tested) and the supervisor. The supervisor restarts with back-off, parses progress and loudness, maps errors to plain language, and masks stream keys in logs.
 - `lib/overlay.js`: atomic text-file overlays for FFmpeg `drawtext` (`reload=1`), so changing a lower third never restarts the stream.
+- `lib/media.js`: the media relay. Videos and music are decoded by a player FFmpeg and sent to ChurchStream as raw frames and PCM. ChurchStream feeds the stream's FFmpeg a steady 30 fps / 20 ms bus over local TCP: black and silence when idle, mixed music and volume ramps otherwise. That means the stream FFmpeg never waits on that input, and playing a video never restarts the stream.
 - Stream views: the control panel renders the projector picture to `run/program.jpg`, which FFmpeg re-reads 4×/s. The slide and camera-inset layers are switched with live filter commands (`overlay@slides` / `overlay@pip`), so the stream never restarts.
 - `lib/songs.js`, `lib/bible.js`, `lib/importers/*`: song library, reference parser, and hymnal/Bible importers.
 - `public/`: control panel, projector (`display.html`) and stage pages.
@@ -207,7 +229,7 @@ Issues and pull requests are welcome, especially from churches using ChurchStrea
 
 - ChurchStream code: MIT.
 - Inter font: SIL OFL 1.1.
-- Preact: MIT. htm: Apache-2.0.
+- Preact: MIT. htm: Apache-2.0. PDF.js: Apache-2.0.
 - Bundled `ffmpeg.exe`: GPL. The licence and source links are in `ffmpeg/LICENSE.txt`.
 - KJV and BSB texts: public domain.
 - Hymn texts are not distributed with ChurchStream. They are downloaded from the projects above onto your computer when you choose to. *Seventh-day Adventist Hymnal* © 1985 Review and Herald Publishing Association; *Church Hymnal* © 1941 General Conference Corporation of Seventh-day Adventists. Many individual hymns are public domain, but projecting or streaming those still under copyright requires your church's CCLI licence.

@@ -19,6 +19,48 @@ function tickCountdown() {
   el.children[1].textContent = p.time;
 }
 setInterval(tickCountdown, 250);
+
+function syncPlayer(el, media, playing, state, isVideo) {
+  if (!media) {
+    if (!el.paused) el.pause();
+    if (el.dataset.key) { el.removeAttribute('src'); el.load(); el.dataset.key = ''; }
+    return;
+  }
+  const src = '/media/' + encodeURIComponent(media.file.replace(/^media:/, ''));
+  const key = src + '|' + playing.startedAt;
+  el.muted = isVideo ? !media.room : false;
+  el.loop = !!media.loop;
+  el.volume = Math.max(0, Math.min(1, playing.volume ?? 1));
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  el.src = src;
+  const startAt = () => {
+    const skew = state.now - Date.now();
+    let t = Math.max(0, (Date.now() + skew - playing.startedAt) / 1000);
+    if (media.loop && el.duration) t %= el.duration;
+    if (t > 0.3 && (!el.duration || t < el.duration)) el.currentTime = t;
+    el.play().catch(() => {});
+  };
+  el.addEventListener('loadedmetadata', startAt, { once: true });
+}
+
+let musicKey = '';
+function syncMusic(state) {
+  const el = $('music');
+  const m = state.media && state.media.music;
+  const files = state.config.musicFiles || [];
+  const on = !!(m && files.length && state.config.musicRoom !== false);
+  const key = on ? files.join('|') + '|' + m.startedAt : '';
+  el.volume = on ? Math.max(0, Math.min(1, (m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
+  if (key === musicKey) return;
+  musicKey = key;
+  el.pause();
+  if (!on) return;
+  let i = 0;
+  const next = () => { el.src = '/media/' + encodeURIComponent(files[i % files.length].replace(/^media:/, '')); i++; el.play().catch(() => {}); };
+  el.onended = next;
+  next();
+}
 const bgLayers = [$('bgA'), $('bgB')];
 let bgFront = 0;
 
@@ -107,7 +149,16 @@ function render(state) {
   const imgEl = $('img').firstElementChild;
   if (pic && imgEl.getAttribute('src') !== pic) imgEl.setAttribute('src', pic);
   $('img').classList.toggle('hidden', !pic);
-  showText(hideText || isCount || pic ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
+  // Videos play full screen on the projector, in step with the stream; music items and
+  // background music can also play through this computer's speakers ("in the room").
+  const playing = state.media && state.media.now;
+  const isMedia = !!(item && item.kind === 'media' && item.media);
+  const mediaOn = isMedia && playing && playing.id === item.key;
+  syncPlayer($('vid').firstElementChild, mediaOn && item.media.type === 'video' && !state.black ? item.media : null, playing, state, true);
+  syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room ? item.media : null, playing, state, false);
+  $('vid').classList.toggle('hidden', !(mediaOn && item.media.type === 'video' && !state.black && !state.logo));
+  syncMusic(state);
+  showText(hideText || isCount || pic || isMedia ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
   $('ref').textContent = !hideText && !isCount && slide && slide.ref ? slide.ref : '';
   $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
   $('logo').classList.toggle('hidden', !state.logo);

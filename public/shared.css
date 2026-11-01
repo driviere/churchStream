@@ -106,4 +106,4 @@
 
 /* Picture slides (sermon PDFs / images): fill the screen, letterboxed on black. */
 .screen-img { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
-.screen-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.screen-img img, .screen-img video { width: 100%; height: 100%; object-fit: contain; display: block; }

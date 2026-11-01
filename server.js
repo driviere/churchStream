@@ -78,10 +78,21 @@ function broadcast(event, data) {
 app.on('state', (s) => broadcast('state', s));
 app.on('meter', (v) => broadcast('meter', v));
 
-function serveFile(res, file, type) {
+function serveFile(res, file, type, req) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'Not found', 'text/plain');
-    res.writeHead(200, { 'Content-Type': type || MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'Content-Length': st.size });
+    const ctype = type || MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    // Byte ranges let the projector seek in videos (to stay in step with the stream).
+    const range = req && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (range && (range[1] || range[2])) {
+      let start = range[1] ? parseInt(range[1], 10) : st.size - parseInt(range[2], 10);
+      let end = range[1] && range[2] ? parseInt(range[2], 10) : st.size - 1;
+      start = Math.max(0, start); end = Math.min(st.size - 1, end);
+      if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+      res.writeHead(206, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache' });
+      return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache', 'Content-Length': st.size });
     fs.createReadStream(file).pipe(res);
   });
 }
@@ -114,6 +125,11 @@ const routes = {
   'POST /api/toggle': async (req) => { const { name, value } = await json(req); app.setToggle(name, value); return { ok: true }; },
   'POST /api/lower-third': async (req) => { app.setLowerThird(await json(req)); return { ok: true }; },
   'POST /api/ticker': async (req) => { app.setTicker(await json(req)); return { ok: true }; },
+  'POST /api/upload': (req, url) => app.saveUpload(req, url.searchParams.get('name') || ''),
+  'GET /api/clips': () => app.mediaLibrary(),
+  'POST /api/clips/delete': async (req) => app.deleteClip((await json(req)).id),
+  'POST /api/media/control': async (req) => { app.mediaControl(await json(req)); return { ok: true }; },
+  'POST /api/music': async (req) => { app.musicControl(await json(req)); return { ok: true }; },
   'GET /api/templates': () => app.listTemplates(),
   'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },
   'POST /api/templates/delete': async (req) => app.deleteTemplate((await json(req)).name),
@@ -179,7 +195,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/preview.jpg') return serveFile(res, path.join(paths.runDir, 'preview.jpg'), 'image/jpeg');
     if (p.startsWith('/media/')) {
       const name = path.basename(p);
-      return serveFile(res, path.join(paths.mediaDir, name));
+      return serveFile(res, path.join(paths.mediaDir, name), null, req);
     }
     if (PAGES[p]) return serveAsset(res, 'public/' + PAGES[p]);
     if (p === '/favicon.ico') return serveAsset(res, 'public/favicon.svg');

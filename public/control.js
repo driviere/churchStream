@@ -56,6 +56,9 @@ const icons = {
   alert: () => I(html`<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>`),
   back: () => I(html`<path d="M19 12H5M12 19l-7-7 7-7"/>`),
   image: () => I(html`<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>`),
+  play: () => I(html`<path d="M7 4v16l13-8z" fill="currentColor"/>`),
+  stop: () => I(html`<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>`),
+  film: () => I(html`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/>`),
 };
 
 // ---------------------------------------------------------------------------------------
@@ -64,7 +67,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const ref = useRef();
   const scale = theme.textScale || 1;
   const isCount = !!(countdown && !black && !logo);
-  const text = !black && !clear && !logo && slide && !isCount && !slide.image ? slide : null;
+  const text = !black && !clear && !logo && slide && !isCount && !slide.image && kind !== 'media' ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
@@ -86,6 +89,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
     ${text && kind === 'song' && subtitle && html`<div class="screen-tag">${subtitle}</div>`}
     ${!black && !logo && !clear && slide && slide.image && html`<div class="screen-img"><img src=${bgInfo(slide.image).url} alt="" loading="lazy" /></div>`}
+    ${!black && !logo && kind === 'media' && html`<div class="screen-logo"><div class="name" style="font-size:6cqh">${slide ? '▶ ' + slide.label : ''}</div></div>`}
     ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
     ${logo && html`<div class="screen-logo">${theme.logo ? html`<img src=${'/media/' + theme.logo} alt="" />` : html`<div class="name">${churchName}</div>`}</div>`}
@@ -299,6 +303,7 @@ const kindLabel = (it) => {
   if (it.kind === 'text') return it.autoAdvance ? 'LOOP' : 'TEXT';
   if (it.kind === 'countdown') return 'COUNTDOWN';
   if (it.kind === 'images') return it.autoAdvance ? 'SLIDESHOW' : 'SLIDES';
+  if (it.kind === 'media') return it.media && it.media.type === 'audio' ? 'MUSIC' : 'VIDEO';
   const m = String(it.subtitle || '').match(/^(SDA Hymnal|Church Hymnal|Hymn)\s+(\d+)$/);
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
@@ -399,13 +404,14 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
         ${(item.kind === 'song' || ((item.kind === 'text' || item.kind === 'countdown') && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
-        ${inPlan && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
+        ${inPlan && item.kind !== 'media' && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
+      ${item.kind === 'media' ? html`<${MediaPanel} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
       <div class="slides-scroll"><div class="slides">
         ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} onBackground=${inPlan ? () => onBackground(i) : null} />`)}
-      </div></div>`}
+      </div></div>`}`}
   </section>`;
 }
 
@@ -513,6 +519,7 @@ function Aside({ s, onGoLive, onStop, active }) {
 
     <${NameOnStream} s=${s} />
     <${TickerCard} s=${s} />
+    <${MusicCard} s=${s} />
   </aside>`;
 }
 
@@ -691,6 +698,140 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
       <div><label class="label">Preview</label><${Screen} slide=${slides[0] || { text: '' }} kind="countdown" countdown=${countdown} /></div>
     </div>
   </${Modal}>`;
+}
+
+const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+
+// Video / music item: big transport controls instead of a slide grid.
+function MediaPanel({ s, item, isLive, onShow }) {
+  const m = item.media || {};
+  const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
+  const [, tick] = useState(0);
+  useEffect(() => { if (!playing) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt]);
+  const skew = s.now - (s.receivedAt || s.now);
+  const elapsed = playing ? (Date.now() + skew - playing.startedAt) / 1000 : 0;
+  const dur = m.duration || 0;
+  const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
+  const vol = playing ? playing.volume : (m.volume ?? 1);
+  const src = '/media/' + encodeURIComponent((m.file || '').replace(/^media:/, ''));
+  return html`<div class="media-panel">
+    <div class="media-view">
+      ${m.type === 'video'
+        ? html`<video src=${src} muted preload="metadata" ref=${(el) => { if (el && playing && Math.abs(el.currentTime - shown) > 1) { el.currentTime = shown; el.play().catch(() => {}); } else if (el && !playing && !el.paused) el.pause(); }}></video>`
+        : html`<div class="media-audio">${icons.music()}<span>${item.title}</span></div>`}
+      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${m.type === 'video' ? 'PLAYING ON SCREEN & STREAM' : 'PLAYING'}</span>`}
+    </div>
+    <div class="media-bar">
+      ${playing
+        ? html`<button class="btn big" onClick=${() => api('/api/media/control', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop</button>
+               <button class="btn big ghost" onClick=${() => api('/api/media/control', { action: 'restart' }).catch(fail)}>From the start</button>`
+        : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
+      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
+        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <label class="media-vol" title="Volume on the stream">${icons.music()}<input type="range" min="0" max="1.5" step="0.05" value=${vol}
+        onChange=${(e) => (playing ? api('/api/media/control', { volume: +e.target.value }) : Promise.resolve()).catch(fail)} /></label>
+    </div>
+    <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
+      ? 'The video fills the projector and the stream while it plays (names and the ticker stay on top). Background music pauses during the video.'
+      : 'The music plays on the stream' + (m.room ? ' and through this computer’s speakers.' : '.')}</div>
+  </div>`;
+}
+
+function uploadClip(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/upload?name=' + encodeURIComponent(file.name));
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    x.onload = () => { let d = {}; try { d = JSON.parse(x.responseText); } catch { /* */ } if (x.status >= 400 || d.error) reject(new Error(d.error || 'Upload failed')); else resolve(d); };
+    x.onerror = () => reject(new Error('Upload failed'));
+    x.send(file);
+  });
+}
+
+function useClips() {
+  const [clips, setClips] = useState(null);
+  const load = () => get('/api/clips').then(setClips).catch(fail);
+  useEffect(() => { load(); }, []);
+  return [clips, load, setClips];
+}
+
+function ClipList({ clips, selected, onPick, onDelete, type }) {
+  const list = (clips || []).filter((c) => !type || c.type === type);
+  if (!clips) return html`<div class="muted">Loading…</div>`;
+  if (!list.length) return html`<div class="note">Nothing here yet. Add a file above.</div>`;
+  return html`<div class="clip-list">${list.map((c) => html`<div class=${'clip' + (selected && selected.includes(c.id) ? ' on' : '')} key=${c.id} onClick=${() => onPick(c)}>
+    <span class="clip-icon">${c.type === 'video' ? icons.film() : icons.music()}</span>
+    <span class="grow"><b>${c.name}</b><span class="muted"> · ${c.type === 'video' ? 'video' : 'music'}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</span></span>
+    ${onDelete && html`<button class="btn ghost small" onClick=${(e) => { e.stopPropagation(); onDelete(c); }}>Delete</button>`}
+  </div>`)}</div>`;
+}
+
+function pickFiles(accept, multiple, onFiles) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = accept; inp.multiple = multiple;
+  inp.onchange = () => onFiles([...inp.files]);
+  inp.click();
+}
+const MEDIA_ACCEPT = 'video/mp4,video/quicktime,video/webm,video/x-matroska,.mkv,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,.m4a';
+
+// Add a video (Mission Spotlight, special music, …) or a music track to the order of service.
+function MediaDialog({ onClose, onAdd, onShow }) {
+  const [clips, load, setClips] = useClips();
+  const [pick, setPick] = useState(null);
+  const [title, setTitle] = useState('');
+  const [loop, setLoop] = useState(false);
+  const [room, setRoom] = useState(true);
+  const [up, setUp] = useState('');
+  const upload = () => pickFiles(MEDIA_ACCEPT, true, async (files) => {
+    let last = null;
+    for (const f of files) {
+      try { last = await uploadClip(f, (p) => setUp(`Uploading ${f.name}… ${Math.round(p * 100)}%`)); } catch (err) { fail(err); }
+    }
+    setUp(''); await load();
+    if (last) { setPick(last); setTitle(last.name); }
+  });
+  const del = async (c) => { if (confirm(`Delete “${c.name}” from this computer?`)) setClips(await api('/api/clips/delete', { id: c.id }).catch(fail)); };
+  const item = () => ({ key: 'media:' + Date.now(), kind: 'media', title: title.trim() || pick.name, subtitle: '', slides: [{ label: title || pick.name, text: '' }],
+    media: { file: pick.id, type: pick.type, duration: pick.duration, loop, room, volume: 1 } });
+  return html`<${Modal} wide title="Video or music" onClose=${onClose} footer=${html`
+      <button class="btn" disabled=${!pick} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
+      <button class="btn primary" disabled=${!pick} onClick=${() => { onShow(item()); onClose(); }}>Play now</button>`}>
+    <div class="row wrap" style="margin-bottom:12px">
+      <button class="btn primary" disabled=${!!up} onClick=${upload}>${icons.plus()} Add video or music…</button>
+      <span class="muted">${up || 'MP4, MOV or WebM videos (e.g. Mission Spotlight); MP3 or M4A music. Files stay on this computer.'}</span>
+    </div>
+    <${ClipList} clips=${clips} selected=${pick ? [pick.id] : []} onPick=${(c) => { setPick(c); setTitle(c.name); }} onDelete=${del} />
+    ${pick && html`<div class="two" style="margin-top:14px;gap:12px">
+      <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} onInput=${(e) => setTitle(e.target.value)} /></div>
+      <div><label class="switch"><input type="checkbox" checked=${loop} onChange=${(e) => setLoop(e.target.checked)} /><span>Repeat until stopped</span></label>
+        <label class="switch"><input type="checkbox" checked=${room} onChange=${(e) => setRoom(e.target.checked)} /><span>Play the sound through this computer too (for the room)</span></label></div>
+    </div>`}
+  </${Modal}>`;
+}
+
+// Background music: plays quietly under everything (and pauses for videos).
+function MusicCard({ s }) {
+  const [clips, load] = useClips();
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(s.config.musicFiles || []);
+  const music = s.media && s.media.music;
+  const songs = (clips || []).filter((c) => c.type === 'audio');
+  const toggle = (c) => setSel(sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id]);
+  const play = () => api('/api/music', { action: 'play', files: sel.length ? sel : songs.map((c) => c.id), volume: s.config.musicVolume }).catch(fail);
+  return html`<div class="card">
+    <div class="card-head"><b>Background music</b>${music && html`<span class="tag live" style="margin-left:auto">PLAYING</span>`}</div>
+    ${music
+      ? html`<div class="row"><button class="btn on red grow" onClick=${() => api('/api/music', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop music</button></div>`
+      : html`<div class="row"><button class="btn primary grow" disabled=${!songs.length} onClick=${play}>${icons.play()} Play ${sel.length ? sel.length + ' song' + (sel.length === 1 ? '' : 's') : 'all'}</button>
+              <button class="btn" onClick=${() => { setOpen(!open); load(); }}>${open ? 'Done' : 'Choose'}</button></div>`}
+    <label class="meter-row" style="margin-top:10px">Volume<input class="grow" type="range" min="0" max="1" step="0.05" value=${music ? music.volume : (s.config.musicVolume ?? 0.4)}
+      onChange=${(e) => (music ? api('/api/music', { volume: +e.target.value }) : api('/api/config', { musicVolume: +e.target.value })).catch(fail)} /></label>
+    ${open && !music && html`<div style="margin-top:10px">
+      <button class="btn small" onClick=${() => pickFiles('audio/*,.m4a,.mp3', true, async (files) => { for (const f of files) { try { await uploadClip(f, () => {}); } catch (err) { fail(err); } } load(); })}>${icons.plus()} Add music files…</button>
+      <div style="margin-top:8px"><${ClipList} clips=${clips} type="audio" selected=${sel} onPick=${toggle} /></div></div>`}
+    <label class="switch" style="min-height:40px;margin-top:6px"><input type="checkbox" checked=${s.config.musicRoom !== false} onChange=${(e) => api('/api/config', { musicRoom: e.target.checked }).catch(fail)} /><span>Also play through this computer (for the room)</span></label>
+    <div class="hint">${songs.length ? 'Loops the chosen songs on the stream. Pauses automatically while a video plays.' : 'Add a few quiet instrumental tracks (MP3/M4A) to play before and after the service.'}</div>
+  </div>`;
 }
 
 // Sermon slides: a PDF (PowerPoint → File → Save As → PDF) or picture files become slides.
@@ -912,7 +1053,7 @@ function ControlView({ s }) {
   const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
   const addToPlan = (it) => {
     const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
-      slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown };
+      slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown, media: it.media };
     api('/api/plan', { items: [...s.plan.items, entry] }).then(() => toast(`Added “${it.title}”`)).catch(fail);
   };
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
@@ -1006,7 +1147,7 @@ function ControlView({ s }) {
     </div>
     <div class="bottom">
       <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
-        onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onTemplates=${() => setDialog({ type: 'templates' })} />
+        onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })} onTemplates=${() => setDialog({ type: 'templates' })} />
       <div class="controls">
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
@@ -1024,6 +1165,7 @@ function ControlView({ s }) {
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
+    ${dialog && dialog.type === 'media' && html`<${MediaDialog} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
@@ -1096,6 +1238,12 @@ function SectionCamera({ s, autoPreview }) {
           <option value="none">No sound (silent stream)</option>
         </select>
         <div class="hint">For the best sound, connect the sound desk to the computer (or to the capture card) and pick it here.</div></div>
+      <div class="field"><label class="label">Sound of videos and background music on the stream</label>
+        <select class="select" value=${s.config.mediaSound || 'direct'} onChange=${(e) => save({ mediaSound: e.target.value })}>
+          <option value="direct">Mix it straight into the stream (recommended)</option>
+          <option value="desk">It already reaches the stream through our sound desk</option>
+        </select>
+        <div class="hint">Choose the second option only if this computer's sound goes into your sound desk and the desk feeds the stream — otherwise viewers would hear it twice.</div></div>
       ${devs && devs.note && html`<div class="note">${devs.note}</div>`}
     </div>
     <div>
