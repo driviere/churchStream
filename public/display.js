@@ -1,4 +1,4 @@
-import { connect, fitText, slideHtml, escapeHtml, currentSlide } from '/shared.js';
+import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -7,6 +7,8 @@ let shownKey = null;
 let lastBg = null;
 let lastLogo = null;
 let identifyTimer = null;
+const bgLayers = [$('bgA'), $('bgB')];
+let bgFront = 0;
 
 function showText(slide, isBible, scale = 1) {
   const key = slide ? slide.text + '|' + (slide.ref || '') + '|' + scale : null;
@@ -29,11 +31,18 @@ function render(state) {
   $('offline').classList.toggle('show', !state);
   if (!state) return;
   const theme = state.config.theme || {};
-  const bg = theme.background ? `/media/${theme.background}` : '';
-  if (bg !== lastBg) {
-    lastBg = bg;
-    $('bg').style.backgroundImage = bg ? `url("${bg}")` : '';
-    $('bg').classList.toggle('has-image', !!bg);
+  const liveItem = state.live && state.live.item;
+  const bg = bgInfo(effectiveBg(currentSlide(state), liveItem, theme));
+  if (bg.url !== lastBg) {
+    lastBg = bg.url;
+    // Cross-fade between two background layers.
+    const next = bgLayers[1 - bgFront];
+    next.style.backgroundImage = bg.url ? `url("${bg.url}")` : '';
+    next.classList.toggle('has-image', bg.photo);
+    next.classList.remove('hidden');
+    bgLayers[bgFront].classList.add('hidden');
+    bgFront = 1 - bgFront;
+    $('screen').classList.toggle('light-bg', bg.light);
   }
   const logoKey = (theme.logo || '') + '|' + (state.config.churchName || '');
   if (logoKey !== lastLogo) {

@@ -44,6 +44,15 @@ Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the 
 **From a tablet or phone:** open `http://<computer-ip>:8080/control` on the church Wi-Fi. The address is shown in the console window and in Settings → Projector.
 **Stage screen for musicians:** `http://<computer-ip>:8080/stage` shows the current and next slide and a clock.
 
+## Backgrounds
+
+- **Built-in library:** 15 projection-friendly backgrounds, including Midnight, Deep ocean, Sunrise, Mountains at dusk, Starry night, Golden lights, Light from above, Cross at dawn and Soft cream (which uses dark text). All are dark enough for white lyrics to stay readable on any projector. They're drawn in code (`scripts/make-backgrounds.js`), so they're tiny and sharp at any resolution.
+- **Your own:** click **Add your own** to upload photos or images (PNG, JPG, WebP or SVG; several at once is fine). They're kept in a library in `ChurchStream-data\media` and dimmed slightly on screen so words stay readable.
+- **Where a background applies**, from most to least specific:
+  1. **One slide:** hover a slide and click its picture icon. Slides with their own background show a small dot.
+  2. **A whole item in the order of service:** open the item and click **Background**.
+  3. **Everything else:** Settings → Appearance → Default background.
+
 ## Hardware & internet
 
 - **Computer:** any Windows 10/11 PC or laptop from the last 6–7 years. A recent Intel CPU with Quick Sync encodes in hardware and keeps the computer cool.

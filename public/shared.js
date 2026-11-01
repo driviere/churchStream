@@ -62,3 +62,21 @@ export function currentSlide(state) {
   const live = state && state.live;
   return live ? live.item.slides[live.index] : null;
 }
+
+// Backgrounds: '' (default), 'builtin:<id>' (ships with ChurchStream) or 'media:<file>' (your own).
+const LIGHT_BACKGROUNDS = new Set(['paper']);
+export function bgInfo(value) {
+  const v = String(value || '');
+  if (!v) return { url: '', light: false, photo: false };
+  if (v.startsWith('builtin:')) {
+    const id = v.slice(8);
+    return { url: `/backgrounds/${encodeURIComponent(id)}.svg`, light: LIGHT_BACKGROUNDS.has(id), photo: false };
+  }
+  const file = v.startsWith('media:') ? v.slice(6) : v; // older settings stored just the file name
+  return { url: `/media/${encodeURIComponent(file)}`, light: false, photo: true };
+}
+
+// Which background a slide uses: its own, else its item's, else the general default.
+export function effectiveBg(slide, item, theme) {
+  return (slide && slide.background) || (item && item.background) || (theme && theme.background) || '';
+}

@@ -27,7 +27,7 @@ const MIME = {
 };
 const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
-const OPEN = [/^\/(display|stage)$/, /^\/events$/, /^\/(fonts|vendor|media)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
+const OPEN = [/^\/(display|stage)$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
 
 const app = new App();
 const clients = new Set();
@@ -141,6 +141,8 @@ const routes = {
     return { ok: true, name };
   },
   'POST /api/media/remove': async (req) => { const { kind } = await json(req); app.updateConfig({ theme: { [kind]: '' } }); return { ok: true }; },
+  'GET /api/backgrounds': () => app.backgrounds(),
+  'POST /api/backgrounds/delete': async (req) => { app.deleteBackground((await json(req)).id); return { ok: true }; },
 };
 
 const server = http.createServer(async (req, res) => {

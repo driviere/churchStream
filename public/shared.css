@@ -25,7 +25,10 @@
   background: radial-gradient(120% 90% at 50% 0%, #1b2440 0%, #0b0f1a 55%, #05070c 100%);
   background-size: cover; background-position: center;
 }
+.screen-bg { transition: opacity 400ms ease; }
 .screen-bg.has-image::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.screen.light-bg { color: #1a1d23; }
+.screen.light-bg .screen-text { text-shadow: none; }
 .screen-layer {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;

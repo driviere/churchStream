@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml } from '/shared.js';
+import { connect, fitText, slideHtml, bgInfo, effectiveBg } from '/shared.js';
 
 // ---------------------------------------------------------------------------------------
 // tiny helpers
@@ -55,11 +55,12 @@ const icons = {
   check: () => I(html`<path d="M20 6 9 17l-5-5"/>`),
   alert: () => I(html`<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>`),
   back: () => I(html`<path d="M19 12H5M12 19l-7-7 7-7"/>`),
+  image: () => I(html`<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>`),
 };
 
 // ---------------------------------------------------------------------------------------
 // the projected screen, used for thumbnails and the mini projector view
-function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo }) {
+function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg }) {
   const ref = useRef();
   const scale = theme.textScale || 1;
   const text = !black && !clear && !logo && slide ? slide : null;
@@ -76,9 +77,9 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ro.observe(el);
     return () => ro.disconnect();
   }, [!!text, scale]);
-  const bg = theme.background ? `url("/media/${theme.background}")` : '';
-  return html`<div class="screen">
-    <div class=${'screen-bg' + (bg ? ' has-image' : '')} style=${bg ? `background-image:${bg}` : ''}></div>
+  const info = bgInfo(bg !== undefined ? bg : theme.background);
+  return html`<div class=${'screen' + (info.light ? ' light-bg' : '')}>
+    <div class=${'screen-bg' + (info.photo ? ' has-image' : '')} style=${info.url ? `background-image:url("${info.url}")` : ''}></div>
     ${text && html`<div class="screen-layer"><div ref=${ref} class=${'screen-text' + (kind === 'bible' ? ' bible' : '')} dangerouslySetInnerHTML=${{ __html: slideHtml(text) }}></div></div>`}
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
     ${text && kind === 'song' && subtitle && html`<div class="screen-tag">${subtitle}</div>`}
@@ -315,14 +316,17 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
 
 // ---------------------------------------------------------------------------------------
 // slide grid (centre card)
-const SlideCard = ({ slide, i, item, s, isLive, isNext, onClick }) => html`
-  <button class=${'slide-card' + (isLive ? ' live' : '') + (isNext ? ' next' : '')} onClick=${onClick}>
-    <${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} />
-    <div class="meta"><span class="lbl">${slide.label || (item.kind === 'bible' ? slide.ref : `Slide ${i + 1}`)}</span>
+const SlideCard = ({ slide, i, item, s, isLive, isNext, onClick, onBackground }) => html`
+  <div class=${'slide-card' + (isLive ? ' live' : '') + (isNext ? ' next' : '')}>
+    <button class="slide-hit" onClick=${onClick} aria-label=${'Show slide ' + (i + 1)}>
+      <${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} bg=${effectiveBg(slide, item, s.config.theme)} />
+    </button>
+    ${onBackground && html`<button class="bg-btn" title="Background for this slide" aria-label=${'Background for slide ' + (i + 1)} onClick=${onBackground}>${icons.image()}</button>`}
+    <div class="meta"><span class="lbl">${slide.label || (item.kind === 'bible' ? slide.ref : `Slide ${i + 1}`)}${slide.background ? html` <span class="own-bg" title="This slide has its own background">●</span>` : ''}</span>
       ${isLive ? html`<span class="tag live">ON SCREEN</span>` : isNext ? html`<span class="tag next">NEXT</span>` : html`<span class="tag num">${i + 1}</span>`}</div>
-  </button>`;
+  </div>`;
 
-function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active }) {
+function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackground }) {
   const live = s.live;
   const isLiveItem = live && item && live.item.key === item.key;
   const liveIdx = isLiveItem ? live.index : -1;
@@ -340,11 +344,12 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active }) {
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
         ${(item.kind === 'song' || (item.kind === 'text' && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${inPlan && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
       <div class="slides-scroll"><div class="slides">
-        ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} />`)}
+        ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} onBackground=${inPlan ? () => onBackground(i) : null} />`)}
       </div></div>`}
   </section>`;
 }
@@ -395,7 +400,7 @@ function Aside({ s, onGoLive, onStop, active }) {
         <span class="note-r">${s.projectorOpen
           ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
           : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on projector</button>`}</span></div>
-      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo} />
+      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo} />
     </div>
 
     <div class="card stack">
@@ -526,6 +531,109 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
 }
 
 // ---------------------------------------------------------------------------------------
+// backgrounds: built-in library + your own uploads
+let bgCache = null;
+const bgListeners = new Set();
+const loadBackgrounds = () => get('/api/backgrounds').then((d) => { bgCache = d; bgListeners.forEach((f) => f(d)); return d; });
+function useBackgrounds() {
+  const [data, setData] = useState(bgCache);
+  useEffect(() => {
+    bgListeners.add(setData);
+    if (!bgCache) loadBackgrounds().catch(fail);
+    return () => bgListeners.delete(setData);
+  }, []);
+  return data;
+}
+
+function uploadBackgrounds(onDone) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.multiple = true;
+  inp.accept = 'image/png,image/jpeg,image/webp,image/svg+xml';
+  inp.onchange = async () => {
+    let last = null;
+    for (const f of inp.files) {
+      if (f.size > 15 * 1024 * 1024) { fail(new Error(`${f.name} is too large (max 15 MB).`)); continue; }
+      const res = await fetch('/api/media?kind=background', { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+      const d = await res.json().catch(() => ({}));
+      if (d.error) fail(new Error(d.error)); else last = d.name;
+    }
+    await loadBackgrounds();
+    if (last) { toast(inp.files.length > 1 ? 'Backgrounds added' : 'Background added'); onDone && onDone(last); }
+  };
+  inp.click();
+}
+
+function BackgroundGallery({ value, onPick, defaultTile }) {
+  const data = useBackgrounds();
+  if (!data) return html`<div class="muted">Loading backgrounds…</div>`;
+  const del = async (e, id) => {
+    e.stopPropagation();
+    if (!confirm('Delete this background? Slides using it go back to the default.')) return;
+    await api('/api/backgrounds/delete', { id }).catch(fail);
+    loadBackgrounds();
+  };
+  const tile = (id, name, url, extra) => html`<div class="bg-tile">
+    <button class=${'bg-thumb' + ((value || '') === id ? ' on' : '')} style=${url ? `background-image:url("${url}")` : ''} onClick=${() => onPick(id)} aria-label=${name} aria-pressed=${(value || '') === id}>
+      ${(value || '') === id && html`<span class="bg-check">${icons.check()}</span>`}
+    </button>
+    <div class="bg-name">${name}</div>${extra}
+  </div>`;
+  return html`<div>
+    <div class="bg-section">Yours</div>
+    <div class="bg-grid">
+      <div class="bg-tile"><button class="bg-thumb bg-add" onClick=${() => uploadBackgrounds(onPick)}>${icons.plus()}<span>Add your own</span></button><div class="bg-name">Photos or images</div></div>
+      ${data.custom.map((b) => tile(b.id, 'Your image', bgInfo(b.id).url, html`<button class="bg-del" title="Delete" aria-label="Delete background" onClick=${(e) => del(e, b.id)}>${icons.x()}</button>`))}
+    </div>
+    <div class="bg-section">Built in</div>
+    <div class="bg-grid">
+      ${defaultTile && tile('', defaultTile.label, bgInfo(defaultTile.bg).url)}
+      ${data.builtin.map((b) => tile(b.id, b.name, bgInfo(b.id).url))}
+    </div>
+  </div>`;
+}
+
+function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
+  const plan = s.plan.items.find((x) => x.uid === item.key) || {};
+  const [scope, setScope] = useState(slideIndex === null ? 'item' : 'slide');
+  const i = slideIndex === null ? 0 : slideIndex;
+  const current = scope === 'slide' ? ((plan.slideBackgrounds || {})[i] || '') : (plan.background || '');
+  const [pick, setPick] = useState(current);
+  useEffect(() => setPick(current), [scope]);
+  const slide = item.slides[i];
+  const previewBg = scope === 'slide' ? (pick || plan.background || s.config.theme.background) : (pick || s.config.theme.background);
+  const apply = async () => {
+    const items = s.plan.items.map((x) => {
+      if (x.uid !== item.key) return x;
+      if (scope === 'item') return { ...x, background: pick };
+      const per = { ...(x.slideBackgrounds || {}) };
+      if (pick) per[i] = pick; else delete per[i];
+      return { ...x, slideBackgrounds: per };
+    });
+    try { await api('/api/plan', { items }); await onSaved(); onClose(); } catch (err) { fail(err); }
+  };
+  const hasSlideOverrides = Object.keys(plan.slideBackgrounds || {}).length > 0;
+  return html`<${Modal} wide title=${'Background — ' + item.title} onClose=${onClose} footer=${html`
+      <span class="muted" style="margin-right:auto;font-size:13px">${scope === 'item' && hasSlideOverrides ? 'Slides with their own background keep it.' : ''}</span>
+      <button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" onClick=${apply}>Use this background</button>`}>
+    <div class="bg-dialog">
+      <div>
+        ${slideIndex !== null && html`<div class="choices" style="margin-bottom:14px">
+          <button class=${'choice' + (scope === 'slide' ? ' on' : '')} onClick=${() => setScope('slide')}><b>Only this slide</b><span>${slide.label || 'Slide ' + (i + 1)}</span></button>
+          <button class=${'choice' + (scope === 'item' ? ' on' : '')} onClick=${() => setScope('item')}><b>Every slide of this item</b><span>${item.slides.length} slides</span></button>
+        </div>`}
+        <${BackgroundGallery} value=${pick} onPick=${setPick} defaultTile=${scope === 'slide'
+          ? { label: 'Same as the item', bg: plan.background || s.config.theme.background }
+          : { label: 'Use the default', bg: s.config.theme.background }} />
+      </div>
+      <div class="bg-preview"><label class="label">Preview</label><${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} bg=${previewBg || ''} />
+        <div class="hint">The default background for everything is set in Settings → Appearance.</div></div>
+    </div>
+  </${Modal}>`;
+}
+
+// ---------------------------------------------------------------------------------------
 // main operator screen
 function ControlView({ s }) {
   const [selected, setSelected] = useState(null);
@@ -590,6 +698,12 @@ function ControlView({ s }) {
       toast('Saved');
     } catch (err) { fail(err); }
   };
+  // After a background change, reload the item (and refresh the screens if it is showing).
+  const refreshItem = async (uid) => {
+    const it = await api('/api/plan/open', { uid });
+    if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: s.live.index });
+    setSelected(it);
+  };
   const songIdOf = (it) => it && (it.songId || (it.key.startsWith('song:') ? it.key.slice(5) : null));
   const planSong = item && item.kind === 'song' && s.plan.items.find((x) => x.uid === item.key);
 
@@ -610,7 +724,7 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : editSong} />
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
@@ -625,6 +739,7 @@ function ControlView({ s }) {
     </div>
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (title, slides) => saveText(dialog.item.key, title, slides) : null} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
@@ -830,12 +945,11 @@ function SectionAppearance({ s }) {
     inp.click();
   };
   const sample = { text: 'Amazing grace! How sweet the sound\nThat saved a wretch like me!\nI once was lost, but now am found;\nWas blind, but now I see.' };
-  return html`<div class="two">
+  return html`<div class="two appearance">
     <div>
-      <div class="field"><label class="label">Background image</label>
-        <div class="row">${theme.background ? html`<img class="thumb-img" src=${'/media/' + theme.background} alt="" />` : html`<span class="muted">Default dark blue</span>`}</div>
-        <div class="row" style="margin-top:8px"><button class="btn small" onClick=${() => upload('background')}>Choose image…</button>${theme.background && html`<button class="btn small ghost" onClick=${() => api('/api/media/remove', { kind: 'background' })}>Remove</button>`}</div>
-        <div class="hint">A calm, darker photo works best. It's dimmed automatically so text stays readable.</div></div>
+      <div class="field"><label class="label">Default background (used everywhere unless an item or slide has its own)</label>
+        <${BackgroundGallery} value=${theme.background || 'builtin:midnight'} onPick=${(v) => save({ theme: { background: v } })} />
+        <div class="hint">Your own photos are dimmed a little automatically so the words stay readable. To change one hymn or reading, open it and press “Background”.</div></div>
       <div class="field"><label class="label">Logo (shown when you press “Logo”)</label>
         <div class="row">${theme.logo ? html`<img class="thumb-img" style="object-fit:contain" src=${'/media/' + theme.logo} alt="" />` : html`<span class="muted">Church name is shown instead</span>`}</div>
         <div class="row" style="margin-top:8px"><button class="btn small" onClick=${() => upload('logo')}>Choose image…</button>${theme.logo && html`<button class="btn small ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' })}>Remove</button>`}</div></div>
@@ -844,7 +958,7 @@ function SectionAppearance({ s }) {
       <div class="field"><label class="label">Projector text size</label>
         <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div></div>
     </div>
-    <div><label class="label">Preview</label><${Screen} slide=${sample} kind="song" subtitle="SDA Hymnal 108" theme=${theme} /></div>
+    <div class="sticky-preview"><label class="label">Preview</label><${Screen} slide=${sample} kind="song" subtitle="SDA Hymnal 108" theme=${theme} /></div>
   </div>`;
 }
 
