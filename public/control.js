@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg } from '/shared.js';
+import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts } from '/shared.js';
 
 // ---------------------------------------------------------------------------------------
 // tiny helpers
@@ -60,10 +60,11 @@ const icons = {
 
 // ---------------------------------------------------------------------------------------
 // the projected screen, used for thumbnails and the mini projector view
-function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg, lt }) {
+function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg, lt, countdown, skew = 0 }) {
   const ref = useRef();
   const scale = theme.textScale || 1;
-  const text = !black && !clear && !logo && slide ? slide : null;
+  const isCount = !!(countdown && !black && !logo);
+  const text = !black && !clear && !logo && slide && !isCount ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
@@ -84,9 +85,23 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${text && html`<div class="screen-layer"><div ref=${ref} class=${'screen-text' + (kind === 'bible' ? ' bible' : '')} dangerouslySetInnerHTML=${{ __html: slideHtml(text) }}></div></div>`}
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
     ${text && kind === 'song' && subtitle && html`<div class="screen-tag">${subtitle}</div>`}
+    ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
     ${logo && html`<div class="screen-logo">${theme.logo ? html`<img src=${'/media/' + theme.logo} alt="" />` : html`<div class="name">${churchName}</div>`}</div>`}
     ${black && html`<div class="screen-black"></div>`}
+  </div>`;
+}
+
+// A ticking countdown face (same markup and styles as the projector).
+function CountdownFace({ cd, skew = 0, ann }) {
+  const [, tick] = useState(0);
+  const annRef = useRef();
+  useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, []);
+  useLayoutEffect(() => { if (annRef.current) fitText(annRef.current, { max: 6, min: 3 }); }, [ann]);
+  const p = countdownParts(cd, Date.now() + skew);
+  return html`<div class=${'screen-count' + (p.done ? ' done' : '')}>
+    <div class="msg">${p.message}</div><div class="time">${p.time}</div>
+    <div class="ann">${ann && html`<div ref=${annRef} class="screen-text">${ann}</div>`}</div>
   </div>`;
 }
 
@@ -253,12 +268,13 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
 // order of service: a horizontal strip along the bottom
 const kindLabel = (it) => {
   if (it.kind === 'bible') return 'READING';
-  if (it.kind === 'text') return 'TEXT';
+  if (it.kind === 'text') return it.autoAdvance ? 'LOOP' : 'TEXT';
+  if (it.kind === 'countdown') return 'COUNTDOWN';
   const m = String(it.subtitle || '').match(/^(SDA Hymnal|Church Hymnal|Hymn)\s+(\d+)$/);
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText }) {
+function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onTemplates }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -297,7 +313,7 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
   };
 
   return html`<section class="card plan-card" aria-label="Order of service">
-    <div class="plan-head"><b>Order of service</b><span>${items.length ? 'Next moves on by itself at the end of each item · drag to reorder' : ''}</span></div>
+    <div class="plan-head"><b>Order of service</b><button class="btn small ghost" onClick=${onTemplates}>Templates</button><span>${items.length ? 'Next moves on by itself at the end of each item · drag to reorder' : ''}</span></div>
     ${items.length === 0 && html`<div class="plan-empty">Search above, then press <kbd>Shift</kbd>+<kbd>Enter</kbd> (or “Add”) to build the order of service.</div>`}
     <ul class="plan" ref=${list}>
       ${items.map((it, i) => {
@@ -311,7 +327,10 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
           <button class="x" title="Remove" aria-label=${'Remove ' + it.title} onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
         </li>`;
       })}
-      <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0"><button class="plan-add" onClick=${onNewText}>+ Text</button></li>
+      <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0;display:flex;flex-direction:row;gap:6px">
+        <button class="plan-add" onClick=${onNewText}>+ Text</button>
+        <button class="plan-add" onClick=${onNewCountdown}>+ Countdown</button>
+      </li>
     </ul>
   </section>`;
 }
@@ -321,7 +340,8 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
 const SlideCard = ({ slide, i, item, s, isLive, isNext, onClick, onBackground }) => html`
   <div class=${'slide-card' + (isLive ? ' live' : '') + (isNext ? ' next' : '')}>
     <button class="slide-hit" onClick=${onClick} aria-label=${'Show slide ' + (i + 1)}>
-      <${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} bg=${effectiveBg(slide, item, s.config.theme)} />
+      <${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} bg=${effectiveBg(slide, item, s.config.theme)}
+        countdown=${item.kind === 'countdown' ? item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
     </button>
     ${onBackground && html`<button class="bg-btn" title="Background for this slide" aria-label=${'Background for slide ' + (i + 1)} onClick=${onBackground}>${icons.image()}</button>`}
     <div class="meta"><span class="lbl">${slide.label || (item.kind === 'bible' ? slide.ref : `Slide ${i + 1}`)}${slide.background ? html` <span class="own-bg" title="This slide has its own background">●</span>` : ''}</span>
@@ -345,7 +365,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
           <h1>${item.title}</h1>
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
-        ${(item.kind === 'song' || (item.kind === 'text' && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${(item.kind === 'song' || ((item.kind === 'text' || item.kind === 'countdown') && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
         ${inPlan && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
@@ -391,6 +411,25 @@ function NameOnStream({ s }) {
   </div>`;
 }
 
+function TickerCard({ s }) {
+  const tk = s.ticker || { text: '', visible: false };
+  const [text, setText] = useState(tk.text);
+  useEffect(() => { if (!document.activeElement || document.activeElement.dataset.role !== 'ticker') setText(tk.text); }, [tk.text]);
+  const show = (visible) => api('/api/ticker', { text, visible }).catch(fail);
+  return html`<div class="card">
+    <div class="card-head"><b>Ticker</b>${tk.visible && html`<span class="tag live" style="margin-left:auto">SCROLLING</span>`}</div>
+    <textarea class="input" data-role="ticker" rows="2" style="resize:vertical" placeholder="e.g. Welcome! Potluck lunch after the service · Prayer meeting Wednesday 7 pm" value=${text}
+      onInput=${(e) => setText(e.target.value)} onBlur=${() => tk.visible && text !== tk.text && show(true)}></textarea>
+    <div class="row" style="margin-top:8px">
+      ${tk.visible ? html`<button class="btn on red grow" onClick=${() => show(false)}>Stop ticker</button>` : html`<button class="btn primary grow" disabled=${!text.trim()} onClick=${() => show(true)}>Start ticker</button>`}
+      <select class="select" style="width:auto" value=${s.config.tickerSpeed || 'normal'} onChange=${(e) => api('/api/config', { tickerSpeed: e.target.value }).catch(fail)} title="Speed (applies next time the stream starts)">
+        <option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select>
+    </div>
+    <label class="switch" style="min-height:40px;margin-top:6px"><input type="checkbox" checked=${!!s.config.tickerOnProjector} onChange=${(e) => api('/api/config', { tickerOnProjector: e.target.checked }).catch(fail)} /><span>Also on the projector screens</span></label>
+    <div class="hint">Scrolls along the bottom of the stream.</div>
+  </div>`;
+}
+
 function Aside({ s, onGoLive, onStop, active }) {
   const st = s.stream;
   const cfg = s.config;
@@ -404,7 +443,8 @@ function Aside({ s, onGoLive, onStop, active }) {
           ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
           : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on projector</button>`}</span></div>
       <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
-        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null} />
+        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
+        countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
     </div>
 
     <div class="card stack">
@@ -439,11 +479,33 @@ function Aside({ s, onGoLive, onStop, active }) {
     </div>
 
     <${NameOnStream} s=${s} />
+    <${TickerCard} s=${s} />
   </aside>`;
 }
 
 // ---------------------------------------------------------------------------------------
 // dialogs
+function broadcastTitle(cfg, sermon) {
+  const date = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return String(cfg.broadcastTitle || '{church} · Sabbath Service · {date}')
+    .replace(/\{church\}/g, cfg.churchName || 'Our Church').replace(/\{date\}/g, date).replace(/\{sermon\}/g, sermon || '')
+    .replace(/\s*[·|-]\s*$/, '').replace(/\s+/g, ' ').trim();
+}
+
+function TitleHelper({ s }) {
+  const [sermon, setSermon] = useState('');
+  const uses = /\{sermon\}/.test(s.config.broadcastTitle || '');
+  const title = broadcastTitle(s.config, sermon);
+  const yt = s.config.outputs.youtube.enabled && s.config.outputs.youtube.hasKey;
+  const fb = s.config.outputs.facebook.enabled && s.config.outputs.facebook.hasKey;
+  return html`<div class="note" style="margin-top:12px">
+    <div class="label" style="margin-bottom:4px">Broadcast title</div>
+    ${uses && html`<input class="input" style="margin-bottom:6px" placeholder="Sermon title (optional)" value=${sermon} onInput=${(e) => setSermon(e.target.value)} />`}
+    <div class="row"><b class="grow" style="color:var(--text)">${title}</b><button class="btn small" onClick=${() => navigator.clipboard.writeText(title).then(() => toast('Title copied'), () => fail(new Error('Could not copy')))}>Copy</button></div>
+    <div style="margin-top:6px">Paste it into ${yt ? html`<a href="https://studio.youtube.com" target="_blank" rel="noopener">YouTube Studio</a>` : ''}${yt && fb ? ' and ' : ''}${fb ? html`<a href="https://www.facebook.com/live/producer" target="_blank" rel="noopener">Facebook Live Producer</a>` : ''}${!yt && !fb ? 'YouTube Studio or Facebook Live Producer' : ''}. The pattern is set in Settings → YouTube & Facebook.</div>
+  </div>`;
+}
+
 function GoLiveDialog({ s, onClose }) {
   const st = s.stream;
   const cfg = s.config;
@@ -471,6 +533,7 @@ function GoLiveDialog({ s, onClose }) {
       <li><span class=${sound ? 'ok' : 'bad'}>${sound ? icons.check() : icons.alert()}</span>${cfg.audio.source === 'none' ? 'No microphone selected — the stream will be silent' : sound ? 'Sound is coming through' : 'No sound yet — say something into the microphone'}</li>
       <li><span class=${dests.length ? 'ok' : 'bad'}>${dests.length ? icons.check() : icons.alert()}</span>${dests.length ? `Streaming to ${dests.join(' and ')}` : 'Recording only (no YouTube/Facebook key set)'}${cfg.record && dests.length ? ' + recording' : ''}</li>
     </ul>
+    <${TitleHelper} s=${s} />
     <p class="hint">On YouTube and Facebook, the broadcast may take 10–30 seconds to appear.</p>
   </${Modal}>`;
 }
@@ -528,17 +591,20 @@ function SongEditor({ song, onClose, onSaved }) {
   </${Modal}>`;
 }
 
+const AUTO_CHOICES = [[0, 'Off — I press Next'], [5, 'Every 5 seconds'], [8, 'Every 8 seconds'], [12, 'Every 12 seconds'], [20, 'Every 20 seconds']];
+
 function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
   const editing = !!(initial && onSave);
   const [title, setTitle] = useState(editing ? initial.title : '');
   const [text, setText] = useState(editing ? sectionsToText(initial.slides) : '');
+  const [auto, setAuto] = useState((initial && initial.autoAdvance) || 0);
   const [busy, setBusy] = useState(false);
   const slides = useMemo(() => parseSections(text), [text]);
   const name = () => title.trim() || slides[0]?.text.split('\n')[0] || 'Text';
-  const item = () => ({ key: 'text:' + Date.now(), kind: 'text', title: name(), subtitle: '', slides });
+  const item = () => ({ key: 'text:' + Date.now(), kind: 'text', title: name(), subtitle: '', slides, autoAdvance: auto });
   const footer = editing
     ? html`<button class="btn" onClick=${onClose}>Cancel</button>
-      <button class="btn primary" disabled=${busy || !slides.length} onClick=${async () => { setBusy(true); await onSave(name(), slides); onClose(); }}>Save changes</button>`
+      <button class="btn primary" disabled=${busy || !slides.length} onClick=${async () => { setBusy(true); await onSave(name(), slides, auto); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
   return html`<${Modal} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
@@ -546,6 +612,76 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
     <label class="label">Text</label>
     <textarea class="textarea" style="min-height:220px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'} autofocus=${editing}></textarea>
     <div class="hint">${slides.length} slide${slides.length === 1 ? '' : 's'} · a blank line starts a new slide</div>
+    <div class="field" style="margin-top:14px"><label class="label">Change slides automatically (loops — good for announcements)</label>
+      <select class="select" value=${auto} onChange=${(e) => setAuto(+e.target.value)}>${AUTO_CHOICES.map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select></div>
+  </${Modal}>`;
+}
+
+// Countdown before the service, with optional announcements rotating underneath.
+function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
+  const editing = !!(initial && onSave);
+  const cd0 = (initial && initial.countdown) || {};
+  const [title, setTitle] = useState((initial && initial.title) || 'Countdown');
+  const [mode, setMode] = useState(cd0.mode || 'minutes');
+  const [minutes, setMinutes] = useState(cd0.minutes || 5);
+  const [until, setUntil] = useState(cd0.until || '11:00');
+  const [message, setMessage] = useState(cd0.message ?? 'Our service begins in');
+  const [endText, setEndText] = useState(cd0.endText ?? 'Welcome!');
+  const [text, setText] = useState(initial ? sectionsToText((initial.slides || []).filter((x) => x.text)) : '');
+  const [auto, setAuto] = useState((initial && initial.autoAdvance) || 8);
+  const slides = useMemo(() => parseSections(text), [text]);
+  const countdown = { mode, minutes: +minutes || 5, until, message, endText };
+  const item = () => ({ key: 'countdown:' + Date.now(), kind: 'countdown', title: title.trim() || 'Countdown', subtitle: '', countdown, slides: slides.length ? slides : [{ label: '', text: '' }], autoAdvance: slides.length > 1 ? auto : 0 });
+  const footer = editing
+    ? html`<button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${async () => { const it = item(); await onSave(it); onClose(); }}>Save changes</button>`
+    : html`<button class="btn" onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button><button class="btn primary" onClick=${() => { onShow(item()); onClose(); }}>Start now</button>`;
+  return html`<${Modal} wide title=${editing ? 'Edit countdown' : 'Countdown'} onClose=${onClose} footer=${footer}>
+    <div class="editor">
+      <div>
+        <div class="choices" style="margin-bottom:12px">
+          <button class=${'choice' + (mode === 'minutes' ? ' on' : '')} onClick=${() => setMode('minutes')}><b>Count down</b><span>A number of minutes from when it starts</span></button>
+          <button class=${'choice' + (mode === 'until' ? ' on' : '')} onClick=${() => setMode('until')}><b>Until a time</b><span>E.g. the service starts at 11:00</span></button>
+        </div>
+        ${mode === 'minutes'
+          ? html`<div class="field"><label class="label">Minutes</label><input class="input" type="number" min="1" max="180" value=${minutes} onInput=${(e) => setMinutes(e.target.value)} /></div>`
+          : html`<div class="field"><label class="label">Service starts at</label><input class="input" type="time" value=${until} onInput=${(e) => setUntil(e.target.value)} /></div>`}
+        <div class="two" style="gap:10px">
+          <div class="field"><label class="label">Words above the timer</label><input class="input" value=${message} onInput=${(e) => setMessage(e.target.value)} /></div>
+          <div class="field"><label class="label">When it reaches zero</label><input class="input" value=${endText} onInput=${(e) => setEndText(e.target.value)} /></div>
+        </div>
+        <label class="label">Announcements under the timer (optional — a blank line starts the next one)</label>
+        <textarea class="textarea" style="min-height:150px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Potluck lunch after the service\n\nPrayer meeting Wednesday 7 pm\n\nPathfinders meet Sunday at 10'}></textarea>
+        ${slides.length > 1 && html`<div class="field" style="margin-top:10px"><label class="label">Change announcement</label>
+          <select class="select" value=${auto} onChange=${(e) => setAuto(+e.target.value)}>${AUTO_CHOICES.filter(([v]) => v).map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select></div>`}
+        <div class="field" style="margin-top:10px"><label class="label">Name in the order of service</label><input class="input" value=${title} onInput=${(e) => setTitle(e.target.value)} /></div>
+      </div>
+      <div><label class="label">Preview</label><${Screen} slide=${slides[0] || { text: '' }} kind="countdown" countdown=${countdown} /></div>
+    </div>
+  </${Modal}>`;
+}
+
+// Save the order of service as a reusable template, or start from one.
+function TemplatesDialog({ s, onClose }) {
+  const [list, setList] = useState(null);
+  const [name, setName] = useState('Sabbath Divine Service');
+  useEffect(() => { get('/api/templates').then(setList).catch(fail); }, []);
+  const saveIt = async () => { try { setList(await api('/api/templates', { name, items: s.plan.items })); toast('Template saved'); } catch (err) { fail(err); } };
+  const load = async (t) => {
+    if (s.plan.items.length && !confirm(`Replace the current order of service with “${t.name}”?`)) return;
+    await api('/api/plan', { items: t.items }).catch(fail);
+    toast(`Loaded “${t.name}”`);
+    onClose();
+  };
+  const del = async (t) => { if (confirm(`Delete the template “${t.name}”?`)) setList(await api('/api/templates/delete', { name: t.name }).catch(fail)); };
+  return html`<${Modal} title="Service templates" onClose=${onClose}>
+    <label class="label">Save this order of service (${s.plan.items.length} items) as</label>
+    <div class="key-row"><input class="input" value=${name} onInput=${(e) => setName(e.target.value)} /><button class="btn primary" disabled=${!name.trim() || !s.plan.items.length} onClick=${saveIt}>Save</button></div>
+    <div class="hint">Saving with an existing name replaces it.</div>
+    <label class="label" style="margin-top:20px">Start from a template</label>
+    ${!list ? html`<div class="muted">Loading…</div>` : !list.length ? html`<div class="note">No templates yet. Build your usual order of service once (opening hymn, scripture reading, prayer, children's story, sermon, closing hymn…), then save it here.</div>` : html`
+      <div style="display:grid;gap:8px">${list.map((t) => html`<div class="row" key=${t.name}>
+        <div class="grow"><b>${t.name}</b><div class="hint" style="margin:0">${t.items.length} items · ${t.items.slice(0, 4).map((x) => x.title).join(', ')}${t.items.length > 4 ? '…' : ''}</div></div>
+        <button class="btn small primary" onClick=${() => load(t)}>Use</button><button class="btn small ghost" onClick=${() => del(t)}>Delete</button></div>`)}</div>`}
   </${Modal}>`;
 }
 
@@ -666,7 +802,8 @@ function ControlView({ s }) {
 
   const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
   const addToPlan = (it) => {
-    const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length, slides: it.kind === 'text' ? it.slides : undefined };
+    const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
+      slides: it.kind === 'text' || it.kind === 'countdown' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown };
     api('/api/plan', { items: [...s.plan.items, entry] }).then(() => toast(`Added “${it.title}”`)).catch(fail);
   };
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
@@ -707,12 +844,22 @@ function ControlView({ s }) {
   };
   // Text items live inside the order of service, so editing saves the plan (and refreshes the
   // projector if that item is on screen right now).
-  const saveText = async (uid, title, slides) => {
+  const saveText = async (uid, title, slides, autoAdvance = 0) => {
     try {
-      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title, slides, count: slides.length } : x));
+      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title, slides, count: slides.length, autoAdvance } : x));
       await api('/api/plan', { items });
-      const it = { key: uid, kind: 'text', title, subtitle: '', slides };
+      const it = { key: uid, kind: 'text', title, subtitle: '', slides, autoAdvance };
       if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: Math.min(s.live.index, slides.length - 1) });
+      setSelected(it);
+      toast('Saved');
+    } catch (err) { fail(err); }
+  };
+  const saveCountdown = async (uid, edited) => {
+    try {
+      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title: edited.title, slides: edited.slides, count: edited.slides.length, autoAdvance: edited.autoAdvance, countdown: edited.countdown } : x));
+      await api('/api/plan', { items });
+      const it = await api('/api/plan/open', { uid });
+      if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: 0 });
       setSelected(it);
       toast('Saved');
     } catch (err) { fail(err); }
@@ -745,11 +892,12 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })} />
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
-      <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })} />
+      <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
+        onNewCountdown=${() => setDialog({ type: 'countdown' })} onTemplates=${() => setDialog({ type: 'templates' })} />
       <div class="controls">
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
@@ -762,7 +910,10 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
-      initial=${dialog.item} onSave=${dialog.item ? (title, slides) => saveText(dialog.item.key, title, slides) : null} />`}
+      initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveText(dialog.item.key, title, slides, auto) : null} />`}
+    ${dialog && dialog.type === 'countdown' && html`<${CountdownEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
+      initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
+    ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
@@ -895,11 +1046,19 @@ function SectionStreaming({ s }) {
     ${keyRow('youtube', 'YouTube', yt, setYt, html`In <a href="https://studio.youtube.com" target="_blank" rel="noopener">YouTube Studio</a>: <b>Create → Go live → Stream</b>, then copy the <b>Stream key</b>. It stays the same every week.`, 'Paste your YouTube stream key')}
     ${keyRow('facebook', 'Facebook', fb, setFb, html`In <a href="https://www.facebook.com/live/producer" target="_blank" rel="noopener">Facebook Live Producer</a>: choose <b>Streaming software</b> and tick <b>Use a persistent stream key</b>, then copy the key.`, 'Paste your Facebook stream key')}
     ${keyRow('custom', 'Another service (RTMP)', custom, setCustom, 'Full RTMP address including the key, e.g. rtmp://live.example.com/app/KEY', 'rtmp://…')}
+    <${TitlePattern} s=${s} />
     <label class="label" style="margin-top:20px">Quality</label>
     <div class="choices">${qualities.map(([id, t, d]) => html`<button class=${'choice' + (cfg.quality === id ? ' on' : '')} onClick=${() => save({ quality: id })}><b>${t}</b><span>${d}</span></button>`)}</div>
     <div class="note" style="margin-bottom:16px">The video is encoded <b>once</b> and sent to every platform, so the computer works no harder for two platforms. Your internet upload needs to cover each platform. Check it at <a href="https://fast.com" target="_blank" rel="noopener">fast.com</a> (“Show more info”). If unsure, start with <b>Good</b>.</div>
     <label class="switch"><input type="checkbox" checked=${cfg.record} onChange=${(e) => save({ record: e.target.checked })} /><span>Also record a copy on this computer</span></label>
   </div>`;
+}
+
+function TitlePattern({ s }) {
+  const [v, setV] = useState(s.config.broadcastTitle || '');
+  return html`<div class="field" style="margin-top:8px"><label class="label">Broadcast title pattern</label>
+    <input class="input" value=${v} onInput=${(e) => setV(e.target.value)} onBlur=${() => save({ broadcastTitle: v })} />
+    <div class="hint">Use {church}, {date} and {sermon}. Example: ${broadcastTitle({ ...s.config, broadcastTitle: v }, 'The Good Shepherd')}. ChurchStream shows it when you go live, ready to copy into YouTube and Facebook.</div></div>`;
 }
 
 function SectionSongs({ s }) {
@@ -1149,7 +1308,8 @@ function programKey(s) {
   const live = s.live;
   const slide = live && live.item.slides[live.index];
   const t = s.config.theme || {};
-  return JSON.stringify([effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
+  const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
+  return JSON.stringify([cd && [cd.time, cd.message], effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
     s.black, s.clear, s.logo, t.logo, s.config.churchName, t.textScale || 1]);
 }
 
@@ -1209,6 +1369,31 @@ async function renderProgram(s) {
       ctx.fillStyle = ink;
       ctx.font = `600 ${H * 0.07}px ${FONT}`;
       ctx.fillText(s.config.churchName, W / 2, H / 2);
+    }
+  } else if (live && live.item.kind === 'countdown') {
+    const p = countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now)));
+    ctx.fillStyle = ink;
+    const ann = !s.clear && slide && slide.text ? slide.text : '';
+    const cy = ann ? H * 0.36 : H * 0.48;
+    if (p.done) {
+      ctx.font = `600 ${H * 0.09}px ${FONT}`;
+      ctx.fillText(p.message, W / 2, cy);
+    } else {
+      ctx.globalAlpha = 0.88; ctx.font = `600 ${H * 0.046}px ${FONT}`;
+      ctx.fillText(p.message, W / 2, cy - H * 0.14);
+      ctx.globalAlpha = 1; ctx.font = `600 ${H * 0.19}px ${FONT}`;
+      ctx.fillText(p.time, W / 2, cy + H * 0.02);
+    }
+    if (ann) {
+      let size = H * 0.05;
+      let lines;
+      for (; size > H * 0.03; size -= H * 0.003) {
+        ctx.font = `600 ${size}px ${FONT}`;
+        lines = wrapLines(ctx, ann, W * 0.84);
+        if (lines.length * size * 1.28 <= H * 0.3) break;
+      }
+      const top = H * 0.62 + (H * 0.3 - lines.length * size * 1.28) / 2 + size * 0.64;
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, top + i * size * 1.28));
     }
   } else if (slide && !s.clear) {
     // Same fitting rules as the projector: keep song lines whole if still readable, else wrap.
@@ -1273,13 +1458,19 @@ function Root() {
     get('/api/state').then((st) => setS((cur) => cur ? { ...cur, lan: st.lan } : st)).catch(() => {});
     const stop = connect((st) => {
       setOnline(!!st);
-      if (st) { setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
+      if (st) { st.receivedAt = Date.now(); setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
     }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })));
     const pop = () => setRoute(location.pathname);
     addEventListener('popstate', pop);
     return () => { stop(); removeEventListener('popstate', pop); };
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = (s && s.config.uiTheme) || 'light'; }, [s && s.config.uiTheme]);
+  // While a countdown is on screen, redraw the stream's projector picture every second.
+  useEffect(() => {
+    if (!s || !s.live || s.live.item.kind !== 'countdown') return undefined;
+    const id = setInterval(() => updateProgram(s), 1000);
+    return () => clearInterval(id);
+  }, [s]);
   if (!s) return html`<div class="boot">ChurchStream</div>`;
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;

@@ -79,8 +79,10 @@ test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync
   const path = require('path');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-ff-'));
   fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
-  for (const f of ['lt_name.txt', 'lt_title.txt']) fs.writeFileSync(path.join(dir, f), '');
-  fs.writeFileSync(path.join(dir, 'caption.txt'), 'Amazing grace');
+  const { Overlay } = require('../lib/overlay');
+  const ov = new Overlay(dir);
+  ov.setCaption('Amazing grace');
+  ov.setTicker('Potluck lunch after the service today');
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
   const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
   // Limit both outputs to one second.

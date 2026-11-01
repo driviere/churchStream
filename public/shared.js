@@ -80,3 +80,27 @@ export function bgInfo(value) {
 export function effectiveBg(slide, item, theme) {
   return (slide && slide.background) || (item && item.background) || (theme && theme.background) || '';
 }
+
+// Countdown timers. `cd.target` (ms) is set by the server when the countdown goes live.
+export function countdownTarget(cd, now = Date.now()) {
+  if (!cd) return null;
+  if (cd.target) return cd.target;
+  if (cd.mode === 'until') {
+    const [h, m] = String(cd.until || '11:00').split(':').map(Number);
+    const t = new Date(now); t.setHours(h, m, 0, 0);
+    if (t.getTime() < now - 3600000) t.setDate(t.getDate() + 1);
+    return t.getTime();
+  }
+  return now + (cd.minutes || 5) * 60000;
+}
+
+export function countdownParts(cd, now = Date.now()) {
+  if (!cd) return null;
+  const ms = countdownTarget(cd, now) - now;
+  if (ms <= 0) return { done: true, time: '', message: cd.endText || '' };
+  const total = Math.ceil(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return { done: false, time: h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`, message: cd.message || '' };
+}

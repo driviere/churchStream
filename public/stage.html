@@ -25,7 +25,9 @@
 <div id="now" class="blank"></div>
 <footer><div class="label">Next</div><div id="next"></div></footer>
 <script type="module">
-import { connect } from '/shared.js';
+import { connect, countdownParts } from '/shared.js';
+let cd = null;
+setInterval(() => { if (cd) { const p = countdownParts(cd.c, Date.now() + cd.skew); $('now').textContent = p.done ? p.message : `${p.message}\n${p.time}`; } }, 500);
 const $ = (id) => document.getElementById(id);
 const tick = () => { $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
 tick(); setInterval(tick, 5000);
@@ -37,7 +39,8 @@ connect((s) => {
   const next = item && item.slides[live.index + 1];
   $('title').textContent = item ? `${item.title}${item.subtitle ? ' · ' + item.subtitle : ''}` : 'Waiting for the first slide…';
   if (s.black || s.clear) $('title').insertAdjacentHTML('beforeend', `<span class="pill">${s.black ? 'Black' : 'Cleared'}</span>`);
-  $('now').textContent = slide ? slide.text : '';
+  cd = item && item.kind === 'countdown' ? { c: item.countdown, skew: s.now - Date.now() } : null;
+  $('now').textContent = cd ? '' : (slide ? slide.text : '');
   $('now').classList.toggle('blank', !slide);
   $('next').textContent = next ? next.text : (item ? 'End of ' + (item.kind === 'bible' ? 'reading' : 'song') : '');
 });

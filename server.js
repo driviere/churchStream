@@ -112,6 +112,10 @@ const routes = {
   'POST /api/goto': async (req) => { const b = await json(req); if (b.delta) app.step(b.delta); else app.goTo(b.index | 0); return { ok: true }; },
   'POST /api/toggle': async (req) => { const { name, value } = await json(req); app.setToggle(name, value); return { ok: true }; },
   'POST /api/lower-third': async (req) => { app.setLowerThird(await json(req)); return { ok: true }; },
+  'POST /api/ticker': async (req) => { app.setTicker(await json(req)); return { ok: true }; },
+  'GET /api/templates': () => app.listTemplates(),
+  'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },
+  'POST /api/templates/delete': async (req) => app.deleteTemplate((await json(req)).name),
   'POST /api/plan': async (req) => { app.setPlan((await json(req)).items); return { ok: true }; },
   'POST /api/plan/open': async (req) => {
     const { uid, index } = await json(req);

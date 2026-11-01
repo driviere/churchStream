@@ -213,6 +213,7 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .plan-head { display: flex; align-items: baseline; gap: 10px; }
 .plan-head b { font-size: 15px; }
 .plan-head span { margin-left: auto; font-size: 12px; color: var(--muted); }
+.plan-head .btn.small { min-height: 26px; padding: 0 10px; }
 .plan { list-style: none; margin: 0; padding: 0 0 2px; display: flex; gap: 8px; overflow-x: auto; }
 .plan li { position: relative; flex: 1 0 140px; max-width: 220px; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; display: flex; flex-direction: column; gap: 1px; min-height: 64px; touch-action: none; }
 .plan li:hover { background: var(--panel-3); }
@@ -225,9 +226,11 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .plan .k.song { color: #2563eb; }
 .plan .k.bible { color: #b45309; }
 .plan .k.text { color: #7c3aed; }
+.plan .k.countdown { color: #0f766e; }
 [data-theme="dark"] .plan .k.song { color: #9ec1ff; }
 [data-theme="dark"] .plan .k.bible { color: #f3c77a; }
 [data-theme="dark"] .plan .k.text { color: #c4b5fd; }
+[data-theme="dark"] .plan .k.countdown { color: #5eead4; }
 .plan .t { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px; }
 .plan .dots { display: flex; gap: 3px; margin-top: 4px; flex-wrap: wrap; }
 .plan .dots i { width: 12px; height: 4px; border-radius: 4px; background: var(--line-2); }

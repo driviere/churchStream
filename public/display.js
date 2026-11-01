@@ -1,4 +1,4 @@
-import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg } from '/shared.js';
+import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -7,6 +7,18 @@ let shownKey = null;
 let lastBg = null;
 let lastLogo = null;
 let identifyTimer = null;
+let countdown = null;
+let lastAnn = null;
+
+function tickCountdown() {
+  if (!countdown) return;
+  const p = countdownParts(countdown.cd, Date.now() + countdown.skew);
+  const el = $('count');
+  el.classList.toggle('done', p.done);
+  el.children[0].textContent = p.message;
+  el.children[1].textContent = p.time;
+}
+setInterval(tickCountdown, 250);
 const bgLayers = [$('bgA'), $('bgB')];
 let bgFront = 0;
 
@@ -61,12 +73,38 @@ function render(state) {
     shownKey = null; // re-fit the words into the smaller space
   }
 
+  // Ticker along the bottom (optional on the projector; always available on the stream).
+  const tk = state.ticker || {};
+  const tickOn = !!(state.config.tickerOnProjector && tk.visible && tk.text && !state.black);
+  const span = $('ticker').firstElementChild;
+  if (tickOn && span.textContent !== tk.text) {
+    span.textContent = tk.text;
+    const secs = Math.max(8, tk.text.length / ({ slow: 4, fast: 11 }[state.config.tickerSpeed] || 7));
+    $('ticker').style.setProperty('--tick-dur', secs + 's');
+  }
+  $('ticker').classList.toggle('hidden', !tickOn);
+  $('screen').classList.toggle('has-ticker', tickOn);
+
   const slide = currentSlide(state);
   const item = state.live && state.live.item;
   const hideText = state.clear || state.logo || state.black;
-  showText(hideText ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
-  $('ref').textContent = !hideText && slide && slide.ref ? slide.ref : '';
-  $('tag').textContent = !hideText && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
+  // Countdowns have their own layout; their slides are the rotating announcements.
+  const isCount = !!(item && item.kind === 'countdown' && !state.logo && !state.black);
+  countdown = isCount ? { cd: item.countdown, skew: state.now - Date.now(), clear: state.clear } : null;
+  $('count').classList.toggle('hidden', !isCount);
+  if (isCount) {
+    const ann = state.clear || !slide || !slide.text ? '' : slide.text;
+    if (ann !== lastAnn) {
+      lastAnn = ann;
+      $('count').lastElementChild.innerHTML = ann ? `<div class="screen-text">${escapeHtml(ann)}</div>` : '';
+      const t = $('count').lastElementChild.firstElementChild;
+      if (t) fitText(t, { max: 6, min: 3 });
+    }
+    tickCountdown();
+  }
+  showText(hideText || isCount ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
+  $('ref').textContent = !hideText && !isCount && slide && slide.ref ? slide.ref : '';
+  $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
   $('logo').classList.toggle('hidden', !state.logo);
   $('black').classList.toggle('hidden', !state.black);
 
