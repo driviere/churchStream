@@ -64,7 +64,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const ref = useRef();
   const scale = theme.textScale || 1;
   const isCount = !!(countdown && !black && !logo);
-  const text = !black && !clear && !logo && slide && !isCount ? slide : null;
+  const text = !black && !clear && !logo && slide && !isCount && !slide.image ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
@@ -85,6 +85,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${text && html`<div class="screen-layer"><div ref=${ref} class=${'screen-text' + (kind === 'bible' ? ' bible' : '')} dangerouslySetInnerHTML=${{ __html: slideHtml(text) }}></div></div>`}
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
     ${text && kind === 'song' && subtitle && html`<div class="screen-tag">${subtitle}</div>`}
+    ${!black && !logo && !clear && slide && slide.image && html`<div class="screen-img"><img src=${bgInfo(slide.image).url} alt="" loading="lazy" /></div>`}
     ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
     ${logo && html`<div class="screen-logo">${theme.logo ? html`<img src=${'/media/' + theme.logo} alt="" />` : html`<div class="name">${churchName}</div>`}</div>`}
@@ -264,17 +265,45 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
   </div>`;
 }
 
+// A small pop-up menu for adding things to the order of service.
+function AddMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const ref = useRef();
+  const toggle = (e) => {
+    if (open) { setOpen(false); return; }
+    // The order-of-service strip scrolls (and clips), so place the menu on the page itself.
+    const r = e.currentTarget.getBoundingClientRect();
+    const w = 290;
+    setPos({ left: Math.max(8, Math.min(r.left, innerWidth - w - 8)), bottom: innerHeight - r.top + 8, width: w });
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current || !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    addEventListener('pointerdown', close); addEventListener('keydown', esc);
+    return () => { removeEventListener('pointerdown', close); removeEventListener('keydown', esc); };
+  }, [open]);
+  return html`<div class="add-menu" ref=${ref}>
+    <button class="plan-add" aria-haspopup="menu" aria-expanded=${open} onClick=${toggle}>${icons.plus()} Add</button>
+    ${open && pos && html`<div class="menu" role="menu" style=${`left:${pos.left}px;bottom:${pos.bottom}px;width:${pos.width}px`}>${items.map(([t, d, fn]) => html`
+      <button role="menuitem" onClick=${() => { setOpen(false); fn(); }}><b>${t}</b><span>${d}</span></button>`)}</div>`}
+  </div>`;
+}
+
 // ---------------------------------------------------------------------------------------
 // order of service: a horizontal strip along the bottom
 const kindLabel = (it) => {
   if (it.kind === 'bible') return 'READING';
   if (it.kind === 'text') return it.autoAdvance ? 'LOOP' : 'TEXT';
   if (it.kind === 'countdown') return 'COUNTDOWN';
+  if (it.kind === 'images') return it.autoAdvance ? 'SLIDESHOW' : 'SLIDES';
   const m = String(it.subtitle || '').match(/^(SDA Hymnal|Church Hymnal|Hymn)\s+(\d+)$/);
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onTemplates }) {
+function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onTemplates }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -327,9 +356,13 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onTemplates }
           <button class="x" title="Remove" aria-label=${'Remove ' + it.title} onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
         </li>`;
       })}
-      <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0;display:flex;flex-direction:row;gap:6px">
-        <button class="plan-add" onClick=${onNewText}>+ Text</button>
-        <button class="plan-add" onClick=${onNewCountdown}>+ Countdown</button>
+      <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0">
+        <${AddMenu} items=${[
+          ['Text or announcements', 'Words you type; can change by themselves', onNewText],
+          ['Sermon slides', 'From a PDF or pictures', onNewSlides],
+          ['Countdown', 'Before the service, with announcements', onNewCountdown],
+          ...(onNewMedia ? [['Video or music', 'Mission Spotlight, special music, background music', onNewMedia]] : []),
+        ]} />
       </li>
     </ul>
   </section>`;
@@ -660,6 +693,82 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
   </${Modal}>`;
 }
 
+// Sermon slides: a PDF (PowerPoint → File → Save As → PDF) or picture files become slides.
+async function uploadSlideImage(blob) {
+  const res = await fetch('/api/media?kind=slide', { method: 'POST', headers: { 'Content-Type': blob.type || 'image/jpeg' }, body: blob });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok || d.error) throw new Error(d.error || 'Upload failed');
+  return d.name;
+}
+
+function SlidesImport({ onClose, onAdd, onShow }) {
+  const [title, setTitle] = useState('');
+  const [slides, setSlides] = useState([]);
+  const [busy, setBusy] = useState('');
+  const [auto, setAuto] = useState(0);
+  const pick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.accept = 'application/pdf,.pdf,image/png,image/jpeg,image/webp';
+    inp.onchange = async () => {
+      const files = [...inp.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      if (!files.length) return;
+      if (!title) setTitle(files[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '));
+      const out = [...slides];
+      try {
+        for (const f of files) {
+          if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+            setBusy('Opening ' + f.name + '…');
+            const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
+            pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+            const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+            for (let i = 1; i <= doc.numPages; i++) {
+              setBusy(`Preparing slide ${i} of ${doc.numPages}…`);
+              const page = await doc.getPage(i);
+              const base = page.getViewport({ scale: 1 });
+              const vp = page.getViewport({ scale: Math.min(4, 1920 / base.width) });
+              const c = document.createElement('canvas');
+              c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+              const ctx = c.getContext('2d');
+              ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+              await page.render({ canvasContext: ctx, viewport: vp }).promise;
+              const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+              out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(blob) });
+              setSlides([...out]);
+            }
+          } else if (/^image\//.test(f.type)) {
+            setBusy('Adding ' + f.name + '…');
+            out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(f) });
+            setSlides([...out]);
+          }
+        }
+      } catch (err) { fail(err); }
+      setBusy('');
+    };
+    inp.click();
+  };
+  const item = () => ({ key: 'images:' + Date.now(), kind: 'images', title: title.trim() || 'Slides', subtitle: '', slides, autoAdvance: auto });
+  const ready = slides.length > 0 && !busy;
+  return html`<${Modal} wide title="Sermon slides" onClose=${onClose} footer=${html`
+      <button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
+      <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`}>
+    <div class="note" style="margin-bottom:14px">In PowerPoint, Keynote or Google Slides choose <b>File → Save As / Download → PDF</b>, then pick that PDF here. You can also pick picture files (PNG/JPG), one per slide.</div>
+    <div class="row wrap" style="margin-bottom:12px">
+      <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PDF or pictures…'}</button>
+      ${busy && html`<span class="muted">${busy}</span>`}
+      ${slides.length > 0 && !busy && html`<span class="muted">${slides.length} slide${slides.length === 1 ? '' : 's'} ready</span>`}
+    </div>
+    <div class="two" style="gap:10px">
+      <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} placeholder="e.g. Sermon — The Good Shepherd" onInput=${(e) => setTitle(e.target.value)} /></div>
+      <div class="field"><label class="label">Change slides automatically</label><select class="select" value=${auto} onChange=${(e) => setAuto(+e.target.value)}>${AUTO_CHOICES.map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select></div>
+    </div>
+    ${slides.length > 0 && html`<div class="bg-grid" style="max-height:340px;overflow:auto;padding:4px">${slides.map((sl, i) => html`<div class="bg-tile" key=${i}>
+      <div class="bg-thumb" style=${`background:#000 url("${bgInfo(sl.image).url}") center/contain no-repeat;cursor:default`}></div>
+      <div class="row" style="justify-content:space-between"><span class="bg-name">${i + 1}</span><button class="btn ghost small" onClick=${() => setSlides(slides.filter((_, j) => j !== i))}>Remove</button></div></div>`)}</div>`}
+  </${Modal}>`;
+}
+
 // Save the order of service as a reusable template, or start from one.
 function TemplatesDialog({ s, onClose }) {
   const [list, setList] = useState(null);
@@ -803,7 +912,7 @@ function ControlView({ s }) {
   const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
   const addToPlan = (it) => {
     const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
-      slides: it.kind === 'text' || it.kind === 'countdown' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown };
+      slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown };
     api('/api/plan', { items: [...s.plan.items, entry] }).then(() => toast(`Added “${it.title}”`)).catch(fail);
   };
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
@@ -897,7 +1006,7 @@ function ControlView({ s }) {
     </div>
     <div class="bottom">
       <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
-        onNewCountdown=${() => setDialog({ type: 'countdown' })} onTemplates=${() => setDialog({ type: 'templates' })} />
+        onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onTemplates=${() => setDialog({ type: 'templates' })} />
       <div class="controls">
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
@@ -914,6 +1023,7 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'countdown' && html`<${CountdownEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
@@ -1309,7 +1419,7 @@ function programKey(s) {
   const slide = live && live.item.slides[live.index];
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
-  return JSON.stringify([cd && [cd.time, cd.message], effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
+  return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
     s.black, s.clear, s.logo, t.logo, s.config.churchName, t.textScale || 1]);
 }
 
@@ -1369,6 +1479,15 @@ async function renderProgram(s) {
       ctx.fillStyle = ink;
       ctx.font = `600 ${H * 0.07}px ${FONT}`;
       ctx.fillText(s.config.churchName, W / 2, H / 2);
+    }
+  } else if (slide && slide.image && !s.clear) {
+    const pic = await loadImg(bgInfo(slide.image).url);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    if (pic) {
+      const k = Math.min(W / pic.naturalWidth, H / pic.naturalHeight);
+      ctx.drawImage(pic, (W - pic.naturalWidth * k) / 2, (H - pic.naturalHeight * k) / 2, pic.naturalWidth * k, pic.naturalHeight * k);
     }
   } else if (live && live.item.kind === 'countdown') {
     const p = countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now)));

@@ -3,3 +3,6 @@ which bundles Preact 10 and Preact Hooks.
 
 htm      - https://github.com/developit/htm    - Apache License 2.0
 preact   - https://github.com/preactjs/preact  - MIT License (c) 2015-present Jason Miller
+
+public/vendor/pdfjs/ is PDF.js 4.10.38 (pdfjs-dist) by Mozilla - Apache License 2.0 -
+https://github.com/mozilla/pdf.js . Used to turn sermon PDFs into slides in the browser.

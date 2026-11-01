@@ -103,3 +103,7 @@
 .screen-ticker span { white-space: nowrap; padding-left: 100%; animation: tick var(--tick-dur, 20s) linear infinite; }
 @keyframes tick { to { transform: translateX(-100%); } }
 .screen.has-ticker .screen-ref, .screen.has-ticker .screen-tag { bottom: 9cqh; }
+
+/* Picture slides (sermon PDFs / images): fill the screen, letterboxed on black. */
+.screen-img { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
+.screen-img img { width: 100%; height: 100%; object-fit: contain; display: block; }

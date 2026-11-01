@@ -102,7 +102,12 @@ function render(state) {
     }
     tickCountdown();
   }
-  showText(hideText || isCount ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
+  // Picture slides (sermon PDFs / images) fill the screen instead of text.
+  const pic = !hideText && !isCount && slide && slide.image ? bgInfo(slide.image).url : '';
+  const imgEl = $('img').firstElementChild;
+  if (pic && imgEl.getAttribute('src') !== pic) imgEl.setAttribute('src', pic);
+  $('img').classList.toggle('hidden', !pic);
+  showText(hideText || isCount || pic ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
   $('ref').textContent = !hideText && !isCount && slide && slide.ref ? slide.ref : '';
   $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
   $('logo').classList.toggle('hidden', !state.logo);
