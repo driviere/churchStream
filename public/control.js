@@ -968,15 +968,55 @@ function SectionAppearance({ s }) {
 
 function SectionLowerThirds({ s }) {
   const presets = s.config.lowerThirdPresets || [];
-  const update = (list) => save({ lowerThirdPresets: list });
-  return html`<div>
-    <p class="muted" style="margin-top:0">One-tap names for the live stream. Add them from the control panel with “Save”, or edit them here.</p>
-    ${presets.map((p, i) => html`<div class="row" style="margin-bottom:8px" key=${i}>
-      <input class="input" value=${p.name} placeholder="Name" onChange=${(e) => update(presets.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-      <input class="input" value=${p.title} placeholder="Title" onChange=${(e) => update(presets.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
-      <button class="btn ghost icon" onClick=${() => update(presets.filter((_, j) => j !== i))} title="Remove">${icons.x()}</button>
+  const presetsJson = JSON.stringify(presets);
+  // Edit a local copy: the page re-renders on every live update, so the boxes must not be
+  // tied directly to the saved settings or typing would be overwritten.
+  const [rows, setRows] = useState(presets);
+  const [focusRow, setFocusRow] = useState(-1);
+  const lastSaved = useRef(presetsJson);
+  const timer = useRef(null);
+  const pending = useRef(null);
+
+  // Pick up names added elsewhere (e.g. "Show & save" in the control panel).
+  useEffect(() => {
+    if (presetsJson !== lastSaved.current && !pending.current) { lastSaved.current = presetsJson; setRows(presets); }
+  }, [presetsJson]);
+
+  const flush = () => {
+    clearTimeout(timer.current);
+    if (!pending.current) return;
+    const clean = pending.current.map((r) => ({ name: r.name.trim(), title: r.title.trim() })).filter((r) => r.name || r.title);
+    pending.current = null;
+    lastSaved.current = JSON.stringify(clean);
+    save({ lowerThirdPresets: clean });
+  };
+  useEffect(() => flush, []); // save anything pending when leaving the page
+
+  const change = (next) => {
+    setRows(next);
+    pending.current = next;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(flush, 600);
+  };
+  const edit = (i, key, value) => change(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+  const box = useRef();
+  useEffect(() => {
+    if (focusRow < 0 || !box.current) return;
+    const el = box.current.querySelector(`input[data-row="${focusRow}"]`);
+    if (el) el.focus();
+    setFocusRow(-1);
+  }, [focusRow]);
+
+  return html`<div ref=${box}>
+    <p class="muted" style="margin-top:0">One-tap names for the stream (and the projector screens, if that is switched on). Changes save automatically.</p>
+    ${rows.map((p, i) => html`<div class="row" style="margin-bottom:8px" key=${i}>
+      <input class="input" value=${p.name} placeholder="Name, e.g. Pastor James Okafor" data-row=${i}
+        onInput=${(e) => edit(i, 'name', e.target.value)} onBlur=${flush} />
+      <input class="input" value=${p.title} placeholder="Title, e.g. Senior Pastor" onInput=${(e) => edit(i, 'title', e.target.value)} onBlur=${flush}
+        onKeyDown=${(e) => { if (e.key === 'Enter') { flush(); e.target.blur(); } }} />
+      <button class="btn ghost icon" onClick=${() => { change(rows.filter((_, j) => j !== i)); flush(); }} title="Remove" aria-label=${'Remove ' + (p.name || 'name')}>${icons.x()}</button>
     </div>`)}
-    <button class="btn small" onClick=${() => update([...presets, { name: 'New name', title: '' }])}>${icons.plus()} Add preset</button>
+    <button class="btn small" onClick=${() => { change([...rows, { name: '', title: '' }]); setFocusRow(rows.length); }}>${icons.plus()} Add a name</button>
   </div>`;
 }
 
@@ -1006,7 +1046,7 @@ const SECTIONS = [
   ['songs', 'Hymnals & songs', SectionSongs],
   ['bible', 'Bible', SectionBible],
   ['appearance', 'Appearance', SectionAppearance],
-  ['lowerthirds', 'Lower thirds', SectionLowerThirds],
+  ['lowerthirds', 'Names (lower thirds)', SectionLowerThirds],
   ['advanced', 'Advanced', SectionAdvanced],
 ];
 
