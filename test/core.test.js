@@ -178,3 +178,16 @@ test('sunset and Sabbath times', () => {
   assert.match(info.tokens.sunset, /^(1[0-2]|[1-9]):[0-5]\d (am|pm)$/);
   assert.match(info.label, /\d:\d\d (am|pm)$/);
 });
+
+test('YouTube links', () => {
+  const { parseYouTube, clean } = require('../lib/youtube');
+  assert.deepEqual(parseYouTube('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), { id: 'dQw4w9WgXcQ', list: '', start: 0 });
+  assert.deepEqual(parseYouTube('https://youtu.be/dQw4w9WgXcQ?t=90'), { id: 'dQw4w9WgXcQ', list: '', start: 90 });
+  assert.deepEqual(parseYouTube('youtube.com/shorts/dQw4w9WgXcQ'), { id: 'dQw4w9WgXcQ', list: '', start: 0 });
+  assert.equal(parseYouTube('https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=1m5s').start, 65);
+  assert.deepEqual(parseYouTube('https://music.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG'), { id: '', list: 'PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', start: 0 });
+  assert.equal(parseYouTube('dQw4w9WgXcQ').id, 'dQw4w9WgXcQ');
+  assert.equal(parseYouTube('https://vimeo.com/123'), null);
+  assert.equal(parseYouTube('https://www.youtube.com/@church'), null);
+  assert.deepEqual(clean({ id: 'bad id!', list: '<x>', start: -4 }), { id: '', list: '', start: 0 });
+});

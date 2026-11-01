@@ -92,13 +92,23 @@ Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the 
 
 ## Videos, music and slides
 
-- **Add to the order of service:** use **+ Add**, then choose *Text or announcements*, *Sermon slides*, *Countdown* or *Video or music*.
+- **Add to the order of service:** use **+ Add**, then choose *Text or announcements*, *Sermon slides*, *Countdown* or *Video, music or YouTube*.
 - **Videos:** upload MP4, MOV or WebM files (they stay on this computer).
   - A video starts as soon as it goes on screen, or when you press **Play**.
   - It fills the projector and the stream; names and the ticker stay on top. **Stop** returns to the normal view.
 - **Background music:** in the *Background music* card, add a few MP3/M4A tracks and press **Play**.
   - The tracks loop under everything at the volume you set.
   - The music also plays through the computer's speakers for the room, unless you turn that off.
+- **YouTube links:** paste a link under **+ Add → Video, music or YouTube**, then choose:
+  - **Play from YouTube:** plays in YouTube's own player on the projector, using YouTube's official embedded player. It needs internet during the service. It plays in the room only: the stream shows a "now playing" card (or the camera), and viewers hear it through your microphones.
+  - **Download video** or **Download sound only:** saves a copy into your media library with the free tool [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is fetched on first use. The copy then works like an uploaded file: offline, and in the live stream with sound. Downloading is against YouTube's terms of service, so only download videos you have permission to use.
+  - **Background music from YouTube:** press the YouTube button in the *Background music* card and paste a video or playlist link. YouTube requires its player to stay visible, so it shows as a small "now playing" card in the corner of the projector.
+- **Copyright and streaming:** playing a recording on your stream, even audio only, can get the stream muted or blocked by YouTube's and Facebook's automatic checks. Safe choices include:
+  - public-domain music;
+  - Creative Commons or royalty-free tracks whose licence allows live streaming;
+  - your own recordings;
+  - ministries' videos that allow rebroadcast;
+  - songs your congregation sings live under a CCLI Streaming Licence.
 - **Sound routing:** if this computer's sound already goes into your sound desk, and the desk feeds the stream, choose *It already reaches the stream through our sound desk* in Settings → Camera & sound. Otherwise viewers would hear it twice.
 - **Sermon slides:** in PowerPoint choose **File → Save As → PDF**, then add that PDF. Each page becomes a slide. Picture files work too.
 
@@ -227,6 +237,7 @@ Issues and pull requests are welcome, especially from churches using ChurchStrea
 
 - Hymn data: [joshpetit/sda-hymnal](https://github.com/joshpetit/sda-hymnal) (*Seventh-day Adventist Hymnal*) and the [Advent Hymnals](https://github.com/adventhymnals) project (*Church Hymnal*, 1941).
 - Bible texts: [scrollmapper/bible_databases](https://github.com/scrollmapper/bible_databases).
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), downloaded on first use when you save a YouTube video.
 - [FFmpeg](https://ffmpeg.org) (Windows builds by [BtbN](https://github.com/BtbN/FFmpeg-Builds)), [Preact](https://preactjs.com), [htm](https://github.com/developit/htm) and the [Inter](https://rsms.me/inter/) typeface.
 
 ### Licences

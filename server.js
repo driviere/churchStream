@@ -28,7 +28,7 @@ const MIME = {
 };
 const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
-const OPEN = [/^\/(display|stage)$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
+const OPEN = [/^\/(display|stage)$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
 
 const app = new App();
 const clients = new Set();
@@ -130,6 +130,10 @@ const routes = {
   'POST /api/clips/delete': async (req) => app.deleteClip((await json(req)).id),
   'POST /api/media/control': async (req) => { app.mediaControl(await json(req)); return { ok: true }; },
   'POST /api/music': async (req) => { app.musicControl(await json(req)); return { ok: true }; },
+  'GET /api/youtube': (req, url) => app.youtubeInfo(url.searchParams.get('url') || ''),
+  'POST /api/youtube/download': async (req) => app.downloadYouTube(await json(req)),
+  'POST /api/youtube/cancel': () => { app.cancelDownload(); return { ok: true }; },
+  'POST /api/display/youtube': async (req) => { app.youtubeReport(await json(req)); return { ok: true }; },
   'GET /api/templates': () => app.listTemplates(),
   'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },
   'POST /api/templates/delete': async (req) => app.deleteTemplate((await json(req)).name),

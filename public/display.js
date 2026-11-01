@@ -49,7 +49,7 @@ function syncMusic(state) {
   const el = $('music');
   const m = state.media && state.media.music;
   const files = state.config.musicFiles || [];
-  const on = !!(m && files.length && state.config.musicRoom !== false);
+  const on = !!(m && !m.youtube && files.length && state.config.musicRoom !== false);
   const key = on ? files.join('|') + '|' + m.startedAt : '';
   el.volume = on ? Math.max(0, Math.min(1, (m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
   if (key === musicKey) return;
@@ -61,6 +61,102 @@ function syncMusic(state) {
   el.onended = next;
   next();
 }
+// ---- YouTube: played by YouTube's own embedded player (needs internet) -----------------
+let ytApi = null;
+function loadYT() {
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (!ytApi) {
+    ytApi = new Promise((resolve) => {
+      window.onYouTubeIframeAPIReady = () => { resolve(window.YT); if (last) render(last); };
+      const sc = document.createElement('script');
+      sc.src = 'https://www.youtube.com/iframe_api';
+      sc.onerror = () => { ytApi = null; resolve(null); }; // offline: try again next time
+      document.head.appendChild(sc);
+    });
+  }
+  return ytApi;
+}
+const report = (body) => fetch('/api/display/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+
+class YtSlot {
+  constructor(elId, { sync }) { this.elId = elId; this.syncPos = sync; this.player = null; this.ready = false; this.want = null; this.loaded = ''; this.reported = ''; }
+
+  async set(want) {
+    this.want = want;
+    if (!want && !this.player) return;
+    if (!this.player) {
+      const YT = await loadYT();
+      if (!YT || this.player || !this.want) return;
+      this.player = new YT.Player(this.elId, {
+        width: '100%', height: '100%', host: 'https://www.youtube-nocookie.com',
+        playerVars: { autoplay: 1, controls: 0, rel: 0, playsinline: 1, iv_load_policy: 3, disablekb: 1, fs: 0, modestbranding: 1 },
+        events: { onReady: () => { this.ready = true; this.apply(); }, onStateChange: (e) => this.onState(e) },
+      });
+      return;
+    }
+    if (this.ready) this.apply();
+  }
+
+  pos(w) { return Math.max(0, ((w.paused ? w.pausedAt : Date.now() + w.skew) - w.startedAt) / 1000); }
+
+  apply() {
+    const p = this.player;
+    const w = this.want;
+    if (!w) { if (this.loaded) { try { p.stopVideo(); } catch { /* */ } this.loaded = ''; } return; }
+    const y = w.youtube;
+    const key = `${y.id}|${y.list}|${w.startedAt}`;
+    if (key !== this.loaded) {
+      this.loaded = key;
+      if (y.list && (!y.id || !this.syncPos)) { p.loadPlaylist({ list: y.list, listType: 'playlist', index: 0 }); p.setLoop(true); p.setShuffle(false); }
+      else p.loadVideoById({ videoId: y.id, startSeconds: this.syncPos ? this.pos(w) : y.start || 0 });
+    }
+    try {
+      p.unMute();
+      p.setVolume(Math.round(Math.max(0, Math.min(1, w.volume)) * 100));
+      const st = p.getPlayerState();
+      if (w.paused) { if (st === 1 || st === 3) p.pauseVideo(); }
+      else if (st === 2 || st === 5 || st === -1) p.playVideo();
+      // Keep the projector in step with the control panel's clock (pause, resume, restart).
+      if (this.syncPos && st === 1 && !y.list) {
+        let t = this.pos(w);
+        const d = p.getDuration();
+        if (w.loop && d) t %= d;
+        if (Math.abs(p.getCurrentTime() - t) > 2.5 && (!d || t < d)) p.seekTo(t, true);
+      }
+    } catch { /* player still starting */ }
+  }
+
+  onState(e) {
+    const w = this.want;
+    if (!w) return;
+    if (e.data === 1 && w.key && this.reported !== this.loaded) {
+      this.reported = this.loaded;
+      report({ key: w.key, startedAt: w.startedAt, duration: this.player.getDuration() });
+    }
+    if (e.data === 0) {
+      if (w.loop && !w.youtube.list) { this.player.seekTo(0, true); this.player.playVideo(); }
+      else if (w.key) report({ key: w.key, startedAt: w.startedAt, ended: true });
+    }
+  }
+}
+const ytVideo = new YtSlot('ytPlayer', { sync: true });
+const ytMusic = new YtSlot('ytMusicPlayer', { sync: false });
+setInterval(() => { if (ytVideo.ready) ytVideo.apply(); }, 2000);
+
+function syncYouTube(state, item, playing) {
+  const skew = state.now - Date.now();
+  // Without internet YouTube's player can't load: keep the normal screen instead of a black box.
+  const api = !!(window.YT && window.YT.Player);
+  const on = !!(playing && playing.kind === 'youtube' && item && item.key === playing.id);
+  ytVideo.set(on ? { ...playing, key: playing.id, skew } : null);
+  $('yt').classList.toggle('hidden', !on || !api || state.black || state.logo);
+  const m = state.media && state.media.music;
+  const mon = !!(m && m.youtube);
+  ytMusic.set(mon ? { youtube: m.youtube, startedAt: m.startedAt, volume: (m.volume ?? 0.4) * (state.media.now ? 0 : 1), skew } : null);
+  $('ytm').classList.toggle('hidden', !mon || !api || state.black);
+  if (mon) $('ytm').querySelector('b').textContent = m.title || '';
+}
+
 const bgLayers = [$('bgA'), $('bgB')];
 let bgFront = 0;
 
@@ -158,6 +254,7 @@ function render(state) {
   syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room ? item.media : null, playing, state, false);
   $('vid').classList.toggle('hidden', !(mediaOn && item.media.type === 'video' && !state.black && !state.logo));
   syncMusic(state);
+  syncYouTube(state, item, playing);
   showText(hideText || isCount || pic || isMedia ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
   $('ref').textContent = !hideText && !isCount && slide && slide.ref ? slide.ref : '';
   $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';

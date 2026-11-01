@@ -61,6 +61,9 @@ const icons = {
   play: () => I(html`<path d="M7 4v16l13-8z" fill="currentColor"/>`),
   sun: () => I(html`<path d="M17 18a5 5 0 0 0-10 0M12 9V2M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/>`),
   stop: () => I(html`<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>`),
+  pause: () => I(html`<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>`),
+  yt: () => I(html`<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z" fill="currentColor"/>`),
+  download: () => I(html`<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>`),
   film: () => I(html`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/>`),
 };
 
@@ -308,7 +311,7 @@ const kindLabel = (it) => {
   if (it.kind === 'text') return it.autoAdvance ? 'LOOP' : 'TEXT';
   if (it.kind === 'countdown') return 'COUNTDOWN';
   if (it.kind === 'images') return it.autoAdvance ? 'SLIDESHOW' : 'SLIDES';
-  if (it.kind === 'media') return it.media && it.media.type === 'audio' ? 'MUSIC' : 'VIDEO';
+  if (it.kind === 'media') return it.media && it.media.type === 'audio' ? 'MUSIC' : it.media && it.media.type === 'youtube' ? 'YOUTUBE' : 'VIDEO';
   const m = String(it.subtitle || '').match(/^(SDA Hymnal|Church Hymnal|Hymn)\s+(\d+)$/);
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
@@ -372,7 +375,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
           ['Sermon slides', 'From a PDF or pictures', onNewSlides],
           ['Countdown', 'Before the service, with announcements', onNewCountdown],
           ['Sunset times', 'When this Sabbath ends and the next begins', onNewSunset],
-          ...(onNewMedia ? [['Video or music', 'Mission Spotlight, special music, background music', onNewMedia]] : []),
+          ...(onNewMedia ? [['Video, music or YouTube', 'Mission Spotlight, special music, a YouTube link', onNewMedia]] : []),
         ]} />
       </li>
     </ul>
@@ -710,7 +713,47 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
 const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
 // Video / music item: big transport controls instead of a slide grid.
-function MediaPanel({ s, item, isLive, onShow }) {
+function MediaPanel(props) {
+  return props.item.media && props.item.media.type === 'youtube' ? html`<${YouTubePanel} ...${props} />` : html`<${FilePanel} ...${props} />`;
+}
+
+const ytThumb = (y) => (y && y.id ? `https://i.ytimg.com/vi/${y.id}/hqdefault.jpg` : '');
+
+// A YouTube item: plays in YouTube's player on the projector (needs internet).
+function YouTubePanel({ s, item, isLive, onShow }) {
+  const m = item.media || {};
+  const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
+  const [, tick] = useState(0);
+  useEffect(() => { if (!playing || playing.paused) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt, playing && playing.paused]);
+  const skew = s.now - (s.receivedAt || s.now);
+  const elapsed = playing ? ((playing.paused ? playing.pausedAt : Date.now() + skew) - playing.startedAt) / 1000 : 0;
+  const dur = (playing && playing.duration) || m.duration || 0;
+  const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
+  const ctl = (body) => api('/api/media/control', body).catch(fail);
+  return html`<div class="media-panel">
+    <div class="media-view">
+      ${ytThumb(m.youtube) ? html`<img src=${ytThumb(m.youtube)} alt="" style="width:100%;height:100%;object-fit:cover;opacity:${playing ? 1 : 0.75}" onError=${(e) => { e.target.style.display = 'none'; }} />` : html`<div class="media-audio">${icons.yt()}<span>${item.title}</span></div>`}
+      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${playing.paused ? 'PAUSED' : 'PLAYING ON THE PROJECTOR'}</span>`}
+    </div>
+    <div class="media-bar">
+      ${playing
+        ? html`${playing.paused
+            ? html`<button class="btn big primary" onClick=${() => ctl({ action: 'resume' })}>${icons.play()} Resume</button>`
+            : html`<button class="btn big" onClick=${() => ctl({ action: 'pause' })}>${icons.pause()} Pause</button>`}
+               <button class="btn big" onClick=${() => ctl({ action: 'stop' })}>${icons.stop()} Stop</button>
+               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>`
+        : html`<button class="btn big primary" onClick=${() => (isLive ? ctl({ action: 'play' }) : onShow())}>${icons.play()} Play</button>`}
+      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
+        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <label class="media-vol" title="Volume in the room">${icons.music()}<input type="range" min="0" max="1" step="0.05" value=${playing ? playing.volume : (m.volume ?? 1)}
+        onChange=${(e) => (playing ? ctl({ volume: +e.target.value }) : Promise.resolve())} /></label>
+    </div>
+    <div class="hint" style="padding:0 18px 16px">Plays from YouTube on the projector, so it needs internet. The live stream shows a “now playing” card (or the camera), and online viewers hear it only through your microphones. To put the video itself into the stream, download it instead (+ Add → Video, music or YouTube).</div>
+  </div>`;
+}
+
+// A video / music file from the media library.
+function FilePanel({ s, item, isLive, onShow }) {
   const m = item.media || {};
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
@@ -782,7 +825,59 @@ function pickFiles(accept, multiple, onFiles) {
 const MEDIA_ACCEPT = 'video/mp4,video/quicktime,video/webm,video/x-matroska,.mkv,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,.m4a';
 
 // Add a video (Mission Spotlight, special music, …) or a music track to the order of service.
-function MediaDialog({ onClose, onAdd, onShow }) {
+// Paste a YouTube link: play it from YouTube, or save a copy to this computer.
+function YouTubeBox({ s, onItem, onDownloaded }) {
+  const [url, setUrl] = useState('');
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [loop, setLoop] = useState(false);
+  const dl = s.download;
+  const doneRef = useRef(null);
+  useEffect(() => {
+    if (dl && dl.state === 'done' && dl.clip && doneRef.current !== dl.clip.id) { doneRef.current = dl.clip.id; onDownloaded(dl.clip); }
+  }, [dl && dl.state, dl && dl.clip && dl.clip.id]);
+  const check = async () => {
+    if (!url.trim()) return;
+    setBusy(true);
+    try { setInfo(await get('/api/youtube?url=' + encodeURIComponent(url.trim()))); } catch (err) { setInfo(null); fail(err); }
+    setBusy(false);
+  };
+  const item = () => ({ key: 'yt:' + Date.now(), kind: 'media', title: info.title, subtitle: info.author || '', slides: [{ label: info.title, text: '' }],
+    media: { type: 'youtube', youtube: { id: info.id, list: info.list, start: info.start }, loop, volume: 1 } });
+  const download = (kind) => api('/api/youtube/download', { url: url.trim(), kind }).catch(fail);
+  const working = dl && dl.state === 'working';
+  return html`<div class="yt-box">
+    <div class="row">
+      <span class="yt-logo">${icons.yt()}</span>
+      <input class="input grow" placeholder="Paste a YouTube link (Share → Copy link)" value=${url}
+        onInput=${(e) => { setUrl(e.target.value); setInfo(null); }} onKeyDown=${(e) => e.key === 'Enter' && check()} />
+      <button class="btn" disabled=${busy || !url.trim()} onClick=${check}>${busy ? 'Checking…' : 'Find'}</button>
+    </div>
+    ${info && html`<div class="yt-found">
+      ${ytThumb(info) && html`<img src=${ytThumb(info)} alt="" onError=${(e) => { e.target.style.display = 'none'; }} />`}
+      <div class="grow">
+        <b>${info.title}</b>${info.author && html`<div class="muted">${info.author}</div>`}
+        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${loop} onChange=${(e) => setLoop(e.target.checked)} /><span>Repeat until stopped</span></label>
+        <div class="row wrap" style="margin-top:6px">
+          <button class="btn" onClick=${() => onItem(item(), 'add')}>Add to service</button>
+          <button class="btn primary" onClick=${() => onItem(item(), 'show')}>${icons.play()} Play from YouTube</button>
+        </div>
+        <div class="row wrap" style="margin-top:8px">
+          <button class="btn small" disabled=${working || !info.id} onClick=${() => download('video')}>${icons.download()} Download video</button>
+          <button class="btn small" disabled=${working || !info.id} onClick=${() => download('audio')}>${icons.download()} Download sound only</button>
+        </div>
+        <div class="hint">Play from YouTube: needs internet, shows on the projector only. Download: saves a copy here so it plays offline and goes into the live stream with sound — only for videos you have permission to use.</div>
+      </div>
+    </div>`}
+    ${dl && (dl.state === 'working' || dl.state === 'error') && html`<div class=${'yt-dl ' + dl.state}>
+      ${dl.state === 'working' && html`<div class="track"><i style=${`width:${Math.round((dl.percent || 0) * 100)}%`}></i></div>`}
+      <span>${dl.message}</span>
+      ${dl.state === 'working' && html`<button class="btn ghost small" onClick=${() => api('/api/youtube/cancel', {}).catch(fail)}>Cancel</button>`}
+    </div>`}
+  </div>`;
+}
+
+function MediaDialog({ s, onClose, onAdd, onShow }) {
   const [clips, load, setClips] = useClips();
   const [pick, setPick] = useState(null);
   const [title, setTitle] = useState('');
@@ -800,13 +895,15 @@ function MediaDialog({ onClose, onAdd, onShow }) {
   const del = async (c) => { if (confirm(`Delete “${c.name}” from this computer?`)) setClips(await api('/api/clips/delete', { id: c.id }).catch(fail)); };
   const item = () => ({ key: 'media:' + Date.now(), kind: 'media', title: title.trim() || pick.name, subtitle: '', slides: [{ label: title || pick.name, text: '' }],
     media: { file: pick.id, type: pick.type, duration: pick.duration, loop, room, volume: 1 } });
-  return html`<${Modal} wide title="Video or music" onClose=${onClose} footer=${html`
+  return html`<${Modal} wide title="Video, music or YouTube" onClose=${onClose} footer=${html`
       <button class="btn" disabled=${!pick} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!pick} onClick=${() => { onShow(item()); onClose(); }}>Play now</button>`}>
     <div class="row wrap" style="margin-bottom:12px">
       <button class="btn primary" disabled=${!!up} onClick=${upload}>${icons.plus()} Add video or music…</button>
       <span class="muted">${up || 'MP4, MOV or WebM videos (e.g. Mission Spotlight); MP3 or M4A music. Files stay on this computer.'}</span>
     </div>
+    <${YouTubeBox} s=${s} onItem=${(it, how) => { if (how === 'add') onAdd(it); else onShow(it); onClose(); }}
+      onDownloaded=${async (c) => { await load(); setPick(c); setTitle(c.name); }} />
     <${ClipList} clips=${clips} selected=${pick ? [pick.id] : []} onPick=${(c) => { setPick(c); setTitle(c.name); }} onDelete=${del} />
     ${pick && html`<div class="two" style="margin-top:14px;gap:12px">
       <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} onInput=${(e) => setTitle(e.target.value)} /></div>
@@ -825,12 +922,29 @@ function MusicCard({ s }) {
   const songs = (clips || []).filter((c) => c.type === 'audio');
   const toggle = (c) => setSel(sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id]);
   const play = () => api('/api/music', { action: 'play', files: sel.length ? sel : songs.map((c) => c.id), volume: s.config.musicVolume }).catch(fail);
+  const [ytOpen, setYtOpen] = useState(false);
+  const [ytUrl, setYtUrl] = useState('');
+  const last = s.config.musicYouTube;
+  const playYt = async (y) => {
+    try {
+      const info = y || await get('/api/youtube?url=' + encodeURIComponent(ytUrl.trim()));
+      await api('/api/music', { action: 'play', youtube: { id: info.id, list: info.list, start: info.start }, title: info.title, volume: s.config.musicVolume });
+      setYtOpen(false); setYtUrl('');
+    } catch (err) { fail(err); }
+  };
   return html`<div class="card">
     <div class="card-head"><b>Background music</b>${music && html`<span class="tag live" style="margin-left:auto">PLAYING</span>`}</div>
     ${music
-      ? html`<div class="row"><button class="btn on red grow" onClick=${() => api('/api/music', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop music</button></div>`
+      ? html`${music.youtube && html`<div class="muted" style="margin-bottom:8px">${icons.yt()} ${music.title} · from YouTube</div>`}
+             <div class="row"><button class="btn on red grow" onClick=${() => api('/api/music', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop music</button></div>`
       : html`<div class="row"><button class="btn primary grow" disabled=${!songs.length} onClick=${play}>${icons.play()} Play ${sel.length ? sel.length + ' song' + (sel.length === 1 ? '' : 's') : 'all'}</button>
-              <button class="btn" onClick=${() => { setOpen(!open); load(); }}>${open ? 'Done' : 'Choose'}</button></div>`}
+              <button class="btn" onClick=${() => { setOpen(!open); load(); }}>${open ? 'Done' : 'Choose'}</button>
+              <button class="btn" title="Play a YouTube video or playlist" onClick=${() => setYtOpen(!ytOpen)}>${icons.yt()}</button></div>`}
+    ${ytOpen && !music && html`<div style="margin-top:10px">
+      <div class="row"><input class="input grow" placeholder="YouTube video or playlist link" value=${ytUrl} onInput=${(e) => setYtUrl(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && ytUrl.trim() && playYt()} />
+        <button class="btn primary" disabled=${!ytUrl.trim()} onClick=${() => playYt()}>Play</button></div>
+      ${last && html`<button class="btn small ghost" style="margin-top:6px" onClick=${() => playYt(last)}>${icons.play()} ${last.title}</button>`}
+      <div class="hint">Plays from YouTube on the projector, in a small “now playing” card in the corner (YouTube requires its player to stay visible). Needs internet; reaches the stream only through your microphones.</div></div>`}
     <label class="meter-row" style="margin-top:10px">Volume<input class="grow" type="range" min="0" max="1" step="0.05" value=${music ? music.volume : (s.config.musicVolume ?? 0.4)}
       onChange=${(e) => (music ? api('/api/music', { volume: +e.target.value }) : api('/api/config', { musicVolume: +e.target.value })).catch(fail)} /></label>
     ${open && !music && html`<div style="margin-top:10px">
@@ -1174,7 +1288,7 @@ function ControlView({ s }) {
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
-    ${dialog && dialog.type === 'media' && html`<${MediaDialog} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
+    ${dialog && dialog.type === 'media' && html`<${MediaDialog} s=${s} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
@@ -1675,6 +1789,16 @@ async function renderProgram(s) {
       const k = Math.min(W / pic.naturalWidth, H / pic.naturalHeight);
       ctx.drawImage(pic, (W - pic.naturalWidth * k) / 2, (H - pic.naturalHeight * k) / 2, pic.naturalWidth * k, pic.naturalHeight * k);
     }
+  } else if (live && live.item.kind === 'media' && live.item.media && live.item.media.type === 'youtube' && !s.clear) {
+    // YouTube plays in the room only; the stream shows what is playing.
+    ctx.fillStyle = ink;
+    ctx.globalAlpha = 0.8; ctx.font = `600 ${H * 0.04}px ${FONT}`;
+    ctx.fillText('♪  Now playing', W / 2, H * 0.42);
+    ctx.globalAlpha = 1;
+    let size = H * 0.075;
+    const title = live.item.title || '';
+    for (; size > H * 0.035; size -= H * 0.004) { ctx.font = `600 ${size}px ${FONT}`; if (ctx.measureText(title).width <= W * 0.86) break; }
+    ctx.fillText(title, W / 2, H * 0.53);
   } else if (live && live.item.kind === 'countdown') {
     const p = countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now)));
     ctx.fillStyle = ink;

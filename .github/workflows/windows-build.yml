@@ -122,6 +122,31 @@ jobs:
           Start-Sleep -Seconds 2
           Remove-Item -Recurse -Force dist\ChurchStream\ChurchStream-data -ErrorAction SilentlyContinue
 
+      - name: YouTube lookup and download (YouTube sometimes blocks cloud machines, so not fatal)
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          $env:CHURCHSTREAM_NO_BROWSER = "1"
+          $env:CHURCHSTREAM_DATA = "$env:RUNNER_TEMP\yt-data"
+          $exe = Resolve-Path dist\ChurchStream\ChurchStream.exe
+          $p = Start-Process -FilePath $exe -ArgumentList '--port','8125' -PassThru -WorkingDirectory (Split-Path $exe)
+          Start-Sleep -Seconds 5
+          try {
+            $i = Invoke-RestMethod -TimeoutSec 20 "http://localhost:8125/api/youtube?url=https://youtu.be/jNQXAC9IVRw"
+            Write-Host "Lookup: id=$($i.id) title=$($i.title) by $($i.author)"
+            if ($i.title -eq 'YouTube video') { Write-Host "::warning::oEmbed lookup returned no title" }
+            Invoke-RestMethod -TimeoutSec 20 -Method Post -ContentType 'application/json' -Body '{"url":"https://youtu.be/jNQXAC9IVRw","kind":"audio"}' http://localhost:8125/api/youtube/download | Out-Null
+            $deadline = (Get-Date).AddMinutes(4)
+            do { Start-Sleep -Seconds 3; $d = (Invoke-RestMethod -TimeoutSec 20 http://localhost:8125/api/state).download; Write-Host "  $($d.state): $($d.message)" } while ($d.state -eq 'working' -and (Get-Date) -lt $deadline)
+            if ($d.state -ne 'done') { throw "Download did not finish: $($d.message)" }
+            $c = Invoke-RestMethod -TimeoutSec 20 http://localhost:8125/api/clips
+            Write-Host "Library: $($c[0].name) ($($c[0].type), $($c[0].duration)s) $($c[0].file)"
+          } finally {
+            Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
+            Get-Process ffmpeg, yt-dlp -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ChurchStream-win-x64
