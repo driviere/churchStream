@@ -64,6 +64,18 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const scale = theme.textScale || 1;
   const text = !black && !clear && !logo && slide ? slide : null;
   useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale]);
+  // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
+  useEffect(() => {
+    const el = ref.current && ref.current.closest('.screen');
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let w = 0;
+    const ro = new ResizeObserver(([e]) => {
+      const nw = Math.round(e.contentRect.width);
+      if (nw && nw !== w) { w = nw; if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!!text, scale]);
   const bg = theme.background ? `url("/media/${theme.background}")` : '';
   return html`<div class="screen">
     <div class=${'screen-bg' + (bg ? ' has-image' : '')} style=${bg ? `background-image:${bg}` : ''}></div>
@@ -142,14 +154,12 @@ function StreamStatus({ s }) {
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
   if (st.mode !== 'live') {
-    return html`<div class=${'status' + (st.state === 'error' ? ' warn' : '')}><span class="dot"></span>${st.mode === 'preview' ? 'Camera preview · not live' : 'Not live'}</div>`;
+    return html`<div class=${'status' + (st.state === 'error' ? ' warn' : '')}><span class="dot"></span>${st.mode === 'preview' ? 'Preview · not live' : 'Not live'}</div>`;
   }
   const dests = Object.values(st.destinations || {});
   const health = st.problem ? html`<span class="bad">${st.state === 'retrying' ? 'Reconnecting' : 'Check connection'}</span>` : html`<span class="ok">Connection good</span>`;
-  return html`<div class=${'status live' + (st.problem ? ' warn' : '')}>
-    <span class="dot"></span><b>LIVE</b>
-    ${dests.map((d) => html`<span class="sep">·</span><span class="extra">${d.label} ${d.state === 'ok' ? '✓' : '…'}</span>`)}
-    <span class="sep">·</span><span style="font-variant-numeric:tabular-nums">${fmtTime(Date.now() - (st.liveSince || Date.now()))}</span>
+  return html`<div class=${'status live' + (st.problem ? ' warn' : '')} title=${dests.map((d) => `${d.label}: ${d.state}`).join(', ')}>
+    <span class="dot"></span>Live · <span style="font-variant-numeric:tabular-nums">${fmtTime(Date.now() - (st.liveSince || Date.now()))}</span>
     <span class="sep extra">·</span><span class="extra">${health}</span>
   </div>`;
 }
@@ -207,7 +217,7 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
   const songs = rows.filter((r) => r.type === 'song');
   return html`<div class="omni">
     ${icons.search()}
-    <input ref=${input} class="input" placeholder="Hymn #, song or Bible verse" value=${q}
+    <input ref=${input} class="input" placeholder="Type a hymn number, song or verse…" value=${q}
       onInput=${(e) => { setQ(e.target.value); setOpen(true); }} onFocus=${() => setOpen(true)} onKeyDown=${onKey}
       onBlur=${() => setTimeout(() => setOpen(false), 150)} aria-label="Search" />
     ${open && q.trim() && res && html`<div class="results" onMouseDown=${(e) => e.preventDefault()}>
@@ -237,10 +247,18 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
 }
 
 // ---------------------------------------------------------------------------------------
-// service plan (left)
+// order of service: a horizontal strip along the bottom
+const kindLabel = (it) => {
+  if (it.kind === 'bible') return 'READING';
+  if (it.kind === 'text') return 'TEXT';
+  const m = String(it.subtitle || '').match(/^(SDA Hymnal|Church Hymnal|Hymn)\s+(\d+)$/);
+  return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
+};
+
 function Plan({ s, selectedKey, onOpen, onNewText }) {
   const items = s.plan.items;
-  const liveKey = s.live && s.live.item.key;
+  const live = s.live;
+  const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
   const [drag, setDrag] = useState(null);
   const [over, setOver] = useState(null);
   const list = useRef();
@@ -248,10 +266,15 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
   const save = (next) => api('/api/plan', { items: next }).catch(fail);
   const remove = (uid) => save(items.filter((x) => x.uid !== uid));
 
+  // Pointer-based reordering works with a mouse and on touch screens.
   const start = (e, i) => {
-    e.preventDefault();
-    setDrag(i);
+    if (e.button > 0 || e.target.closest('.x')) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
     const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
+      if (!moved) { moved = true; setDrag(i); }
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
       const li = el && el.closest('li[data-i]');
       if (li && list.current.contains(li)) setOver(Number(li.dataset.i));
@@ -259,6 +282,7 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
     const up = () => {
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
+      if (!moved) { onOpen(items[i].uid); return; }
       setDrag(null);
       setOver((o) => {
         if (o !== null && o !== i) { const next = items.slice(); const [m] = next.splice(i, 1); next.splice(o, 0, m); save(next); }
@@ -269,36 +293,36 @@ function Plan({ s, selectedKey, onOpen, onNewText }) {
     addEventListener('pointerup', up);
   };
 
-  const kindIcon = { song: icons.music, bible: icons.book, text: icons.text };
-  return html`<div class="zone-body">
-    ${items.length === 0 && html`<div class="empty"><b>Your service is empty.</b><br/>Search above for a song, hymn number or Bible verse and press <kbd>Shift</kbd>+<kbd>Enter</kbd> (or “Add”) to build the order of service.</div>`}
+  return html`<section class="card plan-card" aria-label="Order of service">
+    <div class="plan-head"><b>Order of service</b><span>${items.length ? 'Next moves on by itself at the end of each item · drag to reorder' : ''}</span></div>
+    ${items.length === 0 && html`<div class="plan-empty">Search above, then press <kbd>Shift</kbd>+<kbd>Enter</kbd> (or “Add”) to build the order of service.</div>`}
     <ul class="plan" ref=${list}>
-      ${items.map((it, i) => html`<li key=${it.uid} data-i=${i}
-          class=${[it.uid === selectedKey && 'sel', it.uid === liveKey && 'live', drag === i && 'dragging', over === i && drag !== null && drag !== i && 'over'].filter(Boolean).join(' ')}
-          onClick=${() => onOpen(it.uid)}>
-        <span class="grip" onPointerDown=${(e) => start(e, i)} title="Drag to reorder" style="touch-action:none">${icons.grip()}</span>
-        <span class=${'kind ' + it.kind}>${(kindIcon[it.kind] || icons.text)()}</span>
-        <div class="grow"><div class="t">${it.title}</div>${it.subtitle && html`<div class="s">${it.subtitle}</div>`}</div>
-        <button class="btn ghost icon small x" title="Remove" onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
-      </li>`)}
+      ${items.map((it, i) => {
+        const isLive = i === liveAt;
+        const n = isLive ? live.item.slides.length : it.count || 0;
+        return html`<li key=${it.uid} data-i=${i} onPointerDown=${(e) => start(e, i)}
+          class=${[it.uid === selectedKey && 'sel', isLive && 'live', liveAt >= 0 && i < liveAt && 'done', drag === i && 'dragging', over === i && drag !== null && drag !== i && 'over'].filter(Boolean).join(' ')}>
+          <span class=${'k ' + it.kind}>${kindLabel(it)}</span>
+          <span class="t">${it.title}</span>
+          ${n > 0 && html`<span class="dots">${Array.from({ length: Math.min(n, 12) }, (_, d) => html`<i class=${isLive ? (d === live.index ? 'now' : d < live.index ? 'past' : '') : ''}></i>`)}</span>`}
+          <button class="x" title="Remove" aria-label=${'Remove ' + it.title} onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
+        </li>`;
+      })}
+      <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0"><button class="plan-add" onClick=${onNewText}>+ Text</button></li>
     </ul>
-    <div class="row" style="margin-top:12px">
-      <button class="btn small ghost" onClick=${onNewText}>${icons.plus()} Text slide</button>
-      <span class="spacer"></span>
-      ${items.length > 0 && html`<button class="btn small ghost" onClick=${() => { if (confirm('Start a new, empty service plan?')) save([]); }}>Clear</button>`}
-    </div>
-  </div>`;
+  </section>`;
 }
 
 // ---------------------------------------------------------------------------------------
-// slide grid (centre)
+// slide grid (centre card)
 const SlideCard = ({ slide, i, item, s, isLive, isNext, onClick }) => html`
   <button class=${'slide-card' + (isLive ? ' live' : '') + (isNext ? ' next' : '')} onClick=${onClick}>
     <${Screen} slide=${slide} kind=${item.kind} subtitle=${item.subtitle} theme=${s.config.theme} />
-    <div class="meta"><span>${slide.label || (item.kind === 'bible' ? slide.ref : `Slide ${i + 1}`)}</span>${isLive ? html`<span class="live-tag">LIVE</span>` : html`<span class="key">${i + 1}</span>`}</div>
+    <div class="meta"><span class="lbl">${slide.label || (item.kind === 'bible' ? slide.ref : `Slide ${i + 1}`)}</span>
+      ${isLive ? html`<span class="tag live">ON SCREEN</span>` : isNext ? html`<span class="tag next">NEXT</span>` : html`<span class="tag num">${i + 1}</span>`}</div>
   </button>`;
 
-function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan }) {
+function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active }) {
   const live = s.live;
   const isLiveItem = live && item && live.item.key === item.key;
   const liveIdx = isLiveItem ? live.index : -1;
@@ -308,87 +332,90 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan }) {
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [liveIdx, item && item.key]);
 
-  if (!item) {
-    return html`<div class="zone-body"><div class="empty" style="padding-top:12vh"><b>Nothing selected.</b><br/>Pick something from the service plan, or search for a song, hymn number (e.g. <kbd>100</kbd>) or a verse (e.g. <kbd>John 3:16</kbd>).</div></div>`;
-  }
-  return html`
-    <div class="item-head">
-      <div class="grow">
-        <h1>${item.title}</h1>
-        <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</div>
+  return html`<section class=${'card slides-card' + (active ? ' active' : '')}>
+    ${!item ? html`<div class="empty" style="margin:auto"><b>Nothing selected yet</b><br/>Type a hymn number (e.g. <kbd>100</kbd>), a song title or a verse (e.g. <kbd>John 3:16</kbd>) in the search bar,<br/>or tap an item in the order of service below.</div>` : html`
+      <div class="item-head">
+        <div class="grow">
+          <h1>${item.title}</h1>
+          <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
+        </div>
+        ${item.kind === 'song' && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
-      ${item.kind === 'song' && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
-      ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
-    </div>
-    ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">Live now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to live</button></div>`}
-    <div class="zone-body" style="padding:0">
-      <div class="slides">
+      ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
+      <div class="slides-scroll"><div class="slides">
         ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} />`)}
-      </div>
-    </div>`;
+      </div></div>`}
+  </section>`;
 }
 
 // ---------------------------------------------------------------------------------------
-// output column (right)
-function OutputZone({ s, onGoLive, onStop }) {
+// right column: screens, stream, name on stream
+function NameOnStream({ s }) {
+  const lt = s.lowerThird;
+  const presets = s.config.lowerThirdPresets || [];
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
+  const isOn = (p) => lt.visible && lt.name === p.name && lt.title === p.title;
+  const tap = (p) => api('/api/lower-third', isOn(p) ? { visible: false } : { name: p.name, title: p.title, visible: true }).catch(fail);
+  const custom = lt.visible && !presets.some(isOn);
+  const showNew = (keep) => {
+    if (!name.trim()) return;
+    const p = { name: name.trim(), title: title.trim() };
+    api('/api/lower-third', { ...p, visible: true }).catch(fail);
+    if (keep) api('/api/config', { lowerThirdPresets: [...presets, p] }).then(() => toast('Saved for next time')).catch(fail);
+    setAdding(false); setName(''); setTitle('');
+  };
+  return html`<div class="card">
+    <div class="card-head"><b>Name on stream</b>${lt.visible && html`<span class="tag live" style="margin-left:auto">SHOWING</span>`}</div>
+    <div class="pills">
+      ${presets.map((p, i) => html`<button key=${i} class=${'pill' + (isOn(p) ? ' on' : '')} title=${p.title} onClick=${() => tap(p)}>${p.name}${isOn(p) ? ' ✓' : ''}</button>`)}
+      ${custom && html`<button class="pill on" onClick=${() => api('/api/lower-third', { visible: false }).catch(fail)}>${lt.name} ✓</button>`}
+      <button class="pill add" onClick=${() => setAdding(!adding)}>+ New name</button>
+    </div>
+    ${adding && html`<div class="stack" style="margin-top:10px">
+      <input class="input" placeholder="Name, e.g. Pastor James Okafor" value=${name} onInput=${(e) => setName(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && showNew(false)} autofocus />
+      <input class="input" placeholder="Title, e.g. Senior Pastor" value=${title} onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && showNew(false)} />
+      <div class="row"><button class="btn primary grow" disabled=${!name.trim()} onClick=${() => showNew(false)}>Show now</button><button class="btn" disabled=${!name.trim()} onClick=${() => showNew(true)}>Show & save</button></div>
+    </div>`}
+    <div class="hint">Tap to show on the stream, tap again to hide.</div>
+  </div>`;
+}
+
+function Aside({ s, onGoLive, onStop, active }) {
   const st = s.stream;
   const cfg = s.config;
-  const lt = s.lowerThird;
-  const [name, setName] = useState(lt.name);
-  const [title, setTitle] = useState(lt.title);
-  useEffect(() => { setName(lt.name); setTitle(lt.title); }, [lt.name, lt.title]);
   const slide = s.live && s.live.item.slides[s.live.index];
   const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
-
-  const showLt = (n, t) => api('/api/lower-third', { name: n, title: t, visible: true }).catch(fail);
-  const presets = cfg.lowerThirdPresets || [];
-
-  return html`<div class="zone-body" style="padding-top:14px">
+  const dests = Object.entries(st.destinations || {});
+  return html`<aside class=${'aside' + (active ? ' active' : '')}>
     <div class="card mini">
-      <h3>${icons.monitor()} Projector<span class="spacer"></span>
-        ${s.projectorOpen
-          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close</button>`
-          : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on screen</button>`}
-      </h3>
+      <div class="card-head"><b>Screens</b>
+        <span class="note-r">${s.projectorOpen
+          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
+          : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on projector</button>`}</span></div>
       <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo} />
     </div>
 
-    <div class="card">
-      <h3>${icons.radio()} Live stream<span class="spacer"></span>
-        ${st.mode === 'off' && html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}
-        ${st.mode === 'preview' && html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`}
-      </h3>
-      <${PreviewImage} running=${st.mode !== 'off'} />
-      ${st.mode !== 'off' && html`<div style="margin-top:10px"><${Meter} /></div>`}
-      ${st.mode === 'live' && html`<div class="dests">
-        ${Object.entries(st.destinations).map(([id, d]) => html`<div class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}<span class="spacer"></span><span class="muted">${d.state === 'ok' ? 'Live' : d.state === 'connecting' ? 'Connecting…' : 'Retrying…'}</span></div>`)}
-        ${st.recording && html`<div class="dest"><span class="dot ok"></span>Recording to this computer</div>`}
-      </div>`}
-      <label class="switch" style="margin-top:8px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Show lyrics & verses on the stream</span></label>
-      <div style="margin-top:6px">
-        ${!configured
-          ? html`<button class="btn big" style="width:100%" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
-          : st.mode === 'live'
-            ? html`<button class="btn big" style="width:100%" onClick=${onStop}>End live stream</button>`
-            : html`<button class="btn big danger" style="width:100%" onClick=${onGoLive}>${icons.radio()} Go live</button>`}
-      </div>
+    <div class="card stack">
+      <div class="card-head" style="margin:0"><b>Live stream</b>
+        <span class="note-r">${st.mode === 'live'
+          ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
+          : st.mode === 'preview'
+            ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
+            : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
+      ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
+      <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Lyrics & verses on the stream</span></label>
+      ${!configured
+        ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
+        : st.mode === 'live'
+          ? html`<button class="btn big" onClick=${onStop}>End live stream</button>`
+          : html`<button class="btn big danger" onClick=${onGoLive}>${icons.radio()} Go live</button>`}
     </div>
 
-    <div class="card">
-      <h3>Lower third<span class="spacer"></span>${lt.visible && html`<span class="live-tag" style="background:var(--live);color:#fff;border-radius:5px;padding:0 7px;font-size:11px">ON STREAM</span>`}</h3>
-      <div class="field" style="margin-bottom:8px"><input class="input" placeholder="Name" value=${name} onInput=${(e) => setName(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && showLt(name, title)} /></div>
-      <div class="field" style="margin-bottom:10px"><input class="input" placeholder="Title (e.g. Senior Pastor)" value=${title} onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && showLt(name, title)} /></div>
-      <div class="row">
-        ${lt.visible
-          ? html`<button class="btn on red grow" onClick=${() => api('/api/lower-third', { visible: false }).catch(fail)}>Hide</button>`
-          : html`<button class="btn primary grow" disabled=${!name && !title} onClick=${() => showLt(name, title)}>Show</button>`}
-        <button class="btn" title="Save as preset" disabled=${!name || presets.some((p) => p.name === name && p.title === title)}
-          onClick=${() => api('/api/config', { lowerThirdPresets: [...presets, { name, title }] }).then(() => toast('Preset saved')).catch(fail)}>Save</button>
-      </div>
-      ${presets.length > 0 && html`<div class="chips">${presets.map((p, i) => html`<span key=${i} class=${'chip' + (lt.visible && lt.name === p.name && lt.title === p.title ? ' on' : '')} title=${p.title} onClick=${() => { setName(p.name); setTitle(p.title); showLt(p.name, p.title); }}>${p.name}</span>`)}</div>`}
-      <div class="hint">Shown on the live stream only. While it's showing, lyrics are hidden from the stream.</div>
-    </div>
-  </div>`;
+    <${NameOnStream} s=${s} />
+  </aside>`;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -497,7 +524,7 @@ function TextEditor({ onClose, onAdd, onShow }) {
 function ControlView({ s }) {
   const [selected, setSelected] = useState(null);
   const [dialog, setDialog] = useState(null);
-  const [tab, setTab] = useState(s.live ? 'slides' : 'plan'); // only matters on tablets/phones
+  const [tab, setTab] = useState('slides'); // only matters on tablets/phones
   const st = s.stream;
 
   // Follow the live item when nothing else is selected.
@@ -506,7 +533,7 @@ function ControlView({ s }) {
 
   const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
   const addToPlan = (it) => {
-    const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, slides: it.kind === 'text' ? it.slides : undefined };
+    const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length, slides: it.kind === 'text' ? it.slides : undefined };
     api('/api/plan', { items: [...s.plan.items, entry] }).then(() => toast(`Added “${it.title}”`)).catch(fail);
   };
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
@@ -549,49 +576,35 @@ function ControlView({ s }) {
   const planSong = item && item.kind === 'song' && s.plan.items.find((x) => x.uid === item.key);
 
   const live = s.live;
-  const pos = live ? `${live.index + 1} / ${live.item.slides.length}` : '';
   return html`<div class="shell">
     <div class="topbar">
       <div class="brand"><img src="/favicon.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
-      <${StreamStatus} s=${s} />
+      <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
       <span class="spacer"></span>
-      <button class="btn ghost icon" title="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
+      <${StreamStatus} s=${s} />
+      <button class="btn icon round" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
-    <div style="display:flex;flex-direction:column;min-height:0">
-      ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span></div>`}
-      ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
-      ${s.task && (s.task.running || s.task.error) && html`<div class=${'banner' + (s.task.error ? ' red' : '')}><span class="grow">${s.task.error || s.task.label}</span></div>`}
-      <div class="main" style="flex:1;min-height:0">
-        <section class=${'zone' + (tab === 'plan' ? ' active' : '')}>
-          <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
-          <div class="zone-head"><h2>Service</h2></div>
-          <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })} />
-        </section>
-        <section class=${'zone' + (tab === 'slides' ? ' active' : '')}>
-          <${Slides} s=${s} item=${item} inPlan=${inPlan} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${editSong} />
-        </section>
-        <section class=${'zone zone-output' + (tab === 'output' ? ' active' : '')}>
-          <${OutputZone} s=${s} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
-        </section>
-      </div>
-    </div>
-    <div class="bar">
-      <div class="muted" style="min-width:140px;font-size:14px">${live ? html`<b style="color:var(--text)">${pos}</b> · ${live.item.title}` : 'Nothing on screen'}</div>
-      <div class="nav">
-        <button class="btn big" onClick=${() => step(-1)} title="Previous (←)">${icons.left()} Back</button>
-        <button class="btn big primary next" onClick=${() => step(1)} title="Next (→ or Space)">Next ${icons.right()}</button>
-      </div>
-      <div class="toggles">
-        <button class=${'btn big' + (s.clear ? ' on' : '')} onClick=${() => toggle('clear')} title="Hide the words, keep the background (C)">Clear</button>
-        <button class=${'btn big' + (s.logo ? ' on' : '')} onClick=${() => toggle('logo')} title="Show the church logo">Logo</button>
-        <button class=${'btn big' + (s.black ? ' on red' : '')} onClick=${() => toggle('black')} title="Black screen (B)">Black</button>
-      </div>
-    </div>
+    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span></div>`}
+    ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
+    ${s.task && (s.task.running || s.task.error) && html`<div class=${'banner' + (s.task.error ? ' red' : '')}><span class="grow">${s.task.error || s.task.label}</span></div>`}
     <nav class="tabs">
-      <button class=${tab === 'plan' ? 'on' : ''} onClick=${() => setTab('plan')}>Service</button>
       <button class=${tab === 'slides' ? 'on' : ''} onClick=${() => setTab('slides')}>Slides</button>
-      <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Stream${st.mode === 'live' ? ' ●' : ''}</button>
+      <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
+    <div class="main">
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${editSong} />
+      <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
+    </div>
+    <div class="bottom">
+      <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })} />
+      <div class="controls">
+        <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
+        <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
+        <button class=${'btn' + (s.clear ? ' on' : '')} onClick=${() => toggle('clear')} title="Hide the words, keep the background (C)">Clear<small>C</small></button>
+        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${() => toggle('logo')} title="Show the church logo">Logo</button>
+        <button class=${'btn black' + (s.black ? ' on' : '')} onClick=${() => toggle('black')} title="Black screen (B)">${s.black ? 'Black ✓' : 'Black'}<small>B</small></button>
+      </div>
+    </div>
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
@@ -807,7 +820,9 @@ function SectionAppearance({ s }) {
       <div class="field"><label class="label">Logo (shown when you press “Logo”)</label>
         <div class="row">${theme.logo ? html`<img class="thumb-img" style="object-fit:contain" src=${'/media/' + theme.logo} alt="" />` : html`<span class="muted">Church name is shown instead</span>`}</div>
         <div class="row" style="margin-top:8px"><button class="btn small" onClick=${() => upload('logo')}>Choose image…</button>${theme.logo && html`<button class="btn small ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' })}>Remove</button>`}</div></div>
-      <div class="field"><label class="label">Text size</label>
+      <div class="field"><label class="label">Control panel colours</label>
+        <div class="choices">${[['light', 'Light', 'Bright and easy to read'], ['dark', 'Dark', 'Less glare in a dim room']].map(([v, t, d]) => html`<button class=${'choice' + ((s.config.uiTheme || 'light') === v ? ' on' : '')} onClick=${() => save({ uiTheme: v })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
+      <div class="field"><label class="label">Projector text size</label>
         <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div></div>
     </div>
     <div><label class="label">Preview</label><${Screen} slide=${sample} kind="song" subtitle="SDA Hymnal 108" theme=${theme} /></div>
@@ -862,8 +877,8 @@ function SettingsView({ s }) {
   const [sec, setSec] = useState((location.hash || '#general').slice(1));
   const cur = SECTIONS.find((x) => x[0] === sec) || SECTIONS[0];
   const C = cur[2];
-  return html`<div class="shell" style="grid-template-rows:60px 1fr">
-    <div class="topbar"><button class="btn ghost" onClick=${() => navigate('/control')}>${icons.back()} Back to control panel</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
+  return html`<div class="settings-shell">
+    <div class="settings-top"><button class="btn ghost" onClick=${() => navigate('/control')}>${icons.back()} Back to control panel</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
     <div class="settings">
       <nav>${SECTIONS.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
         <span class="spacer"></span><button onClick=${() => navigate('/setup')}>Run setup again</button></nav>
@@ -939,12 +954,13 @@ function Root() {
     addEventListener('popstate', pop);
     return () => { stop(); removeEventListener('popstate', pop); };
   }, []);
+  useEffect(() => { document.documentElement.dataset.theme = (s && s.config.uiTheme) || 'light'; }, [s && s.config.uiTheme]);
   if (!s) return html`<div class="boot">ChurchStream</div>`;
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;
   else if (route === '/settings') view = html`<${SettingsView} s=${s} />`;
   else view = html`<${ControlView} s=${s} />`;
-  return html`${!online && html`<div class="banner red" style="position:fixed;top:0;left:0;right:0;z-index:70">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
+  return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
 }
 
 render(html`<${Root} />`, document.getElementById('app'));
