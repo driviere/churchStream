@@ -735,7 +735,9 @@ function ControlView({ s }) {
       <${StreamStatus} s=${s} />
       <button class="btn icon round" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
-    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span></div>`}
+    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
+      <button class="btn small" onClick=${() => navigate('/settings#advanced')}>Details</button>
+      ${st.mode !== 'off' && html`<button class="btn small" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop</button>`}</div>`}
     ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
     ${s.task && (s.task.running || s.task.error) && html`<div class=${'banner' + (s.task.error ? ' red' : '')}><span class="grow">${s.task.error || s.task.label}</span></div>`}
     <nav class="tabs">
@@ -1049,7 +1051,7 @@ function SectionAdvanced({ s }) {
         <option value="auto">Automatic (uses the graphics chip when possible)</option>
         <option value="h264_qsv">Intel Quick Sync</option><option value="h264_nvenc">NVIDIA NVENC</option><option value="h264_amf">AMD AMF</option><option value="libx264">Software (x264)</option>
       </select>${s.stream.encoder && html`<div class="hint">In use: ${s.stream.encoder}</div>`}</div>
-    <div class="field"><label class="label">Recent log <button class="btn small ghost" onClick=${load}>Refresh</button></label><div class="logbox">${logs.length ? logs.join('\n') : 'Nothing yet.'}</div></div>
+    <div class="field"><label class="label">Recent log <button class="btn small ghost" onClick=${load}>Refresh</button> <button class="btn small ghost" onClick=${() => navigator.clipboard.writeText(logs.join('\n')).then(() => toast('Log copied — paste it in a message'), () => fail(new Error('Could not copy; select the text instead.')))}>Copy</button></label><div class="logbox">${logs.length ? logs.join('\n') : 'Nothing yet.'}</div></div>
   </div>`;
 }
 
