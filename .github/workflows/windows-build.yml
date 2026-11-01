@@ -85,7 +85,7 @@ jobs:
             Start-Sleep -Seconds 3
             $st = Invoke-RestMethod http://localhost:8123/api/state
             Write-Host "While the video plays: media=$($st.media.now.title) stream=$($st.stream.state) since=$($st.stream.since)"
-            if (-not $st.media.now) { throw "The video did not start" }
+            if (-not $st.media.now) { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 40 | ForEach-Object { Write-Host "  log: $_" }; throw "The video did not start" }
             if ($st.stream.state -ne 'running') { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 40 | ForEach-Object { Write-Host "  log: $_" }; throw "Stream stopped while the video played" }
             Start-Sleep -Seconds 4
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
