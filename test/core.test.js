@@ -174,4 +174,7 @@ test('sunset and Sabbath times', () => {
   assert.ok(info.tokens['sabbath-begins'].length > 4 && !info.isSabbath);
   assert.match(fillTokens('Ends at {sabbath-ends}', info), /^Ends at .+\d/);
   assert.match(fillTokens('{sunset}', null), /Settings/);
+  // Always a 12-hour clock, even on PCs set to 24-hour time.
+  assert.match(info.tokens.sunset, /^(1[0-2]|[1-9]):[0-5]\d (am|pm)$/);
+  assert.match(info.label, /\d:\d\d (am|pm)$/);
 });
