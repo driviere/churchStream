@@ -339,7 +339,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active }) {
           <h1>${item.title}</h1>
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
-        ${item.kind === 'song' && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${(item.kind === 'song' || (item.kind === 'text' && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
@@ -504,18 +504,24 @@ function SongEditor({ song, onClose, onSaved }) {
   </${Modal}>`;
 }
 
-function TextEditor({ onClose, onAdd, onShow }) {
-  const [title, setTitle] = useState('');
-  const [text, setText] = useState('');
+function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
+  const editing = !!(initial && onSave);
+  const [title, setTitle] = useState(editing ? initial.title : '');
+  const [text, setText] = useState(editing ? sectionsToText(initial.slides) : '');
+  const [busy, setBusy] = useState(false);
   const slides = useMemo(() => parseSections(text), [text]);
-  const item = () => ({ key: 'text:' + Date.now(), kind: 'text', title: title || slides[0]?.text.split('\n')[0] || 'Text', subtitle: '', slides });
-  return html`<${Modal} title="Text slides" onClose=${onClose} footer=${html`
-      <button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
-      <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`}>
-    <div class="field"><label class="label">Name (shown in the service plan)</label><input class="input" value=${title} placeholder="e.g. Announcements" onInput=${(e) => setTitle(e.target.value)} /></div>
+  const name = () => title.trim() || slides[0]?.text.split('\n')[0] || 'Text';
+  const item = () => ({ key: 'text:' + Date.now(), kind: 'text', title: name(), subtitle: '', slides });
+  const footer = editing
+    ? html`<button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" disabled=${busy || !slides.length} onClick=${async () => { setBusy(true); await onSave(name(), slides); onClose(); }}>Save changes</button>`
+    : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
+      <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
+  return html`<${Modal} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
+    <div class="field"><label class="label">Name (shown in the order of service)</label><input class="input" value=${title} placeholder="e.g. Announcements" onInput=${(e) => setTitle(e.target.value)} /></div>
     <label class="label">Text</label>
-    <textarea class="textarea" style="min-height:200px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'}></textarea>
-    <div class="hint">${slides.length} slide${slides.length === 1 ? '' : 's'}</div>
+    <textarea class="textarea" style="min-height:220px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'} autofocus=${editing}></textarea>
+    <div class="hint">${slides.length} slide${slides.length === 1 ? '' : 's'} · a blank line starts a new slide</div>
   </${Modal}>`;
 }
 
@@ -572,6 +578,18 @@ function ControlView({ s }) {
   const editSong = async () => {
     try { setDialog({ type: 'song', song: await get('/api/song', { id: songIdOf(item) }) }); } catch (err) { fail(err); }
   };
+  // Text items live inside the order of service, so editing saves the plan (and refreshes the
+  // projector if that item is on screen right now).
+  const saveText = async (uid, title, slides) => {
+    try {
+      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title, slides, count: slides.length } : x));
+      await api('/api/plan', { items });
+      const it = { key: uid, kind: 'text', title, subtitle: '', slides };
+      if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: Math.min(s.live.index, slides.length - 1) });
+      setSelected(it);
+      toast('Saved');
+    } catch (err) { fail(err); }
+  };
   const songIdOf = (it) => it && (it.songId || (it.key.startsWith('song:') ? it.key.slice(5) : null));
   const planSong = item && item.kind === 'song' && s.plan.items.find((x) => x.uid === item.key);
 
@@ -592,7 +610,7 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${editSong} />
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : editSong} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
@@ -607,7 +625,8 @@ function ControlView({ s }) {
     </div>
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
-    ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
+    ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
+      initial=${dialog.item} onSave=${dialog.item ? (title, slides) => saveText(dialog.item.key, title, slides) : null} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
