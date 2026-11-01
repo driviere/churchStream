@@ -60,11 +60,12 @@ const icons = {
 
 // ---------------------------------------------------------------------------------------
 // the projected screen, used for thumbnails and the mini projector view
-function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg }) {
+function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg, lt }) {
   const ref = useRef();
   const scale = theme.textScale || 1;
   const text = !black && !clear && !logo && slide ? slide : null;
-  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale]);
+  const ltOn = !!(lt && !black && !logo);
+  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
   useEffect(() => {
     const el = ref.current && ref.current.closest('.screen');
@@ -78,11 +79,12 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     return () => ro.disconnect();
   }, [!!text, scale]);
   const info = bgInfo(bg !== undefined ? bg : theme.background);
-  return html`<div class=${'screen' + (info.light ? ' light-bg' : '')}>
+  return html`<div class=${'screen' + (info.light ? ' light-bg' : '') + (ltOn ? ' has-lt' : '')}>
     <div class=${'screen-bg' + (info.photo ? ' has-image' : '')} style=${info.url ? `background-image:url("${info.url}")` : ''}></div>
     ${text && html`<div class="screen-layer"><div ref=${ref} class=${'screen-text' + (kind === 'bible' ? ' bible' : '')} dangerouslySetInnerHTML=${{ __html: slideHtml(text) }}></div></div>`}
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
     ${text && kind === 'song' && subtitle && html`<div class="screen-tag">${subtitle}</div>`}
+    ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
     ${logo && html`<div class="screen-logo">${theme.logo ? html`<img src=${'/media/' + theme.logo} alt="" />` : html`<div class="name">${churchName}</div>`}</div>`}
     ${black && html`<div class="screen-black"></div>`}
   </div>`;
@@ -373,7 +375,7 @@ function NameOnStream({ s }) {
     setAdding(false); setName(''); setTitle('');
   };
   return html`<div class="card">
-    <div class="card-head"><b>Name on stream</b>${lt.visible && html`<span class="tag live" style="margin-left:auto">SHOWING</span>`}</div>
+    <div class="card-head"><b>Names (lower third)</b>${lt.visible && html`<span class="tag live" style="margin-left:auto">SHOWING</span>`}</div>
     <div class="pills">
       ${presets.map((p, i) => html`<button key=${i} class=${'pill' + (isOn(p) ? ' on' : '')} title=${p.title} onClick=${() => tap(p)}>${p.name}${isOn(p) ? ' ✓' : ''}</button>`)}
       ${custom && html`<button class="pill on" onClick=${() => api('/api/lower-third', { visible: false }).catch(fail)}>${lt.name} ✓</button>`}
@@ -384,7 +386,8 @@ function NameOnStream({ s }) {
       <input class="input" placeholder="Title, e.g. Senior Pastor" value=${title} onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && showNew(false)} />
       <div class="row"><button class="btn primary grow" disabled=${!name.trim()} onClick=${() => showNew(false)}>Show now</button><button class="btn" disabled=${!name.trim()} onClick=${() => showNew(true)}>Show & save</button></div>
     </div>`}
-    <div class="hint">Tap to show on the stream, tap again to hide.</div>
+    <label class="switch" style="min-height:40px;margin-top:6px"><input type="checkbox" checked=${!!s.config.lowerThirdOnProjector} onChange=${(e) => api('/api/config', { lowerThirdOnProjector: e.target.checked }).catch(fail)} /><span>Also show on the projector screens</span></label>
+    <div class="hint">Tap a name to show it on the ${s.config.lowerThirdOnProjector ? 'stream and the screens' : 'stream'}; tap again to hide.</div>
   </div>`;
 }
 
@@ -400,7 +403,8 @@ function Aside({ s, onGoLive, onStop, active }) {
         <span class="note-r">${s.projectorOpen
           ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
           : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on projector</button>`}</span></div>
-      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo} />
+      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null} />
     </div>
 
     <div class="card stack">

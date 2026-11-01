@@ -51,6 +51,16 @@ function render(state) {
       (state.config.churchName && !theme.logo ? `<div class="name">${escapeHtml(state.config.churchName)}</div>` : '');
   }
 
+  // Lower third on the projector (optional; always on the stream).
+  const lt = state.lowerThird || {};
+  const ltOn = !!(state.config.lowerThirdOnProjector && lt.visible && (lt.name || lt.title) && !state.black && !state.logo);
+  if (ltOn) { $('lt').firstElementChild.textContent = lt.name || ''; $('lt').lastElementChild.textContent = lt.title || ''; }
+  $('lt').classList.toggle('hidden', !ltOn);
+  if ($('screen').classList.contains('has-lt') !== ltOn) {
+    $('screen').classList.toggle('has-lt', ltOn);
+    shownKey = null; // re-fit the words into the smaller space
+  }
+
   const slide = currentSlide(state);
   const item = state.live && state.live.item;
   const hideText = state.clear || state.logo || state.black;

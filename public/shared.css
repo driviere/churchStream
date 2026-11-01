@@ -68,3 +68,16 @@
 }
 .screen-identify small { font-size: 3.6cqh; opacity: 0.85; }
 .hidden { opacity: 0; pointer-events: none; }
+
+/* Lower third (name / title) on the projector — same look as on the live stream. */
+.screen-lt {
+  position: absolute; left: 5.5cqw; bottom: 9cqh; z-index: 2;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1.1cqh;
+  transition: opacity 350ms ease, transform 350ms ease;
+}
+.screen-lt.hidden { transform: translateY(2cqh); }
+.screen-lt .n { background: #fff; color: #111827; font-size: 5cqh; line-height: 1.2; padding: 1.4cqh 2.2cqh; box-shadow: 0 0.6cqh 2cqh rgba(0, 0, 0, .25); }
+.screen-lt .t { background: #2563eb; color: #fff; font-size: 3.4cqh; line-height: 1.2; padding: 1cqh 2cqh; }
+.screen-lt .t:empty, .screen-lt .n:empty { display: none; }
+/* Keep lyrics clear of the name while it shows. */
+.screen.has-lt .screen-layer { padding-bottom: 32cqh; }
