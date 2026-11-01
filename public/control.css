@@ -428,3 +428,10 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .clip-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--panel-3); color: var(--muted); flex: none; }
 .plan .k.media { color: #be185d; }
 [data-theme="dark"] .plan .k.media { color: #f9a8d4; }
+
+/* sunset reminder in the top bar */
+.status.sun { color: var(--muted); }
+.status.sun svg { width: 18px; height: 18px; color: #d97706; }
+.status.sun.sabbath { background: #fef3c7; color: #92400e; border-color: transparent; }
+[data-theme="dark"] .status.sun.sabbath { background: rgba(245, 158, 11, .16); color: #fcd34d; }
+@media (max-width: 720px) { .status.sun .extra-sun { display: none; } }

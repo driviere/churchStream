@@ -159,3 +159,19 @@ test('zip reader handles stored and deflated entries', () => {
   assert.equal(entries.length, 1);
   assert.equal(entries[0].read().toString(), data.toString());
 });
+
+test('sunset and Sabbath times', () => {
+  const { sunset, sabbathInfo, fillTokens } = require('../lib/sun');
+  // Washington, DC: compare with the UTC sunset times (8:37 pm EDT = 00:37 UTC next day, 4:49 pm EST = 21:49 UTC).
+  const june = new Date(sunset(new Date(Date.UTC(2026, 5, 21, 16)), 38.9072, -77.0369));
+  const dec = new Date(sunset(new Date(Date.UTC(2026, 11, 21, 17)), 38.9072, -77.0369));
+  const minutesUtc = (d) => d.getUTCHours() * 60 + d.getUTCMinutes();
+  assert.ok(Math.abs(minutesUtc(june) - (24 * 60 + 37) % 1440) <= 3, 'June sunset ' + june.toISOString());
+  assert.ok(Math.abs(minutesUtc(dec) - (21 * 60 + 49)) <= 3, 'December sunset ' + dec.toISOString());
+  assert.equal(sunset(new Date(Date.UTC(2026, 5, 21, 12)), 80, 0), null); // midnight sun
+  assert.equal(sabbathInfo(NaN, NaN), null);
+  const info = sabbathInfo(-1.2921, 36.8219, new Date(2026, 10, 4, 10)); // a Wednesday
+  assert.ok(info.tokens['sabbath-begins'].length > 4 && !info.isSabbath);
+  assert.match(fillTokens('Ends at {sabbath-ends}', info), /^Ends at .+\d/);
+  assert.match(fillTokens('{sunset}', null), /Settings/);
+});

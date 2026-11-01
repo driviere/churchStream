@@ -41,6 +41,10 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **Videos (Mission Spotlight, special music) and background music** play on the screens and *into the live stream* without interrupting it. Background music steps aside automatically while a video plays.
 - **Scrolling ticker** along the bottom of the stream, and optionally the screens too.
 - **Service templates:** save your usual order of service once, then start each Sabbath from it.
+- **Sunset and Sabbath times** for your church's location, worked out on the computer with no internet needed.
+  - A reminder in the top bar, e.g. *Sabbath begins 6:12 pm*.
+  - A ready-made **Sunset times** slide.
+  - Placeholders you can use in any slide or the ticker: `{sunset}`, `{sabbath-begins}`, `{sabbath-ends}` and `{next-sabbath-begins}`.
 - **Broadcast title** filled in from a pattern (`{church} · Sabbath Service · {date} · {sermon}`), ready to copy into YouTube and Facebook.
 
 ### 🙌 Made for volunteers
@@ -62,7 +66,7 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
    - The first time, Windows SmartScreen may say *“Windows protected your PC”*. Click **More info → Run anyway**. The app isn't code-signed.
    - If Windows Firewall asks, allow **Private networks** so a tablet can connect.
 4. Your browser opens the **setup wizard**:
-   1. Church name
+   1. Church name (and its location, for sunset times)
    2. Camera and microphone, with a live preview and sound meter
    3. Projector screen
    4. YouTube and Facebook stream keys

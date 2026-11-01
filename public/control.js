@@ -1,5 +1,7 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts } from '/shared.js';
+import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath } from '/shared.js';
+
+let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
 // ---------------------------------------------------------------------------------------
 // tiny helpers
@@ -57,6 +59,7 @@ const icons = {
   back: () => I(html`<path d="M19 12H5M12 19l-7-7 7-7"/>`),
   image: () => I(html`<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>`),
   play: () => I(html`<path d="M7 4v16l13-8z" fill="currentColor"/>`),
+  sun: () => I(html`<path d="M17 18a5 5 0 0 0-10 0M12 9V2M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/>`),
   stop: () => I(html`<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>`),
   film: () => I(html`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/>`),
 };
@@ -67,6 +70,8 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const ref = useRef();
   const scale = theme.textScale || 1;
   const isCount = !!(countdown && !black && !logo);
+  if (slide && slide.text && slide.text.includes('{')) slide = { ...slide, text: fillSabbath(slide.text, SAB) };
+  if (countdown && /\{/.test((countdown.message || '') + (countdown.endText || ''))) countdown = { ...countdown, message: fillSabbath(countdown.message, SAB), endText: fillSabbath(countdown.endText, SAB) };
   const text = !black && !clear && !logo && slide && !isCount && !slide.image && kind !== 'media' ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
@@ -308,7 +313,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onTemplates }) {
+function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onTemplates }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -366,6 +371,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
           ['Text or announcements', 'Words you type; can change by themselves', onNewText],
           ['Sermon slides', 'From a PDF or pictures', onNewSlides],
           ['Countdown', 'Before the service, with announcements', onNewCountdown],
+          ['Sunset times', 'When this Sabbath ends and the next begins', onNewSunset],
           ...(onNewMedia ? [['Video or music', 'Mission Spotlight, special music, background music', onNewMedia]] : []),
         ]} />
       </li>
@@ -633,10 +639,10 @@ function SongEditor({ song, onClose, onSaved }) {
 
 const AUTO_CHOICES = [[0, 'Off — I press Next'], [5, 'Every 5 seconds'], [8, 'Every 8 seconds'], [12, 'Every 12 seconds'], [20, 'Every 20 seconds']];
 
-function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
+function TextEditor({ onClose, onAdd, onShow, initial, onSave, preset }) {
   const editing = !!(initial && onSave);
-  const [title, setTitle] = useState(editing ? initial.title : '');
-  const [text, setText] = useState(editing ? sectionsToText(initial.slides) : '');
+  const [title, setTitle] = useState(editing ? initial.title : (preset ? preset.title : ''));
+  const [text, setText] = useState(editing ? sectionsToText(initial.slides) : (preset ? preset.text : ''));
   const [auto, setAuto] = useState((initial && initial.autoAdvance) || 0);
   const [busy, setBusy] = useState(false);
   const slides = useMemo(() => parseSections(text), [text]);
@@ -651,7 +657,8 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave }) {
     <div class="field"><label class="label">Name (shown in the order of service)</label><input class="input" value=${title} placeholder="e.g. Announcements" onInput=${(e) => setTitle(e.target.value)} /></div>
     <label class="label">Text</label>
     <textarea class="textarea" style="min-height:220px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'} autofocus=${editing}></textarea>
-    <div class="hint">${slides.length} slide${slides.length === 1 ? '' : 's'} · a blank line starts a new slide</div>
+    <div class="hint">${slides.length} slide${slides.length === 1 ? '' : 's'} · a blank line starts a new slide · sunset times: <kbd>{sunset}</kbd> <kbd>{sabbath-begins}</kbd> <kbd>{sabbath-ends}</kbd> <kbd>{next-sabbath-begins}</kbd></div>
+    ${/\{(sunset|sabbath-|next-sabbath)/.test(text) && html`<div class="note" style="margin-top:8px;white-space:pre-line">${!SAB ? 'Set your church’s location in Settings → General so ChurchStream can work out sunset times.' : fillSabbath(slides.map((x) => x.text).join('\n\n'), SAB)}</div>`}
     <div class="field" style="margin-top:14px"><label class="label">Change slides automatically (loops — good for announcements)</label>
       <select class="select" value=${auto} onChange=${(e) => setAuto(+e.target.value)}>${AUTO_CHOICES.map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select></div>
   </${Modal}>`;
@@ -1129,6 +1136,7 @@ function ControlView({ s }) {
       <div class="brand"><img src="/favicon.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
       <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
       <span class="spacer"></span>
+      ${s.sabbath && s.sabbath.label && html`<div class=${'status sun' + (s.sabbath.isSabbath ? ' sabbath' : '')} title="Sunset times for your church's location (Settings → General)">${icons.sun()}<span class="extra-sun">${s.sabbath.label}</span></div>`}
       <${StreamStatus} s=${s} />
       <button class="btn icon round" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
@@ -1147,7 +1155,8 @@ function ControlView({ s }) {
     </div>
     <div class="bottom">
       <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
-        onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })} onTemplates=${() => setDialog({ type: 'templates' })} />
+        onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
+        onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })} />
       <div class="controls">
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
@@ -1159,7 +1168,7 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
-    ${dialog && dialog.type === 'text' && html`<${TextEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
+    ${dialog && dialog.type === 'text' && html`<${TextEditor} preset=${dialog.preset} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveText(dialog.item.key, title, slides, auto) : null} />`}
     ${dialog && dialog.type === 'countdown' && html`<${CountdownEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
@@ -1192,9 +1201,38 @@ function SectionGeneral({ s }) {
   return html`<div>
     <div class="field"><label class="label">Church name</label><input class="input" value=${name} placeholder="e.g. Grace Community Church" onInput=${(e) => setName(e.target.value)} onBlur=${() => save({ churchName: name })} />
       <div class="hint">Shown on the projector when you press “Logo” (if no logo image is set).</div></div>
+    <${LocationField} s=${s} />
     <div class="field"><label class="label">Control panel password (optional)</label><input class="input" type="password" value=${pw} placeholder="No password" onInput=${(e) => setPw(e.target.value)} onBlur=${() => save({ controlPassword: pw })} />
       <div class="hint">Set one if your Wi-Fi is open to visitors. The projector and stage screens never need it.</div></div>
   </div>`;
+}
+
+function LocationField({ s }) {
+  const loc = s.config.location || {};
+  const [lat, setLat] = useState(loc.lat ?? '');
+  const [lng, setLng] = useState(loc.lng ?? '');
+  const saveLoc = (a = lat, b = lng) => {
+    const la = parseFloat(a); const lo = parseFloat(b);
+    if (a === '' && b === '') return save({ location: { lat: null, lng: null } });
+    if (!(la >= -90 && la <= 90 && lo >= -180 && lo <= 180)) return fail(new Error('Latitude must be between -90 and 90, longitude between -180 and 180.'));
+    save({ location: { lat: la, lng: lo } }, 'Location saved');
+  };
+  const paste = (v) => { // accept "10.6596, -61.5019" pasted from Google Maps into either box
+    const m = String(v).match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+    if (m) { setLat(m[1]); setLng(m[2]); saveLoc(m[1], m[2]); return true; }
+    return false;
+  };
+  const locate = () => navigator.geolocation
+    ? navigator.geolocation.getCurrentPosition((p) => { const a = p.coords.latitude.toFixed(4); const b = p.coords.longitude.toFixed(4); setLat(a); setLng(b); saveLoc(a, b); },
+      () => fail(new Error('This computer could not find its location. Paste the coordinates from Google Maps instead.')), { timeout: 15000 })
+    : fail(new Error('Location is not available here.'));
+  return html`<div class="field"><label class="label">Church location (for sunset and Sabbath times)</label>
+    <div class="key-row">
+      <input class="input" inputmode="decimal" placeholder="Latitude, e.g. 10.6596" value=${lat} onInput=${(e) => { if (!paste(e.target.value)) setLat(e.target.value); }} onBlur=${() => saveLoc()} />
+      <input class="input" inputmode="decimal" placeholder="Longitude, e.g. -61.5019" value=${lng} onInput=${(e) => { if (!paste(e.target.value)) setLng(e.target.value); }} onBlur=${() => saveLoc()} />
+      <button class="btn" onClick=${locate}>Use this computer’s location</button>
+    </div>
+    <div class="hint">In Google Maps, right-click your church and click the numbers at the top to copy them, then paste here. ${s.sabbath ? html`<b>${s.sabbath.label}</b> · this Sabbath: ${s.sabbath.tokens['sabbath-begins']} → ${s.sabbath.tokens['sabbath-ends']}` : ''}</div></div>`;
 }
 
 function SectionCamera({ s, autoPreview }) {
@@ -1725,7 +1763,7 @@ function Root() {
     get('/api/state').then((st) => setS((cur) => cur ? { ...cur, lan: st.lan } : st)).catch(() => {});
     const stop = connect((st) => {
       setOnline(!!st);
-      if (st) { st.receivedAt = Date.now(); setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
+      if (st) { SAB = st.sabbath; st.receivedAt = Date.now(); setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
     }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })));
     const pop = () => setRoute(location.pathname);
     addEventListener('popstate', pop);

@@ -104,3 +104,9 @@ export function countdownParts(cd, now = Date.now()) {
   const sec = String(total % 60).padStart(2, '0');
   return { done: false, time: h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`, message: cd.message || '' };
 }
+
+// {sunset}, {sabbath-begins}, {sabbath-ends}, {next-sabbath-begins} → real times (from the server).
+export function fillSabbath(text, sab) {
+  return String(text ?? '').replace(/\{(sunset|sabbath-begins|sabbath-ends|next-sabbath-begins)\}/g, (m, k) =>
+    (sab && sab.tokens && sab.tokens[k]) || '[set your location in Settings → General]');
+}
