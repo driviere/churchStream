@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -27,6 +31,7 @@ jobs:
   windows:
     needs: test
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +45,8 @@ jobs:
 
       - name: Diagnostic - stream pacing with and without the media relay
         shell: pwsh
+        timeout-minutes: 5
+        continue-on-error: true
         run: |
           $exe = Resolve-Path dist\ChurchStream\ChurchStream.exe
           foreach ($mode in @('no-relay', 'relay')) {
@@ -48,19 +55,20 @@ jobs:
             if ($mode -eq 'no-relay') { $env:CHURCHSTREAM_NO_MEDIA = "1" } else { Remove-Item Env:CHURCHSTREAM_NO_MEDIA -ErrorAction SilentlyContinue }
             $p = Start-Process -FilePath $exe -ArgumentList '--port','8124' -PassThru -WorkingDirectory (Split-Path $exe)
             Start-Sleep -Seconds 5
+            Write-Host "[$mode] started pid $($p.Id)"
             try {
-              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none"}}' http://localhost:8124/api/config | Out-Null
-              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8124/api/stream/start | Out-Null
+              Invoke-RestMethod -TimeoutSec 15 -Method Post -ContentType 'application/json' -Body '{"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none"}}' http://localhost:8124/api/config | Out-Null
+              Invoke-RestMethod -TimeoutSec 15 -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8124/api/stream/start | Out-Null
+              Write-Host "[$mode] stream started"
               Start-Sleep -Seconds 15
-              $st = Invoke-RestMethod http://localhost:8124/api/state
-              $lags = (Invoke-RestMethod http://localhost:8124/api/logs) | Where-Object { $_ -match 'Resumed reading|lag' }
+              $st = Invoke-RestMethod -TimeoutSec 15 http://localhost:8124/api/state
+              $lags = (Invoke-RestMethod -TimeoutSec 15 http://localhost:8124/api/logs) | Where-Object { $_ -match 'Resumed reading|lag' }
               Write-Host "[$mode] state=$($st.stream.state) speed=$($st.stream.speed)x lagLines=$(@($lags).Count)"
               $lags | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
-              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8124/api/stream/stop | Out-Null
+              Invoke-RestMethod -TimeoutSec 15 -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8124/api/stream/stop | Out-Null
               Start-Sleep -Seconds 2
               $rec = Get-ChildItem "$env:CHURCHSTREAM_DATA\recordings\*.mkv" | Select-Object -First 1
-              $dur = & (Resolve-Path dist\ChurchStream\ffmpeg\ffmpeg.exe) -hide_banner -i $rec.FullName 2>&1 | Select-String 'Duration'
-              Write-Host "[$mode] recording: $($rec.Length) bytes $dur"
+              Write-Host "[$mode] recording: $($rec.Length) bytes"
             } finally {
               Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
               Get-Process ffmpeg -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
