@@ -72,7 +72,8 @@ jobs:
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8123/api/stream/start | Out-Null
             Start-Sleep -Seconds 8
             $st = Invoke-RestMethod http://localhost:8123/api/state
-            Write-Host "Stream state: $($st.stream.state) encoder: $($st.stream.encoder) fps: $($st.stream.fps) problem: $($st.stream.problem)"
+            Write-Host "Stream state: $($st.stream.state) encoder: $($st.stream.encoder) speed: $($st.stream.speed)x problem: $($st.stream.problem)"
+            if ($st.stream.problem -match 'struggling') { throw "False 'struggling' warning on the CI machine" }
             if ($st.stream.state -ne 'running') { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 60 | ForEach-Object { Write-Host "  log: $_" } }
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
             Start-Sleep -Seconds 2
@@ -87,29 +88,6 @@ jobs:
           }
           Start-Sleep -Seconds 2
           Remove-Item -Recurse -Force dist\ChurchStream\ChurchStream-data -ErrorAction SilentlyContinue
-
-      - name: Measure FFmpeg speed with the slide-picture input (diagnostic)
-        shell: pwsh
-        run: |
-          $ff = Resolve-Path dist\ChurchStream\ffmpeg\ffmpeg.exe
-          Set-Location $env:RUNNER_TEMP
-          & $ff -hide_banner -loglevel error -f lavfi -i color=blue:s=1280x720 -frames:v 1 -y program.jpg
-          $base = @('-hide_banner','-nostats','-re','-f','lavfi','-i','testsrc2=size=1280x720:rate=30')
-          $tail = @('-c:v','libx264','-preset','veryfast','-t','10','-f','null','-')
-          $variants = @{
-            'A no slide input'          = @($base + @('-filter_complex','[0:v]format=yuv420p[v]','-map','[v]') + $tail)
-            'B -re -loop 1 (current)'    = @($base + @('-re','-thread_queue_size','4','-f','image2','-loop','1','-framerate','4','-i','program.jpg','-filter_complex','[1:v]fps=30,scale=1280:720,format=yuv420p[s];[0:v][s]overlay=x=0:y=0[v]','-map','[v]') + $tail)
-            'C -loop 1 without -re'      = @($base + @('-thread_queue_size','4','-f','image2','-loop','1','-framerate','4','-i','program.jpg','-filter_complex','[1:v]fps=30,scale=1280:720,format=yuv420p[s];[0:v][s]overlay=x=0:y=0[v]','-map','[v]') + $tail)
-            'D -re -stream_loop -1'      = @($base + @('-re','-thread_queue_size','4','-stream_loop','-1','-f','image2','-framerate','4','-i','program.jpg','-filter_complex','[1:v]fps=30,scale=1280:720,format=yuv420p[s];[0:v][s]overlay=x=0:y=0[v]','-map','[v]') + $tail)
-            'E -readrate 1 -loop 1'      = @($base + @('-readrate','1','-thread_queue_size','4','-f','image2','-loop','1','-framerate','4','-i','program.jpg','-filter_complex','[1:v]fps=30,scale=1280:720,format=yuv420p[s];[0:v][s]overlay=x=0:y=0[v]','-map','[v]') + $tail)
-          }
-          foreach ($k in ($variants.Keys | Sort-Object)) {
-            $sw = [Diagnostics.Stopwatch]::StartNew()
-            $out = & $ff @($variants[$k] + @('-stats')) 2>&1 | Out-String
-            $sw.Stop()
-            $last = ($out -split "`r|`n" | Where-Object { $_ -match 'speed=' } | Select-Object -Last 1)
-            Write-Host ("{0,-28} wall={1,5:N1}s  {2}" -f $k, $sw.Elapsed.TotalSeconds, $last)
-          }
 
       - uses: actions/upload-artifact@v4
         with:
