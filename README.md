@@ -44,6 +44,20 @@ Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the 
 **From a tablet or phone:** open `http://<computer-ip>:8080/control` on the church Wi-Fi. The address is shown in the console window and in Settings → Projector.
 **Stage screen for musicians:** `http://<computer-ip>:8080/stage` shows the current and next slide and a clock.
 
+## What the stream shows
+
+In the **Live stream** card, choose **Stream shows**:
+
+| Choice | Viewers see |
+|---|---|
+| **Camera** | The camera full screen. Lyrics/verses can run along the bottom (switch below the buttons). |
+| **Slides** | Exactly what is on the projector. |
+| **Slides + camera** | The projector picture with the camera in a small window, bottom-right. |
+| **Auto** | Slides + camera while words are on screen; just the camera when you press Clear, Black or Logo. |
+
+Switching is instant and never interrupts the stream. Names (lower thirds) show in every view.
+The projector picture is drawn by the control panel, so keep the control panel open (on this computer or a tablet) while streaming slides.
+
 ## Backgrounds
 
 - **Built-in library:** 15 projection-friendly backgrounds, including Midnight, Deep ocean, Sunrise, Mountains at dusk, Starry night, Golden lights, Light from above, Cross at dawn and Soft cream (which uses dark text). All are dark enough for white lyrics to stay readable on any projector. They're drawn in code (`scripts/make-backgrounds.js`), so they're tiny and sharp at any resolution.

@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('child_process');
-const { buildFfmpegArgs, destinationsFor, teeEscape, redact, overlayGeometry, QUALITY } = require('../lib/stream');
+const { buildFfmpegArgs, destinationsFor, teeEscape, redact, overlayGeometry, QUALITY, pipGeometry, scenePositions } = require('../lib/stream');
 const config = require('../lib/config');
 
 const cfg = (patch) => config.merge(config.DEFAULTS, patch);
@@ -81,6 +81,7 @@ test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync
   fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
   for (const f of ['lt_name.txt', 'lt_title.txt']) fs.writeFileSync(path.join(dir, f), '');
   fs.writeFileSync(path.join(dir, 'caption.txt'), 'Amazing grace');
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
   const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
   // Limit both outputs to one second.
   const tee = args.indexOf(teeArg(args));
@@ -89,4 +90,20 @@ test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync
   const r = spawnSync('ffmpeg', args, { cwd: dir, encoding: 'utf8', timeout: 30000 });
   assert.equal(r.status, 0, r.stderr.split('\n').filter((l) => /error/i.test(l)).join('\n'));
   assert.ok(fs.statSync(path.join(dir, 'out.mkv')).size > 1000);
+});
+
+test('scenes: camera, slides and slides with a camera inset', () => {
+  const q = QUALITY.good;
+  const off = q.width + 8;
+  assert.deepEqual(scenePositions('camera', q), { slidesX: off, pipX: off });
+  assert.deepEqual(scenePositions('slides', q), { slidesX: 0, pipX: off });
+  const pip = pipGeometry(q);
+  assert.deepEqual(scenePositions('pip', q), { slidesX: 0, pipX: pip.x });
+  assert.ok(pip.x > q.width / 2 && pip.y > q.height / 2, 'inset sits bottom-right');
+  assert.ok(pip.x + pip.w + 2 * pip.border <= q.width && pip.y + pip.h + 2 * pip.border <= q.height, 'inset stays inside the frame');
+  const args = buildFfmpegArgs({ cfg: cfg({ outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', scene: 'pip' });
+  const fc = args[args.indexOf('-filter_complex') + 1];
+  assert.match(fc, /overlay@slides=x=0:/);
+  assert.match(fc, new RegExp(`overlay@pip=x=${pip.x}:`));
+  assert.ok(args.includes('program.jpg'));
 });

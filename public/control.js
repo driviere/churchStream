@@ -415,7 +415,22 @@ function Aside({ s, onGoLive, onStop, active }) {
             ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
             : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
-      <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Lyrics & verses on the stream</span></label>
+      <div>
+        <div class="seg-label">Stream shows</div>
+        <div class="seg" role="radiogroup" aria-label="What the stream shows">
+          ${[['camera', 'Camera'], ['slides', 'Slides'], ['pip', 'Slides + camera'], ['auto', 'Auto']].map(([id, label]) => html`
+            <button role="radio" aria-checked=${(cfg.streamScene || 'camera') === id} class=${(cfg.streamScene || 'camera') === id ? 'on' : ''}
+              onClick=${() => api('/api/config', { streamScene: id }).catch(fail)}>${label}</button>`)}
+        </div>
+        <div class="hint" style="margin-top:6px">${{
+          camera: 'The camera, full screen.',
+          slides: 'Exactly what is on the projector.',
+          pip: 'The projector picture with the camera in a small window.',
+          auto: 'Slides + camera while words are on screen; just the camera when the screens are clear.',
+        }[cfg.streamScene || 'camera']}</div>
+      </div>
+      ${(cfg.streamScene || 'camera') !== 'slides' && (cfg.streamScene || 'camera') !== 'pip' && html`
+        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
         : st.mode === 'live'
@@ -1117,6 +1132,137 @@ function SetupView({ s }) {
 }
 
 // ---------------------------------------------------------------------------------------
+// The projector picture for the live stream. The control panel draws what the projector
+// shows (background + words, black, logo) onto a canvas and sends it to ChurchStream, which
+// mixes it into the stream for the "Slides" and "Slides + camera" views.
+const imgCache = new Map();
+const loadImg = (url) => {
+  if (!imgCache.has(url)) {
+    imgCache.set(url, new Promise((resolve) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = url; }));
+  }
+  return imgCache.get(url);
+};
+
+function programKey(s) {
+  const live = s.live;
+  const slide = live && live.item.slides[live.index];
+  const t = s.config.theme || {};
+  return JSON.stringify([effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
+    s.black, s.clear, s.logo, t.logo, s.config.churchName, t.textScale || 1]);
+}
+
+function wrapLines(ctx, text, maxW) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const w of para.split(/\s+/).filter(Boolean)) {
+      const test = line ? line + ' ' + w : w;
+      if (line && ctx.measureText(test).width > maxW) { out.push(line); line = w; } else line = test;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+async function renderProgram(s) {
+  const W = 1280;
+  const H = 720;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const live = s.live;
+  const slide = live && live.item.slides[live.index];
+  const t = s.config.theme || {};
+  const FONT = '"Inter ChurchStream", "Segoe UI", sans-serif';
+  try { await document.fonts.load(`600 40px ${FONT}`); } catch { /* fall back to system font */ }
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (s.black) return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88));
+
+  const bg = bgInfo(effectiveBg(slide, live && live.item, t));
+  const img = bg.url && await loadImg(bg.url);
+  if (img) {
+    const k = Math.max(W / img.naturalWidth, H / img.naturalHeight) || 1;
+    const iw = img.naturalWidth * k;
+    const ih = img.naturalHeight * k;
+    ctx.drawImage(img, (W - iw) / 2, (H - ih) / 2, iw, ih);
+    if (bg.photo) { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H); }
+  } else {
+    const g = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, H * 1.15);
+    g.addColorStop(0, '#1b2440'); g.addColorStop(0.55, '#0b0f1a'); g.addColorStop(1, '#05070c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const ink = bg.light ? '#1a1d23' : '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (!bg.light) { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = H * 0.012; ctx.shadowOffsetY = H * 0.0025; }
+
+  if (s.logo) {
+    const logo = t.logo && await loadImg('/media/' + encodeURIComponent(t.logo));
+    if (logo) {
+      const k = Math.min((W * 0.5) / logo.naturalWidth, (H * 0.5) / logo.naturalHeight);
+      ctx.drawImage(logo, (W - logo.naturalWidth * k) / 2, (H - logo.naturalHeight * k) / 2, logo.naturalWidth * k, logo.naturalHeight * k);
+    } else if (s.config.churchName) {
+      ctx.fillStyle = ink;
+      ctx.font = `600 ${H * 0.07}px ${FONT}`;
+      ctx.fillText(s.config.churchName, W / 2, H / 2);
+    }
+  } else if (slide && !s.clear) {
+    // Same fitting rules as the projector: keep song lines whole if still readable, else wrap.
+    const box = { x: W * 0.06, y: H * 0.06, w: W * 0.88, h: H * 0.83 };
+    const max = H * 0.085 * (t.textScale || 1);
+    const min = H * 0.032;
+    const layout = (size, wrap) => {
+      ctx.font = `600 ${size}px ${FONT}`;
+      const lines = wrap ? wrapLines(ctx, slide.text, box.w) : String(slide.text).split('\n');
+      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      return { lines, fits: widest <= box.w && lines.length * size * 1.28 <= box.h };
+    };
+    const search = (wrap) => {
+      let lo = min; let hi = max;
+      if (layout(hi, wrap).fits) return hi;
+      for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (layout(mid, wrap).fits) lo = mid; else hi = mid; }
+      return lo;
+    };
+    let wrap = live.item.kind === 'bible';
+    let size = search(wrap);
+    if (!wrap && size < Math.min(H * 0.054, max * 0.65)) { wrap = true; size = search(true); }
+    const { lines } = layout(size, wrap);
+    const lh = size * 1.28;
+    const top = box.y + (box.h - lines.length * lh) / 2 + lh / 2;
+    ctx.fillStyle = ink;
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, top + i * lh));
+    ctx.shadowColor = 'transparent';
+    if (slide.ref) {
+      ctx.globalAlpha = 0.78; ctx.font = `600 ${H * 0.034}px ${FONT}`;
+      ctx.fillText(slide.ref, W / 2, H - H * 0.036 - H * 0.017);
+      ctx.globalAlpha = 1;
+    } else if (live.item.kind === 'song' && live.item.subtitle) {
+      ctx.globalAlpha = 0.5; ctx.textAlign = 'right'; ctx.font = `600 ${H * 0.026}px ${FONT}`;
+      ctx.fillText(live.item.subtitle, W - W * 0.03, H - H * 0.036 - H * 0.013);
+      ctx.globalAlpha = 1;
+    }
+  }
+  return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88));
+}
+
+let lastProgramKey = null;
+let programTimer = null;
+function updateProgram(s) {
+  const key = programKey(s);
+  if (key === lastProgramKey) return;
+  clearTimeout(programTimer);
+  programTimer = setTimeout(async () => {
+    lastProgramKey = key;
+    try {
+      const blob = await renderProgram(s);
+      await fetch('/api/program-image?key=' + encodeURIComponent(key.length > 1500 ? String(key.length) + key.slice(0, 1500) : key), { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+    } catch { lastProgramKey = null; }
+  }, 60);
+}
+
+// ---------------------------------------------------------------------------------------
 function Root() {
   const [s, setS] = useState(null);
   const [online, setOnline] = useState(true);
@@ -1125,7 +1271,7 @@ function Root() {
     get('/api/state').then((st) => setS((cur) => cur ? { ...cur, lan: st.lan } : st)).catch(() => {});
     const stop = connect((st) => {
       setOnline(!!st);
-      if (st) setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan }));
+      if (st) { setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
     }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })));
     const pop = () => setRoute(location.pathname);
     addEventListener('popstate', pop);

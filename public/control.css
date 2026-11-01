@@ -389,3 +389,10 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
   .bg-dialog { grid-template-columns: 1fr; }
   .bg-preview { position: static; order: -1; }
 }
+
+/* ---------- segmented control (stream scene) ---------- */
+.seg-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.seg button { min-height: 44px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
+.seg button:hover { background: var(--panel-3); }
+.seg button.on { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-text); }
