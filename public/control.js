@@ -50,6 +50,7 @@ const icons = {
   grip: () => I(html`<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>`),
   left: () => I(html`<path d="m15 18-6-6 6-6"/>`),
   right: () => I(html`<path d="m9 18 6-6-6-6"/>`),
+  phone: () => I(html`<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>`),
   gear: () => I(html`<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`),
   edit: () => I(html`<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>`),
   radio: () => I(html`<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>`),
@@ -1252,6 +1253,7 @@ function ControlView({ s }) {
       <span class="spacer"></span>
       ${s.sabbath && s.sabbath.label && html`<div class=${'status sun' + (s.sabbath.isSabbath ? ' sabbath' : '')} title="Sunset times for your church's location (Settings → General)">${icons.sun()}<span class="extra-sun">${s.sabbath.label}</span></div>`}
       <${StreamStatus} s=${s} />
+      ${/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && html`<button class="btn icon round" title="Connect a phone or tablet" aria-label="Connect a phone or tablet" onClick=${() => navigate('/settings#devices')}>${icons.phone()}</button>`}
       <button class="btn icon round" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
     ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
@@ -1429,7 +1431,7 @@ function SectionProjector({ s }) {
       ${s.projectorOpen && html`<button class="btn ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close it</button>`}
     </div>
     <label class="switch"><input type="checkbox" checked=${cur.autoLaunch} onChange=${(e) => save({ projector: { autoLaunch: e.target.checked } })} /><span>Open the projector automatically when ChurchStream starts</span></label>
-    ${lan.length > 0 && html`<div class="note" style="margin-top:16px"><b>Stage screen for musicians:</b> open <b>${lan[0]}/stage</b> on any phone or tablet on the church Wi-Fi to see the current and next slide.</div>`}
+    ${lan.length > 0 && html`<div class="note" style="margin-top:16px"><b>Stage screen for musicians:</b> open <b>${lan[0]}/stage</b> on any phone or tablet on the church Wi-Fi to see the current and next slide (QR codes in Phones & tablets).</div>`}
   </div>`;
 }
 
@@ -1624,8 +1626,68 @@ function SectionAdvanced({ s }) {
   </div>`;
 }
 
+// Phones & tablets: which address to type (or scan) on other devices on the church Wi-Fi.
+function QrCode({ text, size = 168 }) {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let off = false;
+    import('/vendor/qrcode.js').then(({ default: qrcode }) => {
+      const q = qrcode(0, 'M');
+      q.addData(text);
+      q.make();
+      if (!off) setSvg(q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }));
+    }).catch(() => {});
+    return () => { off = true; };
+  }, [text]);
+  return html`<div class="qr" style=${`width:${size}px;height:${size}px`} dangerouslySetInnerHTML=${{ __html: svg }}></div>`;
+}
+
+function SectionDevices({ s }) {
+  const [info, setInfo] = useState(null);
+  const load = () => get('/api/state').then((d) => setInfo(d.lanInfo || [])).catch(fail);
+  useEffect(() => { load(); }, []);
+  const [pick, setPick] = useState(0);
+  const list = info || [];
+  const best = list[pick] || list[0];
+  const copy = (t) => (navigator.clipboard ? navigator.clipboard.writeText(t).then(() => toast('Copied')) : Promise.reject(new Error('Copy is not available here'))).catch(fail);
+  const pages = best ? [
+    ['Control panel', best.url + '/control', 'Run the service from a phone or tablet (same as this screen).'],
+    ['Stage screen', best.url + '/stage', 'For musicians and the speaker: current and next slide, and a clock.'],
+    ['Projector', best.url + '/display', 'Only if the projector is connected to a different computer.'],
+  ] : [];
+  return html`<div>
+    <p class="lead" style="margin-top:0">Phones, tablets and other computers on the <b>same Wi-Fi or network</b> as this computer can open ChurchStream in their web browser. Nothing needs installing.</p>
+    ${!info ? html`<div class="muted">Looking up this computer’s address…</div>`
+      : !list.length ? html`<div class="note">This computer isn’t connected to a network right now. Connect it to the church Wi-Fi (or a cable), then press <b>Check again</b>.</div>`
+      : html`
+      <div class="field"><label class="label">This computer’s address</label>
+        <div class="row wrap" style="align-items:center;gap:12px">
+          <span class="lan-addr">${best.url.replace('http://', '')}</span>
+          <button class="btn small" onClick=${() => copy(best.url)}>Copy</button>
+          <button class="btn small ghost" onClick=${load}>Check again</button>
+        </div>
+        ${list.length > 1 && html`<div class="hint">This computer has ${list.length} network connections. If the address above doesn’t work, try:
+          ${list.map((x, i) => i !== pick && html` <button class="btn small ghost" onClick=${() => setPick(i)}>${x.ip} <span class="muted">(${x.name})</span></button>`)}</div>`}
+      </div>
+      <div class="lan-pages">${pages.map(([name, url, hint]) => html`<div class="lan-page" key=${name}>
+        <${QrCode} text=${url} />
+        <div class="grow"><b>${name}</b><div class="lan-url">${url}</div><div class="hint">${hint}</div>
+          <button class="btn small" style="margin-top:6px" onClick=${() => copy(url)}>Copy link</button></div>
+      </div>`)}</div>
+      <div class="note" style="margin-top:16px">
+        <b>How to connect:</b> scan a code with the phone’s camera, or type the address into its browser (Chrome, Safari, Edge). The phone must be on the <b>same Wi-Fi</b> as this computer, not on mobile data.
+        <ul style="margin:8px 0 0;padding-left:20px;line-height:1.6">
+          <li>Not loading? Windows may be blocking it: the first time ChurchStream started, Windows asked to allow it on networks. Choose <b>Allow</b> (or set the church Wi-Fi to a <b>Private</b> network in Windows settings).</li>
+          <li>The address can change when the computer reconnects. To keep it the same every week, ask whoever manages the router to give this computer a fixed address (a “DHCP reservation”).</li>
+          <li>${s.config.controlPassword ? 'The control panel asks for the password set in General. The stage screen and projector never do.' : 'Anyone on this Wi-Fi can open the control panel. If visitors use the same Wi-Fi, set a password in General.'}</li>
+        </ul>
+      </div>`}
+  </div>`;
+}
+
 const SECTIONS = [
   ['general', 'General', SectionGeneral],
+  ['devices', 'Phones & tablets', SectionDevices],
   ['camera', 'Camera & sound', SectionCamera],
   ['projector', 'Projector', SectionProjector],
   ['streaming', 'YouTube & Facebook', SectionStreaming],
@@ -1689,7 +1751,7 @@ function SetupView({ s }) {
           <li><b>Go live</b> when you're ready. ChurchStream checks the camera and sound first.</li>
           <li><b>Black</b> (<kbd>B</kbd>) blanks the screens; <b>Clear</b> (<kbd>C</kbd>) hides the words.</li>
         </ol>
-        ${s.lan && s.lan.length > 0 && html`<div class="note">To run it from a tablet, open <b>${s.lan[0]}/control</b> on the church Wi-Fi.</div>`}
+        ${s.lan && s.lan.length > 0 && html`<div class="note">To run it from a tablet, open <b>${s.lan[0]}/control</b> on the church Wi-Fi. (The address and QR codes are always in Settings → Phones & tablets.)</div>`}
       </div>`}
       <div class="setup-actions">
         ${i > 0 && html`<button class="btn big" onClick=${() => setI(i - 1)}>Back</button>`}

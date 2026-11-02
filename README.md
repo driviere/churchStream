@@ -88,7 +88,11 @@ Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the 
 **Keyboard:** `→`/`Space`/`PageDown` next · `←`/`PageUp` back · `B` black · `C` clear · `L` lower third on/off · `/` search.
 
 **From a tablet or phone:** open `http://<computer-ip>:8080/control` on the church Wi-Fi. The address is shown in the console window and in Settings → Projector.
-**Stage screen for musicians:** `http://<computer-ip>:8080/stage` shows the current and next slide and a clock.
+**Phones and tablets:** open **Settings → Phones & tablets**, or tap the phone button next to the gear on the main computer. It shows:
+- this computer's address;
+- QR codes for the control panel, the stage screen and the projector.
+
+Scan one with a phone on the **same Wi-Fi**. The stage screen (`/stage`) shows musicians the current and next slide and a clock. If a phone can't connect, allow ChurchStream through the Windows firewall, or set the Wi-Fi to a *Private* network.
 
 ## Videos, music and slides
 
@@ -237,6 +241,7 @@ Issues and pull requests are welcome, especially from churches using ChurchStrea
 
 - Hymn data: [joshpetit/sda-hymnal](https://github.com/joshpetit/sda-hymnal) (*Seventh-day Adventist Hymnal*) and the [Advent Hymnals](https://github.com/adventhymnals) project (*Church Hymnal*, 1941).
 - Bible texts: [scrollmapper/bible_databases](https://github.com/scrollmapper/bible_databases).
+- [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) by Kazuhiko Arase (MIT) for the QR codes.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), downloaded on first use when you save a YouTube video.
 - [FFmpeg](https://ffmpeg.org) (Windows builds by [BtbN](https://github.com/BtbN/FFmpeg-Builds)), [Preact](https://preactjs.com), [htm](https://github.com/developit/htm) and the [Inter](https://rsms.me/inter/) typeface.
 

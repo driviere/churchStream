@@ -33,13 +33,25 @@ const OPEN = [/^\/(display|stage)$/, /^\/api\/display\/youtube$/, /^\/events$/, 
 const app = new App();
 const clients = new Set();
 
-function lanAddresses(port) {
+// Addresses other devices on the church network can use, best first: real Wi-Fi/Ethernet
+// before virtual adapters (Hyper-V, VirtualBox, VPNs) and "no network" 169.254.x addresses.
+function lanInfo(port) {
   const out = [];
-  for (const list of Object.values(os.networkInterfaces())) {
-    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push(`http://${a.address}:${port}`);
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+    for (const a of list || []) {
+      if (a.family !== 'IPv4' && a.family !== 4) continue;
+      if (a.internal) continue;
+      let score = 0;
+      if (/^169\.254\./.test(a.address)) score -= 100;
+      if (/vethernet|virtual|vmware|vbox|hyper-v|docker|wsl|tailscale|zerotier|vpn|tun|tap|loopback|bluetooth/i.test(name)) score -= 50;
+      if (/wi-?fi|wlan|wireless|ethernet|^en|^eth|^wl/i.test(name)) score += 10;
+      if (/^(192\.168|10)\./.test(a.address)) score += 5;
+      out.push({ url: `http://${a.address}:${port}`, ip: a.address, name, score });
+    }
   }
-  return out;
+  return out.sort((x, y) => y.score - x.score).map(({ score, ...r }) => r);
 }
+const lanAddresses = (port) => lanInfo(port).map((x) => x.url);
 
 function send(res, status, body, type = 'application/json') {
   const data = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
@@ -106,7 +118,7 @@ function serveAsset(res, key) {
 }
 
 const routes = {
-  'GET /api/state': () => ({ ...app.snapshot(), lan: lanAddresses(server.address().port) }),
+  'GET /api/state': () => ({ ...app.snapshot(), lan: lanAddresses(server.address().port), lanInfo: lanInfo(server.address().port) }),
   'GET /api/search': (req, url) => app.search(url.searchParams.get('q') || ''),
   'GET /api/songs': (req, url) => app.songs.search(url.searchParams.get('q') || '', { limit: 2000, defaultHymnal: app.cfg.hymnal.default }),
   'GET /api/song': (req, url) => app.songs.get(url.searchParams.get('id')) || { error: 'Song not found' },
