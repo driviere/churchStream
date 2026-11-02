@@ -84,7 +84,8 @@ test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync
   ov.setCaption('Amazing grace');
   ov.setTicker('Potluck lunch after the service today');
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
-  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
+  // With sound clean-up, mic level and lip-sync on, so the whole audio chain is checked too.
+  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, audio: { source: 'device', cleanup: 'strong', gainDb: 3, delayMs: 120 } }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
   // Limit both outputs to one second.
   const tee = args.indexOf(teeArg(args));
   args.splice(tee, 0, '-t', '1');
@@ -108,4 +109,15 @@ test('scenes: camera, slides and slides with a camera inset', () => {
   assert.match(fc, /overlay@slides=x=0:/);
   assert.match(fc, new RegExp(`overlay@pip=x=${pip.x}:`));
   assert.ok(args.includes('program.jpg'));
+});
+
+test('sound clean-up for online viewers', () => {
+  const { micFilters } = require('../lib/stream');
+  assert.deepEqual(micFilters({}), []);
+  assert.deepEqual(micFilters({ cleanup: 'off', delayMs: 0, gainDb: 0 }), []);
+  const light = micFilters({ cleanup: 'light' }).join(',');
+  assert.match(light, /highpass/); assert.match(light, /afftdn/); assert.match(light, /acompressor/); assert.match(light, /alimiter/);
+  assert.deepEqual(micFilters({ delayMs: 5000, gainDb: 40 }), ['adelay=1000|1000', 'volume=12dB']); // clamped
+  const args = buildFfmpegArgs({ cfg: cfg({ outputs: { youtube: { enabled: true, key: 'k' } }, audio: { cleanup: 'light' } }), mode: 'live' });
+  assert.match(args[args.indexOf('-filter_complex') + 1], /afftdn=.*ebur128/);
 });

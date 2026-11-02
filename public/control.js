@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts } from '/shared.js';
+import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
@@ -79,7 +79,8 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   if (countdown && /\{/.test((countdown.message || '') + (countdown.endText || ''))) countdown = { ...countdown, message: fillSabbath(countdown.message, SAB), endText: fillSabbath(countdown.endText, SAB) };
   const text = !black && !clear && !logo && slide && !isCount && !slide.image && kind !== 'media' ? slide : null;
   const ltOn = !!(lt && !black && !logo);
-  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, scale, ltOn]);
+  const tcls = themeClasses(theme);
+  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, text && text.part, scale, ltOn, tcls]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
   useEffect(() => {
     const el = ref.current && ref.current.closest('.screen');
@@ -93,7 +94,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     return () => ro.disconnect();
   }, [!!text, scale]);
   const info = bgInfo(bg !== undefined ? bg : theme.background);
-  return html`<div class=${'screen' + (info.light ? ' light-bg' : '') + (ltOn ? ' has-lt' : '')}>
+  return html`<div class=${'screen' + (info.light ? ' light-bg' : '') + (ltOn ? ' has-lt' : '') + (tcls ? ' ' + tcls : '')}>
     <div class=${'screen-bg' + (info.photo ? ' has-image' : '')} style=${info.url ? `background-image:url("${info.url}")` : ''}></div>
     ${text && html`<div class="screen-layer"><div ref=${ref} class=${'screen-text' + (kind === 'bible' ? ' bible' : '')} dangerouslySetInnerHTML=${{ __html: slideHtml(text) }}></div></div>`}
     ${text && text.ref && html`<div class="screen-ref">${text.ref}</div>`}
@@ -318,7 +319,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onTemplates, onServices, onNewService }) {
+function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -395,6 +396,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
           class=${[it.uid === selectedKey && 'sel', isLive && 'live', liveAt >= 0 && i < liveAt && 'done', drag === i && 'dragging', over === i && drag !== null && drag !== i && 'over'].filter(Boolean).join(' ')}>
           <span class=${'k ' + it.kind}>${kindLabel(it)}</span>
           <span class="t">${it.title}</span>
+          ${it.kind === 'song' && it.verses && it.verses.length > 0 && html`<span class="verses-tag">v. ${it.verses.join(', ')}</span>`}
           ${n > 0 && html`<span class="dots">${Array.from({ length: Math.min(n, 12) }, (_, d) => html`<i class=${isLive ? (d === live.index ? 'now' : d < live.index ? 'past' : '') : ''}></i>`)}</span>`}
           <button class="x" title="Remove" aria-label=${'Remove ' + it.title} onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
         </li>`;
@@ -402,6 +404,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
       <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0">
         <${AddMenu} items=${[
           ['Text or announcements', 'Words you type; can change by themselves', onNewText],
+          ['Responsive reading', 'Leader and congregation take turns', onNewResponsive],
           ['Sermon slides', 'From a PDF or pictures', onNewSlides],
           ['Countdown', 'Before the service, with announcements', onNewCountdown],
           ['Sunset times', 'When this Sabbath ends and the next begins', onNewSunset],
@@ -425,7 +428,7 @@ const SlideCard = ({ slide, i, item, s, isLive, isNext, onClick, onBackground })
       ${isLive ? html`<span class="tag live">ON SCREEN</span>` : isNext ? html`<span class="tag next">NEXT</span>` : html`<span class="tag num">${i + 1}</span>`}</div>
   </div>`;
 
-function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackground }) {
+function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackground, onVerses }) {
   const live = s.live;
   const isLiveItem = live && item && live.item.key === item.key;
   const liveIdx = isLiveItem ? live.index : -1;
@@ -446,6 +449,20 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
         ${inPlan && item.kind !== 'media' && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
+      ${inPlan && item.kind === 'song' && item.verseCount > 1 && (() => {
+        const all = Array.from({ length: item.verseCount }, (_, k) => k + 1);
+        const on = item.verses && item.verses.length ? item.verses : all;
+        const toggle = (v) => {
+          const next = on.includes(v) ? on.filter((x) => x !== v) : [...on, v].sort((a, b) => a - b);
+          if (!next.length) return toast('Keep at least one verse');
+          onVerses(next.length === all.length ? null : next);
+        };
+        return html`<div class="verse-pick" role="group" aria-label="Verses to sing">
+          <span class="muted">Verses to sing</span>
+          ${all.map((v) => html`<button class=${'vchip' + (on.includes(v) ? ' on' : '')} aria-pressed=${on.includes(v)} onClick=${() => toggle(v)}>${v}</button>`)}
+          ${on.length < all.length && html`<button class="btn small ghost" onClick=${() => onVerses(null)}>All verses</button>`}
+        </div>`;
+      })()}
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
       ${item.kind === 'media' ? html`<${MediaPanel} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
       <div class="slides-scroll"><div class="slides">
@@ -694,6 +711,72 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave, preset }) {
     ${/\{(sunset|sabbath-|next-sabbath)/.test(text) && html`<div class="note" style="margin-top:8px;white-space:pre-line">${!SAB ? 'Set your church’s location in Settings → General so ChurchStream can work out sunset times.' : fillSabbath(slides.map((x) => x.text).join('\n\n'), SAB)}</div>`}
     <div class="field" style="margin-top:14px"><label class="label">Change slides automatically (loops — good for announcements)</label>
       <select class="select" value=${auto} onChange=${(e) => setAuto(+e.target.value)}>${AUTO_CHOICES.map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select></div>
+  </${Modal}>`;
+}
+
+// Responsive readings: the leader and the congregation take turns; the last part is read by all.
+const isResponsive = (it) => !!(it && it.slides && it.slides.length && it.slides.every((x) => x.part));
+const PART_WORDS = { leader: 'Leader', people: 'Congregation', all: 'All' };
+function parseResponsive(text) {
+  const paras = String(text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  let next = 'leader';
+  return paras.map((p) => {
+    const m = /^(leader|minister|pastor|l|congregation|people|c|p|all|a)\s*:\s*/i.exec(p);
+    let part = next;
+    if (m) {
+      const w = m[1].toLowerCase();
+      part = /^(leader|minister|pastor|l)$/.test(w) ? 'leader' : /^(all|a)$/.test(w) ? 'all' : 'people';
+      p = p.slice(m[0].length);
+    }
+    next = part === 'leader' ? 'people' : 'leader';
+    return { label: PART_WORDS[part], text: p, part };
+  });
+}
+const responsiveText = (slides) => slides.map((x) => `${PART_WORDS[x.part] || 'Leader'}: ${x.text}`).join('\n\n');
+
+function ResponsiveEditor({ onClose, onAdd, onShow, initial, onSave }) {
+  const editing = !!(initial && onSave);
+  const [title, setTitle] = useState(editing ? initial.title : '');
+  const [text, setText] = useState(editing ? responsiveText(initial.slides) : '');
+  const [ref, setRef] = useState('');
+  const [busy, setBusy] = useState(false);
+  const slides = useMemo(() => parseResponsive(text), [text]);
+  // Fill in from a Bible passage: verses alternate leader / congregation, the last is read by all.
+  const fromBible = async () => {
+    if (!ref.trim()) return;
+    setBusy(true);
+    try {
+      const r = await get('/api/search', { q: ref.trim() });
+      if (!r.bible) throw new Error('Type a passage like “Psalm 100” or “Isaiah 40:28-31”.');
+      const verses = r.bible.slides.flatMap((sl) => (sl.verses && sl.verses.length ? sl.verses : [{ n: '', text: sl.text }]));
+      const parts = verses.map((v, i) => (i === verses.length - 1 && verses.length > 2 ? 'all' : i % 2 ? 'people' : 'leader'));
+      setText(verses.map((v, i) => `${PART_WORDS[parts[i]]}: ${v.text}`).join('\n\n'));
+      if (!title.trim()) setTitle(r.bible.title + (r.bible.translation ? ' (' + r.bible.translation + ')' : ''));
+    } catch (err) { fail(err); }
+    setBusy(false);
+  };
+  const name = () => title.trim() || 'Responsive reading';
+  const item = () => ({ key: 'text:' + Date.now(), kind: 'text', title: name(), subtitle: 'Responsive reading', slides });
+  const footer = editing
+    ? html`<button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" disabled=${!slides.length} onClick=${async () => { await onSave(name(), slides); onClose(); }}>Save changes</button>`
+    : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
+      <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
+  return html`<${Modal} wide title=${editing ? 'Edit responsive reading' : 'Responsive reading'} onClose=${onClose} footer=${footer}>
+    <div class="editor">
+      <div>
+        <div class="field"><label class="label" for="rr-ref">Start from a Bible passage (optional)</label>
+          <div class="key-row"><input id="rr-ref" class="input" placeholder="e.g. Psalm 100 or Isaiah 40:28-31" value=${ref} onInput=${(e) => setRef(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && fromBible()} />
+            <button class="btn" disabled=${busy || !ref.trim()} onClick=${fromBible}>${busy ? 'Finding…' : 'Fill in'}</button></div></div>
+        <div class="field"><label class="label" for="rr-title">Name (shown in the order of service)</label><input id="rr-title" class="input" value=${title} placeholder="e.g. Psalm 100" onInput=${(e) => setTitle(e.target.value)} /></div>
+        <label class="label" for="rr-text">Reading</label>
+        <textarea id="rr-text" class="textarea" style="min-height:240px" value=${text} onInput=${(e) => setText(e.target.value)}
+          placeholder=${'Leader: Make a joyful noise unto the Lord, all ye lands.\n\nCongregation: Serve the Lord with gladness: come before his presence with singing.\n\nAll: For the Lord is good; his mercy is everlasting.'}></textarea>
+        <div class="hint">Start each part with <b>Leader:</b>, <b>Congregation:</b> or <b>All:</b>, with a blank line between parts. Parts without a name take turns. The congregation's words are shown in gold so everyone knows when to read.</div>
+      </div>
+      <div><label class="label">Preview · ${slides.length} slide${slides.length === 1 ? '' : 's'}</label>
+        <div class="preview-list">${slides.map((sl, i) => html`<div key=${i}><div class="lbl">${i + 1}. ${sl.label}</div><${Screen} slide=${sl} kind="text" /></div>`)}</div></div>
+    </div>
   </${Modal}>`;
 }
 
@@ -1113,6 +1196,45 @@ function NewServiceDialog({ s, onClose, onTemplates }) {
   </${Modal}>`;
 }
 
+// A printable order of service (bulletin): print it or save it as a PDF from the browser.
+function printBulletin(s, name) {
+  const esc = (x) => String(x ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const t = s.config.theme || {};
+  const detail = (it) => {
+    if (it.kind === 'song') return [it.subtitle, it.verses && it.verses.length ? 'verses ' + it.verses.join(', ') : ''].filter(Boolean).join(' · ');
+    if (it.kind === 'bible') return [it.ref, (it.translation || '').toUpperCase()].filter(Boolean).join(' · ');
+    if (it.kind === 'text' && it.subtitle) return it.subtitle;
+    if (it.kind === 'media') return it.media && it.media.type === 'audio' ? 'Music' : 'Video';
+    return '';
+  };
+  const items = s.plan.items.filter((it) => it.kind !== 'countdown');
+  const sab = s.sabbath && s.sabbath.tokens;
+  const w = window.open('', '_blank');
+  if (!w) { fail(new Error('Allow pop-ups for ChurchStream to print the order of service.')); return; }
+  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(name)}</title><style>
+    @page { margin: 18mm; }
+    body { font: 12pt/1.5 Georgia, Cambria, 'Times New Roman', serif; color: #111; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+    header { text-align: center; margin-bottom: 22px; }
+    header img { max-height: 72px; max-width: 220px; }
+    h1 { font-size: 22pt; margin: 8px 0 2px; font-weight: 600; }
+    .date { color: #555; font-style: italic; }
+    ol { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dotted #bbb; }
+    li b { font-weight: 600; } li .dots { flex: 1; }
+    li .d { color: #444; text-align: right; }
+    footer { margin-top: 24px; text-align: center; color: #555; font-size: 10.5pt; }
+    .actions { text-align: center; margin: 20px 0; } .actions button { font: 600 11pt system-ui, sans-serif; padding: 10px 18px; border-radius: 10px; border: 0; background: #0f766e; color: #fff; cursor: pointer; }
+    @media print { .actions { display: none; } body { margin: 0 auto; } }
+  </style></head><body>
+    <div class="actions"><button onclick="print()">Print or save as PDF</button></div>
+    <header>${t.logo ? `<img src="/media/${encodeURIComponent(t.logo)}" alt="">` : ''}
+      <h1>${esc(s.config.churchName || 'Order of Service')}</h1><div class="date">${esc(name)}</div></header>
+    <ol>${items.map((it) => `<li><b>${esc(it.title)}</b><span class="dots"></span><span class="d">${esc(detail(it))}</span></li>`).join('')}</ol>
+    <footer>${sab && sab['sabbath-ends'] ? `Sabbath ends at sunset: ${esc(sab['sabbath-ends'])}` : ''}</footer>
+  </body></html>`);
+  w.document.close();
+}
+
 // Save a service to a file to share with other computers, open one, or go back to a recent one.
 function ServicesDialog({ s, onClose }) {
   const [tab, setTab] = useState(s.plan.items.length ? 'save' : 'open');
@@ -1175,6 +1297,8 @@ function ServicesDialog({ s, onClose }) {
         <button class="btn big primary" onClick=${download}>${icons.download()} Save to a file</button>
         <button class="btn big" onClick=${keep}>Keep on this computer</button>
       </div>
+      <div class="row" style="margin-bottom:10px"><button class="btn small" onClick=${() => printBulletin(s, name.trim() || 'Order of Service')}>Print the order of service…</button>
+        <span class="hint" style="margin:0">A simple bulletin to print or save as a PDF.</span></div>
       <div class="hint">The file (<b>.churchservice</b>) goes to your Downloads folder. Email it, send it on WhatsApp or copy it with a USB stick, then open it in ChurchStream on the other computer (Save / open → Open a file).</div>`)}
     ${tab === 'open' && html`
       <button class=${'svc-drop' + (drag ? ' over' : '')} disabled=${!!busy} onClick=${pick}
@@ -1378,6 +1502,17 @@ function ControlView({ s }) {
   const saveCountdown = (uid, edited) =>
     saveEdited(uid, { kind: 'countdown', title: edited.title, slides: edited.slides, autoAdvance: edited.autoAdvance, countdown: edited.countdown }, () => 0).catch(fail);
   // After a background change, reload the item (and refresh the screens if it is showing).
+  // Sing only some verses of a hymn in the order of service.
+  const setVerses = async (uid, verses) => {
+    try {
+      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, verses: verses || undefined } : x));
+      await api('/api/plan', { items });
+      const it = await api('/api/plan/open', { uid });
+      await api('/api/plan', { items: items.map((x) => (x.uid === uid ? { ...x, count: it.slides.length } : x)) });
+      if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: Math.min(s.live.index, it.slides.length - 1) });
+      setSelected(it);
+    } catch (err) { fail(err); }
+  };
   const refreshItem = async (uid) => {
     const it = await api('/api/plan/open', { uid });
     if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: s.live.index });
@@ -1407,12 +1542,14 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: 'text', item }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })} />
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
+        onVerses=${(verses) => setVerses(item.key, verses)} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
       <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
         onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
+        onNewResponsive=${() => setDialog({ type: 'responsive' })}
         onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })}
         onServices=${() => setDialog({ type: 'services' })} onNewService=${() => setDialog({ type: 'newservice' })} />
       <div class="controls">
@@ -1428,6 +1565,8 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} preset=${dialog.preset} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveText(dialog.item.key, title, slides, auto) : null} />`}
+    ${dialog && dialog.type === 'responsive' && html`<${ResponsiveEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
+      initial=${dialog.item} onSave=${dialog.item ? (title, slides) => saveText(dialog.item.key, title, slides, 0) : null} />`}
     ${dialog && dialog.type === 'countdown' && html`<${CountdownEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
@@ -1530,6 +1669,28 @@ function LocationField({ s }) {
     <div class="hint">In Google Maps, right-click your church and click the numbers at the top to copy them, then paste here. ${s.sabbath ? html`<b>${s.sabbath.label}</b> · this Sabbath: ${s.sabbath.tokens['sabbath-begins']} → ${s.sabbath.tokens['sabbath-ends']}` : ''}</div></div>`;
 }
 
+// Sound for online viewers: clean-up, microphone level and lip-sync delay.
+function SoundCleanup({ s }) {
+  const a = s.config.audio || {};
+  const [gain, setGain] = useState(a.gainDb || 0);
+  const [delay, setDelay] = useState(a.delayMs || 0);
+  useEffect(() => { setGain(a.gainDb || 0); setDelay(a.delayMs || 0); }, [a.gainDb, a.delayMs]);
+  const live = s.stream.mode === 'live';
+  const levels = [['off', 'Off', 'The sound exactly as it comes in'], ['light', 'Light', 'Removes hum and fan noise, evens out voices'], ['strong', 'Strong', 'For noisy rooms or a distant microphone']];
+  return html`<div class="field sound-box">
+    <label class="label">Sound for online viewers</label>
+    <div class="choices" style="margin-bottom:12px">${levels.map(([v, t, d]) => html`<button class=${'choice' + ((a.cleanup || 'off') === v ? ' on' : '')} onClick=${() => save({ audio: { cleanup: v } })}><b>${t}</b><span>${d}</span></button>`)}</div>
+    <label class="meter-row" for="mic-gain"><span style="min-width:92px;font-weight:600;color:var(--text)">Mic level</span>
+      <input id="mic-gain" class="grow" type="range" min="-12" max="12" step="1" value=${gain} onInput=${(e) => setGain(+e.target.value)} onChange=${(e) => save({ audio: { gainDb: +e.target.value } })} />
+      <span class="meter-label">${gain > 0 ? '+' : ''}${gain} dB</span></label>
+    <label class="meter-row" for="lip-sync" style="margin-top:8px"><span style="min-width:92px;font-weight:600;color:var(--text)">Lip-sync</span>
+      <input id="lip-sync" class="grow" type="range" min="0" max="800" step="20" value=${delay} onInput=${(e) => setDelay(+e.target.value)} onChange=${(e) => save({ audio: { delayMs: +e.target.value } })} />
+      <span class="meter-label">${delay ? delay + ' ms' : 'Off'}</span></label>
+    <div class="hint">Lip-sync: if people's mouths move <b>after</b> you hear them on the stream, move this right until they match (usually 100–300 ms with an HDMI capture card). Watch the meter while someone speaks to set the mic level: aim for the green, just touching orange.
+      ${live ? html` <b>These apply the next time the stream starts</b> (they change the stream's sound and need a restart).` : ' The preview restarts to apply them.'}</div>
+  </div>`;
+}
+
 function SectionCamera({ s, autoPreview }) {
   const cfg = s.config;
   const [devs, reload] = useDevices();
@@ -1577,6 +1738,7 @@ function SectionCamera({ s, autoPreview }) {
           <option value="desk">It already reaches the stream through our sound desk</option>
         </select>
         <div class="hint">Choose the second option only if this computer's sound goes into your sound desk and the desk feeds the stream — otherwise viewers would hear it twice.</div></div>
+      <${SoundCleanup} s=${s} />
       ${devs && devs.note && html`<div class="note">${devs.note}</div>`}
     </div>
     <div>
@@ -1713,6 +1875,14 @@ function SectionAppearance({ s }) {
         <div class="choices">${[['light', 'Light', 'Bright and easy to read'], ['dark', 'Dark', 'Less glare in a dim room']].map(([v, t, d]) => html`<button class=${'choice' + ((s.config.uiTheme || 'light') === v ? ' on' : '')} onClick=${() => save({ uiTheme: v })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
       <div class="field"><label class="label">Projector text size</label>
         <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div></div>
+      <div class="field"><label class="label" for="proj-font">Projector font</label>
+        <select id="proj-font" class="select" value=${theme.font || 'inter'} onChange=${(e) => save({ theme: { font: e.target.value } })}>
+          ${Object.entries(FONTS).map(([k, f]) => html`<option value=${k}>${f.label}</option>`)}</select></div>
+      <div class="field"><label class="label">Where the words go</label>
+        <div class="choices">${[['middle', 'Middle of the screen', 'The usual layout'], ['bottom', 'Along the bottom', 'Leaves photos and the camera inset visible']].map(([v, t, d]) => html`<button class=${'choice' + ((theme.position || 'middle') === v ? ' on' : '')} onClick=${() => save({ theme: { position: v } })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
+      <div class="field"><label class="label">Line up the words</label>
+        <div class="choices">${[['center', 'Centred'], ['left', 'Left']].map(([v, t]) => html`<button class=${'choice' + ((theme.align || 'center') === v ? ' on' : '')} onClick=${() => save({ theme: { align: v } })}><b>${t}</b></button>`)}</div></div>
+      <label class="switch"><input type="checkbox" checked=${!!theme.outline} onChange=${(e) => save({ theme: { outline: e.target.checked } })} /><span>Outline the words (easier to read over busy photos)</span></label>
     </div>
     <div class="sticky-preview"><label class="label">Preview</label><${Screen} slide=${sample} kind="song" subtitle="SDA Hymnal 108" theme=${theme} /></div>
   </div>`;
@@ -1946,7 +2116,7 @@ function programKey(s) {
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
   return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
-    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1]);
+    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, themeClasses(t), slide && slide.part]);
 }
 
 function wrapLines(ctx, text, maxW) {
@@ -1971,8 +2141,9 @@ async function renderProgram(s) {
   const live = s.live;
   const slide = live && live.item.slides[live.index];
   const t = s.config.theme || {};
-  const FONT = '"Inter ChurchStream", "Segoe UI", sans-serif';
-  try { await document.fonts.load(`600 40px ${FONT}`); } catch { /* fall back to system font */ }
+  const FONT = (FONTS[t.font] || FONTS.inter).css;
+  const WT = t.font === 'serif' ? 400 : t.font === 'arial' ? 700 : 600; // weight for slide words
+  try { await document.fonts.load(`600 40px "Inter ChurchStream"`); } catch { /* fall back to system font */ }
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (s.black) return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88));
@@ -2068,15 +2239,25 @@ async function renderProgram(s) {
       lines.forEach((l, i) => ctx.fillText(l, W / 2, top + i * size * 1.28));
     }
   } else if (slide && !s.clear) {
-    // Same fitting rules as the projector: keep song lines whole if still readable, else wrap.
-    const box = { x: W * 0.06, y: H * 0.06, w: W * 0.88, h: H * 0.83 };
+    // Same fitting rules and text options as the projector: keep song lines whole if still
+    // readable, else wrap; optional left alignment, outline, and "words at the bottom".
+    const bottom = t.position === 'bottom';
+    const left = t.align === 'left';
+    const box = bottom ? { x: W * 0.05, y: H * 0.58, w: W * 0.9, h: H * 0.34 } : { x: W * 0.06, y: H * 0.06, w: W * 0.88, h: H * 0.83 };
+    if (bottom) {
+      const g = ctx.createLinearGradient(0, H, 0, H * 0.54);
+      g.addColorStop(0, bg.light ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.72)'); g.addColorStop(1, bg.light ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0)');
+      const sh = ctx.shadowColor; ctx.shadowColor = 'transparent'; ctx.fillStyle = g; ctx.fillRect(0, H * 0.54, W, H * 0.46); ctx.shadowColor = sh;
+    }
+    const part = slide.part && PARTS[slide.part] ? slide.part : '';
+    const labelH = part ? 0.62 : 0; // the Leader / Congregation label, in lines of text
     const max = H * 0.085 * (t.textScale || 1);
     const min = H * 0.032;
     const layout = (size, wrap) => {
-      ctx.font = `600 ${size}px ${FONT}`;
+      ctx.font = `${WT} ${size}px ${FONT}`;
       const lines = wrap ? wrapLines(ctx, slide.text, box.w) : String(slide.text).split('\n');
       const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-      return { lines, fits: widest <= box.w && lines.length * size * 1.28 <= box.h };
+      return { lines, fits: widest <= box.w && (lines.length + labelH) * size * 1.28 <= box.h };
     };
     const search = (wrap) => {
       let lo = min; let hi = max;
@@ -2089,9 +2270,25 @@ async function renderProgram(s) {
     if (!wrap && size < Math.min(H * 0.054, max * 0.65)) { wrap = true; size = search(true); }
     const { lines } = layout(size, wrap);
     const lh = size * 1.28;
-    const top = box.y + (box.h - lines.length * lh) / 2 + lh / 2;
-    ctx.fillStyle = ink;
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, top + i * lh));
+    const blockH = (lines.length + labelH) * lh;
+    let top = (bottom ? box.y + box.h - blockH : box.y + (box.h - blockH) / 2) + lh / 2;
+    const x = left ? box.x : W / 2;
+    ctx.textAlign = left ? 'left' : 'center';
+    if (part) {
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.75; ctx.font = `600 ${size * 0.5}px "Inter ChurchStream", "Segoe UI", sans-serif`;
+      ctx.fillText(PARTS[part].toUpperCase().split('').join(String.fromCharCode(8202)), x, top - lh * 0.12);
+      ctx.globalAlpha = 1; top += lh * labelH;
+    }
+    ctx.font = `${part === 'all' ? 800 : WT} ${size}px ${FONT}`;
+    const color = part === 'people' || part === 'all' ? (bg.light ? '#8a4b00' : '#ffd98a') : ink;
+    if (t.outline) {
+      ctx.lineJoin = 'round'; ctx.lineWidth = H * 0.0028 * 2;
+      ctx.strokeStyle = bg.light ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.85)';
+      lines.forEach((l, i) => ctx.strokeText(l, x, top + i * lh));
+    }
+    ctx.fillStyle = color;
+    lines.forEach((l, i) => ctx.fillText(l, x, top + i * lh));
+    ctx.textAlign = 'center';
     ctx.shadowColor = 'transparent';
     if (slide.ref) {
       ctx.globalAlpha = 0.78; ctx.font = `600 ${H * 0.034}px ${FONT}`;

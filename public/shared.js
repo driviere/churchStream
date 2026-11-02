@@ -39,6 +39,9 @@ export function escapeHtml(s) {
 // HTML for a slide's text. Bible slides show small verse numbers.
 export function slideHtml(slide) {
   if (!slide) return '';
+  if (slide.part && PARTS[slide.part]) {
+    return `<span class="part-label">${PARTS[slide.part]}</span><span class="part-${slide.part}">${escapeHtml(slide.text)}</span>`;
+  }
   if (slide.verses && slide.verses.length > 1) {
     return slide.verses.map((v) => `<sup>${v.n}</sup>${escapeHtml(v.text)}`).join(' ');
   }
@@ -118,3 +121,22 @@ export function logoParts(theme = {}, churchName = '') {
   const size = ['small', 'large'].includes(theme.logoSize) ? theme.logoSize : 'medium';
   return { img, name, size, cls: `screen-logo ${size}${img && name ? ' with-name' : ''}` };
 }
+
+// Projector text options from Settings → Appearance, as classes on the .screen element.
+export const FONTS = {
+  inter: { label: 'Clean (Inter)', css: "'Inter ChurchStream', 'Segoe UI', system-ui, sans-serif" },
+  segoe: { label: 'Windows (Segoe UI)', css: "'Segoe UI', system-ui, sans-serif" },
+  serif: { label: 'Classic serif (Georgia)', css: "Georgia, Cambria, 'Times New Roman', serif" },
+  arial: { label: 'Bold & plain (Arial)', css: "Arial, 'Helvetica Neue', sans-serif" },
+};
+export function themeClasses(theme = {}) {
+  return [
+    FONTS[theme.font] && theme.font !== 'inter' ? 'font-' + theme.font : '',
+    theme.align === 'left' ? 'align-left' : '',
+    theme.outline ? 'outline' : '',
+    theme.position === 'bottom' ? 'pos-bottom' : '',
+  ].filter(Boolean).join(' ');
+}
+
+// Responsive readings: slides carry part = 'leader' | 'people' | 'all'.
+export const PARTS = { leader: 'Leader', people: 'Congregation', all: 'All' };

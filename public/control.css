@@ -645,3 +645,11 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
   .slide-card, .plan li, .choice, .btn, .modal { transition: none; animation: none; }
   .slide-card:hover, .plan li:hover, .choice:hover:not(:disabled) { transform: none; }
 }
+
+/* Verses to sing (hymns in the order of service) */
+.verse-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 22px 10px; font-size: 13px; }
+.verse-pick > span { margin-right: 4px; font-weight: 600; }
+.vchip { min-width: 38px; height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); color: var(--muted); font-weight: 700; cursor: pointer; box-shadow: var(--shadow-xs); transition: background-color .12s, color .12s, box-shadow .12s, transform .08s; }
+.vchip:active { transform: scale(.95); }
+.vchip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-accent); }
+.plan .verses-tag { font-size: 10px; font-weight: 700; color: var(--muted); }
