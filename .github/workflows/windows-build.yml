@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish a release with this new tag (e.g. v0.1.0). Leave empty to just build.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -157,5 +162,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          files: dist/ChurchStream-win-x64.zip
+          generate_release_notes: true
+
+      # Started by hand (Actions → Windows build → Run workflow) with a tag: creates the tag
+      # on the commit that was built and publishes the release with the zip attached.
+      - name: Publish GitHub Release (manual run)
+        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ChurchStream ${{ inputs.release_tag }}
           files: dist/ChurchStream-win-x64.zip
           generate_release_notes: true
