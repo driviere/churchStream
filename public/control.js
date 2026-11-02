@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath } from '/shared.js';
+import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
@@ -101,7 +101,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${!black && !logo && kind === 'media' && html`<div class="screen-logo"><div class="name" style="font-size:6cqh">${slide ? '▶ ' + slide.label : ''}</div></div>`}
     ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
-    ${logo && html`<div class="screen-logo">${theme.logo ? html`<img src=${'/media/' + theme.logo} alt="" />` : html`<div class="name">${churchName}</div>`}</div>`}
+    ${logo && (() => { const lp = logoParts(theme, churchName); return html`<div class=${lp.cls}>${lp.img && html`<img src=${lp.img} alt="" />`}${lp.name && html`<div class=${'name' + (lp.img ? ' under' : '')}>${lp.name}</div>`}</div>`; })()}
     ${black && html`<div class="screen-black"></div>`}
   </div>`;
 }
@@ -328,35 +328,63 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
   const save = (next) => api('/api/plan', { items: next }).catch(fail);
   const remove = (uid) => save(items.filter((x) => x.uid !== uid));
 
-  // Pointer-based reordering works with a mouse and on touch screens.
+  // Reordering: with a mouse, just drag. On touch screens a swipe scrolls the list, a tap
+  // opens the item, and press-and-hold (about half a second) picks a card up to drag it.
+  const dragging = useRef(false);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return undefined;
+    const block = (e) => { if (dragging.current) e.preventDefault(); }; // stop the list scrolling while a card is held
+    el.addEventListener('touchmove', block, { passive: false });
+    return () => el.removeEventListener('touchmove', block);
+  }, []);
   const start = (e, i) => {
     if (e.button > 0 || e.target.closest('.x')) return;
+    const touch = e.pointerType !== 'mouse';
     const x0 = e.clientX;
     const y0 = e.clientY;
-    let moved = false;
+    let mode = 'press'; // press → drag | scroll
+    let hold = null;
+    const begin = () => { mode = 'drag'; dragging.current = true; setDrag(i); setOver(i); if (navigator.vibrate) navigator.vibrate(15); };
+    if (touch) hold = setTimeout(() => { if (mode === 'press') begin(); }, 450);
     const move = (ev) => {
-      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
-      if (!moved) { moved = true; setDrag(i); }
+      if (mode === 'scroll') return;
+      if (mode === 'press') {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
+        if (touch) { mode = 'scroll'; clearTimeout(hold); return; } // a swipe: let the list scroll
+        begin();
+      }
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
       const li = el && el.closest('li[data-i]');
       if (li && list.current.contains(li)) setOver(Number(li.dataset.i));
+      // Near the edges, scroll the list so far-away positions can be reached.
+      const r = list.current.getBoundingClientRect();
+      if (ev.clientX < r.left + 40) list.current.scrollLeft -= 12;
+      else if (ev.clientX > r.right - 40) list.current.scrollLeft += 12;
     };
-    const up = () => {
+    const end = (ev) => {
+      clearTimeout(hold);
       removeEventListener('pointermove', move);
-      removeEventListener('pointerup', up);
-      if (!moved) { onOpen(items[i].uid); return; }
+      removeEventListener('pointerup', end);
+      removeEventListener('pointercancel', end);
+      const was = mode;
+      mode = 'done';
+      dragging.current = false;
+      if (was === 'press') { if (ev.type === 'pointerup') onOpen(items[i].uid); return; }
+      if (was !== 'drag') return;
       setDrag(null);
       setOver((o) => {
-        if (o !== null && o !== i) { const next = items.slice(); const [m] = next.splice(i, 1); next.splice(o, 0, m); save(next); }
+        if (ev.type === 'pointerup' && o !== null && o !== i) { const next = items.slice(); const [m] = next.splice(i, 1); next.splice(o, 0, m); save(next); }
         return null;
       });
     };
     addEventListener('pointermove', move);
-    addEventListener('pointerup', up);
+    addEventListener('pointerup', end);
+    addEventListener('pointercancel', end);
   };
 
   return html`<section class="card plan-card" aria-label="Order of service">
-    <div class="plan-head"><b>Order of service</b><button class="btn small ghost" onClick=${onTemplates}>Templates</button><span>${items.length ? 'Next moves on by itself at the end of each item · drag to reorder' : ''}</span></div>
+    <div class="plan-head"><b>Order of service</b><button class="btn small ghost" onClick=${onTemplates}>Templates</button><span>${items.length ? 'Next moves on by itself at the end of each item · drag (or press and hold) to reorder' : ''}</span></div>
     ${items.length === 0 && html`<div class="plan-empty">Search above, then press <kbd>Shift</kbd>+<kbd>Enter</kbd> (or “Add”) to build the order of service.</div>`}
     <ul class="plan" ref=${list}>
       ${items.map((it, i) => {
@@ -1277,7 +1305,7 @@ function ControlView({ s }) {
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
         <button class=${'btn' + (s.clear ? ' on' : '')} onClick=${() => toggle('clear')} title="Hide the words, keep the background (C)">Clear<small>C</small></button>
-        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${() => toggle('logo')} title="Show the church logo">Logo</button>
+        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${() => { toggle('logo'); if (!s.logo && !(s.config.theme || {}).logo) toast('Tip: upload your church logo in Settings → General'); }} title="Show the church logo">Logo</button>
         <button class=${'btn black' + (s.black ? ' on' : '')} onClick=${() => toggle('black')} title="Black screen (B)">${s.black ? 'Black ✓' : 'Black'}<small>B</small></button>
       </div>
     </div>
@@ -1316,11 +1344,46 @@ function SectionGeneral({ s }) {
   const [pw, setPw] = useState(cfg.controlPassword);
   return html`<div>
     <div class="field"><label class="label">Church name</label><input class="input" value=${name} placeholder="e.g. Grace Community Church" onInput=${(e) => setName(e.target.value)} onBlur=${() => save({ churchName: name })} />
-      <div class="hint">Shown on the projector when you press “Logo” (if no logo image is set).</div></div>
+      <div class="hint">Shown under your logo (if you turn that on), or on its own when no logo image is set.</div></div>
+    <${LogoField} s=${s} />
     <${LocationField} s=${s} />
     <div class="field"><label class="label">Control panel password (optional)</label><input class="input" type="password" value=${pw} placeholder="No password" onInput=${(e) => setPw(e.target.value)} onBlur=${() => save({ controlPassword: pw })} />
       <div class="hint">Set one if your Wi-Fi is open to visitors. The projector and stage screens never need it.</div></div>
   </div>`;
+}
+
+// The church logo: shown full screen when "Logo" is pressed (projector and stream).
+function LogoField({ s }) {
+  const theme = s.config.theme || {};
+  const [busy, setBusy] = useState(false);
+  const pick = () => pickFiles('image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg', false, async ([f]) => {
+    if (!f) return;
+    const type = f.type || { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml' }[(f.name.split('.').pop() || '').toLowerCase()] || '';
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(type)) { fail(new Error('Please choose a PNG, JPG, WebP or SVG image. (iPhone photos: share them as JPG first.)')); return; }
+    if (f.size > 12 * 1024 * 1024) { fail(new Error('That image is over 12 MB. Please choose a smaller one.')); return; }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/media?kind=logo', { method: 'POST', headers: { 'Content-Type': type }, body: f });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.error) throw new Error(d.error || 'Upload failed');
+      toast('Logo saved');
+    } catch (err) { fail(err); }
+    setBusy(false);
+  });
+  const sizes = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
+  return html`<div class="field"><label class="label">Church logo</label>
+    <div class="logo-field">
+      <div class="logo-preview"><${Screen} slide=${null} theme=${theme} bg=${effectiveBg(null, null, theme)} churchName=${s.config.churchName} logo=${true} /></div>
+      <div class="grow">
+        <div class="row wrap">
+          <button class="btn primary" disabled=${busy} onClick=${pick}>${busy ? 'Uploading…' : theme.logo ? 'Change logo…' : 'Upload logo…'}</button>
+          ${theme.logo && html`<button class="btn ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' }).then(() => toast('Logo removed')).catch(fail)}>Remove</button>`}
+        </div>
+        ${theme.logo && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${!!theme.logoName} onChange=${(e) => save({ theme: { logoName: e.target.checked } })} /><span>Show the church name under the logo</span></label>`}
+        ${theme.logo && html`<div class="choices" style="margin-top:8px">${sizes.map(([v, t]) => html`<button class=${'choice' + ((theme.logoSize || 'medium') === v ? ' on' : '')} onClick=${() => save({ theme: { logoSize: v } })}><b>${t}</b></button>`)}</div>`}
+        <div class="hint">Shown full screen on the projector and the stream when you press <b>Logo</b>. A PNG with a transparent background looks best. ${theme.logo ? '' : 'Until you upload one, the church name is shown.'}</div>
+      </div>
+    </div></div>`;
 }
 
 function LocationField({ s }) {
@@ -1523,28 +1586,13 @@ function SectionBible({ s }) {
 
 function SectionAppearance({ s }) {
   const theme = s.config.theme;
-  const upload = (kind) => {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'image/png,image/jpeg,image/webp,image/svg+xml';
-    inp.onchange = async () => {
-      const f = inp.files[0];
-      if (!f) return;
-      const res = await fetch('/api/media?kind=' + kind, { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
-      const d = await res.json();
-      if (d.error) fail(new Error(d.error)); else toast('Image saved');
-    };
-    inp.click();
-  };
   const sample = { text: 'Amazing grace! How sweet the sound\nThat saved a wretch like me!\nI once was lost, but now am found;\nWas blind, but now I see.' };
   return html`<div class="two appearance">
     <div>
       <div class="field"><label class="label">Default background (used everywhere unless an item or slide has its own)</label>
         <${BackgroundGallery} value=${theme.background || 'builtin:midnight'} onPick=${(v) => save({ theme: { background: v } })} />
         <div class="hint">Your own photos are dimmed a little automatically so the words stay readable. To change one hymn or reading, open it and press “Background”.</div></div>
-      <div class="field"><label class="label">Logo (shown when you press “Logo”)</label>
-        <div class="row">${theme.logo ? html`<img class="thumb-img" style="object-fit:contain" src=${'/media/' + theme.logo} alt="" />` : html`<span class="muted">Church name is shown instead</span>`}</div>
-        <div class="row" style="margin-top:8px"><button class="btn small" onClick=${() => upload('logo')}>Choose image…</button>${theme.logo && html`<button class="btn small ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' })}>Remove</button>`}</div></div>
+      <${LogoField} s=${s} />
       <div class="field"><label class="label">Control panel colours</label>
         <div class="choices">${[['light', 'Light', 'Bright and easy to read'], ['dark', 'Dark', 'Less glare in a dim room']].map(([v, t, d]) => html`<button class=${'choice' + ((s.config.uiTheme || 'light') === v ? ' on' : '')} onClick=${() => save({ uiTheme: v })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
       <div class="field"><label class="label">Projector text size</label>
@@ -1782,7 +1830,7 @@ function programKey(s) {
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
   return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
-    s.black, s.clear, s.logo, t.logo, s.config.churchName, t.textScale || 1]);
+    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1]);
 }
 
 function wrapLines(ctx, text, maxW) {
@@ -1833,14 +1881,31 @@ async function renderProgram(s) {
   if (!bg.light) { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = H * 0.012; ctx.shadowOffsetY = H * 0.0025; }
 
   if (s.logo) {
-    const logo = t.logo && await loadImg('/media/' + encodeURIComponent(t.logo));
+    // Same layout as the projector (shared.css .screen-logo): image, name, or image with the name under it.
+    const lp = logoParts(t, s.config.churchName);
+    const logo = lp.img && await loadImg(lp.img);
+    const box = { small: [0.34, 0.34, 0.30], medium: [0.5, 0.5, 0.42], large: [0.8, 0.7, 0.56] }[lp.size];
+    const nameSize = H * (logo ? 0.055 : 0.07);
+    let ih = 0;
+    let iw = 0;
     if (logo) {
-      const k = Math.min((W * 0.5) / logo.naturalWidth, (H * 0.5) / logo.naturalHeight);
-      ctx.drawImage(logo, (W - logo.naturalWidth * k) / 2, (H - logo.naturalHeight * k) / 2, logo.naturalWidth * k, logo.naturalHeight * k);
-    } else if (s.config.churchName) {
+      const k = Math.min((W * box[0]) / logo.naturalWidth, (H * (lp.name ? box[2] : box[1])) / logo.naturalHeight);
+      iw = logo.naturalWidth * k; ih = logo.naturalHeight * k;
+    }
+    const gap = logo && lp.name ? H * 0.03 : 0;
+    const total = ih + gap + (lp.name ? nameSize * 1.2 : 0);
+    let y = (H - total) / 2;
+    if (logo) {
+      const sh = ctx.shadowColor; ctx.shadowColor = 'transparent';
+      ctx.drawImage(logo, (W - iw) / 2, y, iw, ih);
+      ctx.shadowColor = sh;
+      y += ih + gap;
+    }
+    if (lp.name) {
       ctx.fillStyle = ink;
-      ctx.font = `600 ${H * 0.07}px ${FONT}`;
-      ctx.fillText(s.config.churchName, W / 2, H / 2);
+      let size = nameSize;
+      for (; size > H * 0.03; size -= H * 0.003) { ctx.font = `600 ${size}px ${FONT}`; if (ctx.measureText(lp.name).width <= W * 0.84) break; }
+      ctx.fillText(lp.name, W / 2, y + nameSize * 0.6);
     }
   } else if (slide && slide.image && !s.clear) {
     const pic = await loadImg(bgInfo(slide.image).url);

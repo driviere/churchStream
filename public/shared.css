@@ -60,6 +60,12 @@
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqh;
 }
 .screen-logo img { max-width: 50cqw; max-height: 50cqh; object-fit: contain; }
+.screen-logo.small img { max-width: 34cqw; max-height: 34cqh; }
+.screen-logo.large img { max-width: 80cqw; max-height: 70cqh; }
+.screen-logo.with-name img { max-height: 42cqh; }
+.screen-logo.small.with-name img { max-height: 30cqh; }
+.screen-logo.large.with-name img { max-height: 56cqh; }
+.screen-logo .name.under { font-size: 5.5cqh; }
 .screen-logo .name { font-size: 7cqh; letter-spacing: 0.01em; text-align: center; padding: 0 8cqw; }
 .screen-black { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
 .screen-identify {

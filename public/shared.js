@@ -110,3 +110,11 @@ export function fillSabbath(text, sab) {
   return String(text ?? '').replace(/\{(sunset|sabbath-begins|sabbath-ends|next-sabbath-begins)\}/g, (m, k) =>
     (sab && sab.tokens && sab.tokens[k]) || '[set your location in Settings → General]');
 }
+
+// What the "Logo" button shows: the uploaded image, the church name, or both.
+export function logoParts(theme = {}, churchName = '') {
+  const img = theme.logo ? '/media/' + encodeURIComponent(theme.logo) : '';
+  const name = churchName && (!img || theme.logoName) ? churchName : '';
+  const size = ['small', 'large'].includes(theme.logoSize) ? theme.logoSize : 'medium';
+  return { img, name, size, cls: `screen-logo ${size}${img && name ? ' with-name' : ''}` };
+}

@@ -1,4 +1,4 @@
-import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts } from '/shared.js';
+import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -194,11 +194,12 @@ function render(state) {
     bgFront = 1 - bgFront;
     $('screen').classList.toggle('light-bg', bg.light);
   }
-  const logoKey = (theme.logo || '') + '|' + (state.config.churchName || '');
+  const lp = logoParts(theme, state.config.churchName);
+  const logoKey = JSON.stringify(lp);
   if (logoKey !== lastLogo) {
     lastLogo = logoKey;
-    $('logo').innerHTML = (theme.logo ? `<img src="/media/${escapeHtml(theme.logo)}" alt="">` : '') +
-      (state.config.churchName && !theme.logo ? `<div class="name">${escapeHtml(state.config.churchName)}</div>` : '');
+    $('logo').className = lp.cls + (state.logo ? '' : ' hidden');
+    $('logo').innerHTML = (lp.img ? `<img src="${lp.img}" alt="">` : '') + (lp.name ? `<div class="name${lp.img ? ' under' : ''}">${escapeHtml(lp.name)}</div>` : '');
   }
 
   // Lower third on the projector (optional; always on the stream).
