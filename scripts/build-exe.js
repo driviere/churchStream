@@ -147,10 +147,15 @@ Getting started
    If Windows Firewall asks, allow access on Private networks so tablets can connect.
 3. Your web browser opens the setup page. Follow the steps.
 
-Every Sunday
-------------
+Every Sabbath
+-------------
 - Double-click ChurchStream.exe. The control panel opens in your browser.
 - Close the black ChurchStream window to stop everything.
+
+User manual
+-----------
+Click the "?" button at the top of the control panel (or open
+http://localhost:8080/manual while ChurchStream is running).
 
 Moving to another computer
 --------------------------

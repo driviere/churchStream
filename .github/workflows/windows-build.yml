@@ -63,7 +63,7 @@ jobs:
             $st = Invoke-RestMethod http://localhost:8123/api/state
             if (-not $st.ffmpeg.ok) { throw "Bundled FFmpeg was not found" }
             Write-Host "FFmpeg: $($st.ffmpeg.version)"
-            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none"}}' http://localhost:8123/api/config | Out-Null
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none","cleanup":"light","delayMs":100,"gainDb":2}}' http://localhost:8123/api/config | Out-Null
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"name":"Test Name","title":"Test Title","visible":true}' http://localhost:8123/api/lower-third | Out-Null
             # Preview each stream view (camera, slides, slides + camera) and print FFmpeg's view of it.
             foreach ($scene in @('camera', 'slides', 'pip')) {
@@ -167,6 +167,15 @@ jobs:
 
       # Started by hand (Actions → Windows build → Run workflow) with a tag: creates the tag
       # on the commit that was built and publishes the release with the zip attached.
+      # Release notes come from .github/release-notes/<tag>.md when that file exists.
+      - name: Find release notes
+        id: notes
+        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
+        shell: bash
+        run: |
+          f=".github/release-notes/${{ inputs.release_tag }}.md"
+          if [ -f "$f" ]; then echo "path=$f" >> "$GITHUB_OUTPUT"; fi
+
       - name: Publish GitHub Release (manual run)
         if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
         uses: softprops/action-gh-release@v2
@@ -175,4 +184,5 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: ChurchStream ${{ inputs.release_tag }}
           files: dist/ChurchStream-win-x64.zip
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}

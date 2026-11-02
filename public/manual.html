@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User manual · ChurchStream</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #f4f6fa; color: #101828; font: 16px/1.65 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: rgba(255,255,255,.88); backdrop-filter: blur(10px); border-bottom: 1px solid #eaecf0; }
+  .bar img { width: 30px; height: 30px; border-radius: 9px; }
+  .bar b { font-size: 15px; }
+  .bar a, .bar button { margin-left: auto; font: inherit; font-size: 14px; font-weight: 600; color: #344054; text-decoration: none; padding: 8px 14px; border-radius: 10px; border: 1px solid #e4e7ec; background: #fff; cursor: pointer; }
+  .bar button { margin-left: 0; }
+  main { max-width: 860px; margin: 24px auto 64px; padding: 28px 36px 40px; background: #fff; border: 1px solid #eaecf0; border-radius: 20px; box-shadow: 0 1px 3px rgba(16,24,40,.06), 0 8px 24px -12px rgba(16,24,40,.10); }
+  h1 { font-size: 30px; letter-spacing: -.02em; margin: 6px 0 12px; }
+  h2 { font-size: 22px; margin: 36px 0 10px; padding-top: 8px; letter-spacing: -.01em; scroll-margin-top: 70px; }
+  h3 { font-size: 17px; margin: 24px 0 6px; scroll-margin-top: 70px; }
+  p, li { color: #344054; } li { margin: 3px 0; }
+  a { color: #0b5f58; }
+  hr { border: 0; border-top: 1px solid #eaecf0; margin: 28px 0; }
+  code { font: 14px ui-monospace, Consolas, monospace; background: #f2f4f7; padding: 1px 6px; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 15px; display: block; overflow-x: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid #eaecf0; }
+  th { background: #f9fafb; font-weight: 700; }
+  @media (max-width: 640px) { main { margin: 0; border-radius: 0; padding: 20px 16px 40px; } }
+  @media print { .bar { display: none; } body { background: #fff; } main { box-shadow: none; border: 0; margin: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="bar"><img src="/favicon.svg" alt=""><b>ChurchStream user manual</b><a href="/control">← Back to ChurchStream</a><button onclick="print()">Print</button></div>
+<main id="doc">Loading…</main>
+<script>
+// A small Markdown renderer for this manual: headings, paragraphs, lists, tables, links,
+// bold/italic/code and rules. Heading ids match GitHub's, so the contents links work.
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const slug = (t) => t.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').trim().replace(/\s/g, '-');
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => `<a href="${u.replace(/"/g, '')}">${t}</a>`);
+}
+function render(md) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    let m;
+    if ((m = /^(#{1,3})\s+(.*)$/.exec(l))) { const h = m[1].length; out.push(`<h${h} id="${slug(m[2])}">${inline(m[2])}</h${h}>`); i++; continue; }
+    if (/^---+\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = (r) => r.replace(/^\||\|\s*$/g, '').split('|').map((c) => c.trim());
+      const body = rows.filter((r, k) => k !== 1 || !/^\|[\s:|-]+\|?\s*$/.test(r));
+      out.push('<table><thead><tr>' + cells(body[0]).map((c) => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>' +
+        body.slice(1).map((r) => '<tr>' + cells(r).map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l);
+      const items = [];
+      const indent = (x) => x.match(/^\s*/)[0].length;
+      const base = indent(l);
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
+        if (indent(lines[i]) > base && items.length) { // one level of nested list
+          const sub = [];
+          const subOrdered = /^\s*\d+\./.test(lines[i]);
+          while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i]) && indent(lines[i]) > base) sub.push(`<li>${inline(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ''))}</li>`);
+          items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, `<${subOrdered ? 'ol' : 'ul'}>${sub.join('')}</${subOrdered ? 'ol' : 'ul'}></li>`);
+          continue;
+        }
+        let item = lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, '');
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])) item += ' ' + lines[i++].trim();
+        items.push(`<li>${inline(item)}</li>`);
+      }
+      out.push(`<${ordered ? 'ol' : 'ul'}>${items.join('')}</${ordered ? 'ol' : 'ul'}>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|\||---|\s*([-*]|\d+\.)\s)/.test(lines[i])) para.push(lines[i++].trim());
+    out.push(`<p>${inline(para.join(' '))}</p>`);
+  }
+  return out.join('\n');
+}
+fetch('/manual.md').then((r) => r.text()).then((md) => {
+  document.getElementById('doc').innerHTML = render(md);
+  if (location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) el.scrollIntoView(); }
+}).catch(() => { document.getElementById('doc').textContent = 'The manual could not be loaded.'; });
+</script>
+</body>
+</html>

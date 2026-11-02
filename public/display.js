@@ -1,4 +1,4 @@
-import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts } from '/shared.js';
+import { connect, fitText, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts, themeClasses } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -160,8 +160,9 @@ function syncYouTube(state, item, playing) {
 const bgLayers = [$('bgA'), $('bgB')];
 let bgFront = 0;
 
-function showText(slide, isBible, scale = 1) {
-  const key = slide ? slide.text + '|' + (slide.ref || '') + '|' + scale : null;
+let lastThemeCls = null;
+function showText(slide, isBible, scale = 1, cls = '') {
+  const key = slide ? slide.text + '|' + (slide.ref || '') + '|' + (slide.part || '') + '|' + scale + '|' + cls : null;
   if (key === shownKey) return;
   shownKey = key;
   const next = layers[1 - front];
@@ -181,6 +182,13 @@ function render(state) {
   $('offline').classList.toggle('show', !state);
   if (!state) return;
   const theme = state.config.theme || {};
+  // Text options (font, alignment, outline, words at the bottom) are classes on the screen.
+  const tcls = themeClasses(theme);
+  if (tcls !== lastThemeCls) {
+    for (const c of ['font-segoe', 'font-serif', 'font-arial', 'align-left', 'outline', 'pos-bottom']) $('screen').classList.remove(c);
+    for (const c of tcls.split(' ').filter(Boolean)) $('screen').classList.add(c);
+    lastThemeCls = tcls;
+  }
   const liveItem = state.live && state.live.item;
   const bg = bgInfo(effectiveBg(currentSlide(state), liveItem, theme));
   if (bg.url !== lastBg) {
@@ -256,7 +264,7 @@ function render(state) {
   $('vid').classList.toggle('hidden', !(mediaOn && item.media.type === 'video' && !state.black && !state.logo));
   syncMusic(state);
   syncYouTube(state, item, playing);
-  showText(hideText || isCount || pic || isMedia ? null : slide, item && item.kind === 'bible', theme.textScale || 1);
+  showText(hideText || isCount || pic || isMedia ? null : slide, item && item.kind === 'bible', theme.textScale || 1, tcls);
   $('ref').textContent = !hideText && !isCount && slide && slide.ref ? slide.ref : '';
   $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
   $('logo').classList.toggle('hidden', !state.logo);

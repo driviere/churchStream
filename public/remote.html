@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4f6fa">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Remote · ChurchStream</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/shared.css">
+<style>
+  :root { color-scheme: light; --bg: #f4f6fa; --panel: #fff; --line: #eaecf0; --text: #101828; --muted: #475467; --accent: #0f766e; --live: #d92d20;
+    --shadow: 0 1px 3px rgba(16,24,40,.08); --shadow-card: 0 1px 3px rgba(16,24,40,.06), 0 8px 24px -12px rgba(16,24,40,.10); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { min-height: 100dvh; display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); gap: 12px; max-width: 640px; margin: 0 auto; -webkit-tap-highlight-color: transparent; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header img { width: 30px; height: 30px; border-radius: 9px; box-shadow: 0 4px 10px -2px rgba(79,140,255,.45); }
+  header b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: #98a2b3; }
+  .pill.live { background: #fef3f2; border-color: #fecdca; color: #b42318; } .pill.live i { background: var(--live); }
+  .pill.off { background: #fffaeb; border-color: #fedf89; color: #b54708; } .pill.off i { background: #f79009; }
+  .mini { border-radius: 16px; overflow: hidden; box-shadow: 0 14px 30px -14px rgba(11,18,32,.6); touch-action: pan-y; }
+  .what { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); margin-top: -4px; }
+  .what b { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .next { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); min-height: 56px; }
+  .next small { display: block; font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--accent); }
+  .next div { font-size: 14px; color: #344054; white-space: pre-line; max-height: 4.2em; overflow: hidden; margin-top: 2px; }
+  .pad { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+  .pad button, .row3 button { font: inherit; border-radius: 18px; cursor: pointer; transition: transform .08s, box-shadow .15s; -webkit-user-select: none; user-select: none; }
+  .pad button:active, .row3 button:active { transform: scale(.96); }
+  .back { min-height: 104px; border: 1px solid #e4e7ec; background: var(--panel); color: #344054; font-size: 18px !important; font-weight: 700; box-shadow: var(--shadow); }
+  .go { min-height: 104px; border: 0; background: var(--accent); color: #fff; font-size: 30px !important; font-weight: 800; box-shadow: 0 12px 24px -10px rgba(15,118,110,.65), inset 0 1px 0 rgba(255,255,255,.18); }
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .row3 button { min-height: 58px; border: 1px solid #e4e7ec; background: var(--panel); color: #344054; font-size: 15px; font-weight: 700; box-shadow: var(--shadow); }
+  .row3 button.on { background: #e6f4f1; border-color: var(--accent); color: #0b5f58; box-shadow: inset 0 2px 4px rgba(16,24,40,.12); }
+  .row3 .black { background: #1d2939; border-color: #101828; color: #fff; }
+  .row3 .black.on { background: #101828; color: #fff; box-shadow: inset 0 2px 6px rgba(0,0,0,.45), 0 0 0 3px var(--live); }
+  h2 { font-size: 13px; margin: 6px 2px 0; color: var(--muted); font-weight: 700; letter-spacing: .02em; }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  ol button { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; box-shadow: var(--shadow); }
+  ol button.live { border: 2px solid var(--live); box-shadow: 0 0 0 3px #fee4e2; }
+  ol button.done { opacity: .55; }
+  ol .k { flex: none; font-size: 10px; font-weight: 800; letter-spacing: .07em; padding: 2px 6px; border-radius: 5px; background: #f2f4f7; color: #475467; }
+  ol .k.song { background: #eff4ff; color: #1d4ed8; } ol .k.bible { background: #fffaeb; color: #b54708; } ol .k.text { background: #f4f3ff; color: #6941c6; }
+  ol .k.countdown { background: #e6f4f1; color: #0f766e; } ol .k.images { background: #fff4ed; color: #c4320a; } ol .k.media { background: #fdf2fa; color: #c11574; }
+  ol .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 10px; }
+  .offline { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); background: #101828; color: #fff; padding: 8px 14px; border-radius: 12px; font-size: 13px; display: none; }
+  .offline.show { display: block; }
+  :focus-visible { outline: 3px solid #7fd1c7; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<header><img src="/favicon.svg" alt=""><b id="church">ChurchStream</b><span class="pill" id="status"><i></i><span>Connecting…</span></span></header>
+<div class="mini" id="mini"><div class="screen" id="screen"><div class="screen-bg" id="bg"></div><div class="screen-layer"><div class="screen-text" id="words"></div></div></div></div>
+<div class="what"><b id="title">Nothing on screen yet</b><span id="pos"></span></div>
+<div class="next"><small>NEXT</small><div id="next">Press Next to start the first item.</div></div>
+<div class="pad"><button class="back" id="back" aria-label="Back">‹ Back</button><button class="go" id="go" aria-label="Next">Next ›</button></div>
+<div class="row3"><button id="clear">Clear</button><button id="logo">Logo</button><button id="black" class="black">Black</button></div>
+<h2>ORDER OF SERVICE · tap to show</h2>
+<ol id="plan"></ol>
+<div class="offline" id="offline">Reconnecting to ChurchStream…</div>
+<script type="module" src="/remote.js"></script>
+</body>
+</html>
