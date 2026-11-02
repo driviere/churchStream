@@ -441,7 +441,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
           <h1>${item.title}</h1>
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
-        ${(item.kind === 'song' || ((item.kind === 'text' || item.kind === 'countdown') && inPlan)) && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${(item.kind === 'song' || item.kind === 'text' || item.kind === 'countdown') && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
         ${inPlan && item.kind !== 'media' && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
@@ -1244,26 +1244,30 @@ function ControlView({ s }) {
   };
   // Text items live inside the order of service, so editing saves the plan (and refreshes the
   // projector if that item is on screen right now).
-  const saveText = async (uid, title, slides, autoAdvance = 0) => {
-    try {
-      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title, slides, count: slides.length, autoAdvance } : x));
+  // Save edited text / countdown slides. Items in the order of service are saved there and
+  // reloaded (so their item and per-slide backgrounds stay); items only being previewed or
+  // shown keep their background and are updated in place.
+  const saveEdited = async (uid, patch, liveIndex) => {
+    const n = patch.slides.length;
+    let it;
+    if (s.plan.items.some((x) => x.uid === uid)) {
+      const keepBgs = (per) => Object.fromEntries(Object.entries(per || {}).filter(([k]) => +k < n));
+      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, ...patch, count: n, slideBackgrounds: keepBgs(x.slideBackgrounds) } : x));
       await api('/api/plan', { items });
-      const it = { key: uid, kind: 'text', title, subtitle: '', slides, autoAdvance };
-      if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: Math.min(s.live.index, slides.length - 1) });
-      setSelected(it);
-      toast('Saved');
-    } catch (err) { fail(err); }
+      it = await api('/api/plan/open', { uid });
+    } else {
+      const prev = (item && item.key === uid && item) || (s.live && s.live.item.key === uid && s.live.item) || {};
+      it = { ...prev, ...patch, key: uid, subtitle: prev.subtitle || '',
+        slides: patch.slides.map((sl, i) => ({ ...sl, background: (prev.slides && prev.slides[i] && prev.slides[i].background) || '' })) };
+    }
+    if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: liveIndex(Math.min(s.live.index, n - 1)) });
+    setSelected(it);
+    toast('Saved');
   };
-  const saveCountdown = async (uid, edited) => {
-    try {
-      const items = s.plan.items.map((x) => (x.uid === uid ? { ...x, title: edited.title, slides: edited.slides, count: edited.slides.length, autoAdvance: edited.autoAdvance, countdown: edited.countdown } : x));
-      await api('/api/plan', { items });
-      const it = await api('/api/plan/open', { uid });
-      if (s.live && s.live.item.key === uid) await api('/api/live', { item: it, index: 0 });
-      setSelected(it);
-      toast('Saved');
-    } catch (err) { fail(err); }
-  };
+  const saveText = (uid, title, slides, autoAdvance = 0) =>
+    saveEdited(uid, { kind: 'text', title, slides, autoAdvance }, (i) => i).catch(fail);
+  const saveCountdown = (uid, edited) =>
+    saveEdited(uid, { kind: 'countdown', title: edited.title, slides: edited.slides, autoAdvance: edited.autoAdvance, countdown: edited.countdown }, () => 0).catch(fail);
   // After a background change, reload the item (and refresh the screens if it is showing).
   const refreshItem = async (uid) => {
     const it = await api('/api/plan/open', { uid });
