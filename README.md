@@ -6,6 +6,9 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 
 > ChurchStream is an independent, free and open-source community project. It was created for Seventh-day Adventist congregations but is not an official product of, or endorsed by, the General Conference of Seventh-day Adventists. Any church is welcome to use it.
 
+
+📖 **[User manual](public/manual.md)**: a step-by-step guide for volunteers. It's also built into the app: click **?** in the top bar, or open `/manual`.
+
 ## What's included
 
 ### 📖 The Bible
@@ -20,6 +23,8 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **One click to install each**, from Settings or the setup wizard.
 - **Type the hymn number:** `100` opens your default hymnal, and `sdah 100` or `ch 100` picks the book. You can also search by title or by any line of the words.
 - **Sung order:** refrains are placed after every verse, so the operator just presses **Next**. Edits you make to a hymn are kept when the hymnal is updated.
+- **Pick the verses to sing**, e.g. 1, 2 and 4. Refrains come and go with their verse.
+- **Responsive readings** from any Bible passage: the leader and congregation take turns, and the last verse is read by all. The congregation's words show in gold.
 - **Your own songs**, choruses and announcements can be added too. Paste the words, and a blank line starts a new slide.
 
 ### 📺 Projection
@@ -27,12 +32,18 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **15 built-in backgrounds** made for projection, plus your own photos. Choose one for everything, for one hymn or reading, or for a single slide.
 - **Quick screen controls:** **Black**, **Clear** (hide the words) and **Logo**, each a single tap.
 - **Stage screen** for musicians on any phone or tablet, showing the current and next slide and a clock.
+- **Text options:** choose the font, put the words in the middle or along the bottom (leaving photos and the camera visible), centred or left, with an optional outline.
 
 ### 🔴 Live streaming
 - **YouTube and Facebook at the same time**, plus an optional recording. The video is encoded **once**, so two platforms cost no extra computer power.
 - **Choose what viewers see:** the **Camera**, the **Slides**, **Slides + camera** (picture-in-picture) or **Auto**. Switching is instant and never interrupts the stream.
 - **Names (lower thirds)** with one tap, on the stream and, if you like, the projector screens.
 - **Safety checks:** before going live, ChurchStream checks the camera and sound. It warns you if there's no sound, and reconnects a platform automatically if it drops.
+- **Sound clean-up for online viewers:**
+  - noise reduction (hum and fans);
+  - even volume between loud and quiet speakers;
+  - no distortion;
+  - a mic level control and a lip-sync delay.
 
 ### 🎬 Before, during and after the service
 - **Countdown** to the start of the service, with announcements changing underneath on their own. It runs on the screens and the stream.
@@ -58,7 +69,11 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **One search box** for hymn numbers, songs and verses.
 - **A big Next button** that a $15 presentation clicker also works with.
 - **Order of service** that you build before the service and simply step through.
-- **Runs from a tablet** on the church Wi-Fi, as well as from the computer.
+- **Runs from a tablet** on the church Wi-Fi, as well as from the computer. **Settings → Phones & tablets** shows QR codes to scan.
+- **Phone remote:** any phone becomes the clicker, with big Next and Back buttons, what's next, and the order of service.
+- **Volunteer mode:** a simple screen with settings and editing hidden. Press and hold to leave it.
+- **Undo** for removed items and replaced services (or **Ctrl+Z**). There's also a **printable order of service**.
+- **A user manual** built into the app (**?** in the top bar).
 - **Light and dark themes.**
 - **Light on resources:** one small program plus FFmpeg. There's no OBS, and nothing to install.
 

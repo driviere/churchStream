@@ -167,6 +167,15 @@ jobs:
 
       # Started by hand (Actions → Windows build → Run workflow) with a tag: creates the tag
       # on the commit that was built and publishes the release with the zip attached.
+      # Release notes come from .github/release-notes/<tag>.md when that file exists.
+      - name: Find release notes
+        id: notes
+        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
+        shell: bash
+        run: |
+          f=".github/release-notes/${{ inputs.release_tag }}.md"
+          if [ -f "$f" ]; then echo "path=$f" >> "$GITHUB_OUTPUT"; fi
+
       - name: Publish GitHub Release (manual run)
         if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
         uses: softprops/action-gh-release@v2
@@ -175,4 +184,5 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: ChurchStream ${{ inputs.release_tag }}
           files: dist/ChurchStream-win-x64.zip
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}

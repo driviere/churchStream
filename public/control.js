@@ -1564,6 +1564,7 @@ function ControlView({ s }) {
       <${StreamStatus} s=${s} />
       <${VolunteerToggle} on=${vol} setOn=${setVol} />
       ${/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && html`<button class="btn icon round vol-hide" title="Connect a phone or tablet" aria-label="Connect a phone or tablet" onClick=${() => navigate('/settings#devices')}>${icons.phone()}</button>`}
+      <a class="btn icon round vol-hide" href="/manual" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
       <button class="btn icon round vol-hide" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
     ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
@@ -2075,7 +2076,7 @@ function SettingsView({ s }) {
     <div class="settings-top"><button class="btn ghost" onClick=${() => navigate('/control')}>${icons.back()} Back to control panel</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
     <div class="settings">
       <nav>${SECTIONS.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
-        <span class="spacer"></span><button onClick=${() => navigate('/setup')}>Run setup again</button></nav>
+        <span class="spacer"></span><button onClick=${() => window.open('/manual', '_blank')}>User manual</button><button onClick=${() => navigate('/setup')}>Run setup again</button></nav>
       <div class="content"><div><h1>${cur[1]}</h1><div style="height:14px"></div><${C} s=${s} key=${cur[0]} /></div></div>
     </div>
   </div>`;
@@ -2113,7 +2114,7 @@ function SetupView({ s }) {
       ${step.lead && html`<p class="lead">${step.lead}</p>`}
       ${step.C && html`<${step.C} s=${s} autoPreview=${true} key=${step.id} />`}
       ${step.id === 'done' && html`<div>
-        <p class="lead">Here's how a typical Sunday works:</p>
+        <p class="lead">Here's how a typical Sabbath works:</p>
         <ol style="line-height:2;padding-left:20px;margin:0 0 8px">
           <li><b>Build the service:</b> type a hymn number, song name or verse, press <kbd>Shift</kbd>+<kbd>Enter</kbd>.</li>
           <li><b>During the service:</b> press <kbd>→</kbd>, <kbd>Space</kbd> or the big <b>Next</b> button (a presentation clicker works too).</li>
