@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projector</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  /* Fill the whole output; the slide area stays 16:9-safe inside. */
+  .screen { position: fixed; inset: 0; width: 100vw; height: 100vh; aspect-ratio: auto; }
+  .offline { position: fixed; right: 12px; bottom: 10px; width: 10px; height: 10px; border-radius: 50%; background: #e5484d; opacity: 0; transition: opacity .3s; }
+  .offline.show { opacity: .8; }
+  #yt iframe { width: 100%; height: 100%; border: 0; display: block; }
+  /* YouTube background music: YouTube's player must stay visible, so it sits in a small
+     "now playing" card in the corner (minimum 200 px tall, as YouTube requires). */
+  .yt-music { position: absolute; right: 2.2vw; bottom: 3.2vw; width: max(356px, 19vw); border-radius: 14px; overflow: hidden;
+    background: rgba(0,0,0,.72); box-shadow: 0 10px 40px rgba(0,0,0,.45); transition: opacity 600ms ease; font-family: 'Inter ChurchStream', 'Segoe UI', sans-serif; }
+  .yt-music iframe { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border: 0; display: block; }
+  .yt-music .cap { display: flex; gap: 10px; align-items: center; padding: 10px 14px; color: #fff; font-size: max(15px, .85vw); }
+  .yt-music .cap b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<div class="screen" id="screen">
+  <div class="screen-bg" id="bgA"></div>
+  <div class="screen-bg hidden" id="bgB"></div>
+  <div class="screen-layer hidden" id="layerA"><div class="screen-text"></div></div>
+  <div class="screen-layer hidden" id="layerB"><div class="screen-text"></div></div>
+  <div class="screen-ref" id="ref"></div>
+  <div class="screen-tag" id="tag"></div>
+  <div class="screen-img hidden" id="img"><img alt=""></div>
+  <div class="screen-img hidden" id="vid"><video playsinline preload="auto"></video></div>
+  <div class="screen-img hidden" id="yt"><div id="ytPlayer"></div></div>
+  <audio id="aud" preload="auto"></audio>
+  <audio id="music" preload="auto"></audio>
+  <div class="screen-count hidden" id="count"><div class="msg"></div><div class="time"></div><div class="ann"></div></div>
+  <div class="screen-lt hidden" id="lt"><div class="n"></div><div class="t"></div></div>
+  <div class="screen-ticker hidden" id="ticker"><span></span></div>
+  <div class="screen-logo hidden" id="logo"></div>
+  <div class="screen-black hidden" id="black"></div>
+  <div class="yt-music hidden" id="ytm"><div id="ytMusicPlayer"></div><div class="cap"><span>♪</span><b></b></div></div>
+  <div class="screen-identify hidden" id="identify">Projector<small>This screen is showing ChurchStream</small></div>
+</div>
+<div class="offline" id="offline"></div>
+<script type="module" src="/display.js"></script>
+</body>
+</html>

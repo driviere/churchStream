@@ -1,0 +1,115 @@
+/* The projected "screen". Used full-size on the projector and scaled down for thumbnails,
+   so what the operator sees is exactly what the congregation sees. Sizes are in container
+   units (cqh) so a 200px thumbnail and a 1920px projector render identically. */
+@font-face {
+  font-family: 'Inter ChurchStream';
+  src: url('/fonts/Inter-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-display: block;
+}
+
+.screen {
+  container-type: size;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font-family: 'Inter ChurchStream', 'Segoe UI', system-ui, sans-serif;
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
+}
+.screen-bg {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 0%, #1b2440 0%, #0b0f1a 55%, #05070c 100%);
+  background-size: cover; background-position: center;
+}
+.screen-bg { transition: opacity 400ms ease; }
+.screen-bg.has-image::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.screen.light-bg { color: #1a1d23; }
+.screen.light-bg .screen-text { text-shadow: none; }
+.screen-layer {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 6cqh 6cqw 11cqh;
+  transition: opacity 300ms ease;
+}
+.screen-text {
+  text-align: center;
+  line-height: 1.28;
+  font-size: 7cqh;
+  white-space: pre-line;
+  text-wrap: balance;
+  text-shadow: 0 0.25cqh 1.2cqh rgba(0, 0, 0, 0.55);
+  max-width: 100%;
+  max-height: 100%;
+  overflow-wrap: break-word;
+}
+.screen-text.bible { white-space: normal; text-align: center; }
+.screen-text sup { font-size: 0.5em; opacity: 0.7; margin-right: 0.25em; vertical-align: 0.6em; line-height: 0; }
+.screen-ref {
+  position: absolute; left: 0; right: 0; bottom: 3.6cqh;
+  text-align: center; font-size: 3.4cqh; opacity: 0.78; letter-spacing: 0.02em;
+}
+.screen-tag {
+  position: absolute; right: 3cqw; bottom: 3.6cqh;
+  font-size: 2.6cqh; opacity: 0.5; letter-spacing: 0.03em;
+}
+.screen-logo {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqh;
+}
+.screen-logo img { max-width: 50cqw; max-height: 50cqh; object-fit: contain; }
+.screen-logo.small img { max-width: 34cqw; max-height: 34cqh; }
+.screen-logo.large img { max-width: 80cqw; max-height: 70cqh; }
+.screen-logo.with-name img { max-height: 42cqh; }
+.screen-logo.small.with-name img { max-height: 30cqh; }
+.screen-logo.large.with-name img { max-height: 56cqh; }
+.screen-logo .name.under { font-size: 5.5cqh; }
+.screen-logo .name { font-size: 7cqh; letter-spacing: 0.01em; text-align: center; padding: 0 8cqw; }
+.screen-black { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
+.screen-identify {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #2563eb; color: #fff; font-size: 9cqh; gap: 2cqh; z-index: 5;
+}
+.screen-identify small { font-size: 3.6cqh; opacity: 0.85; }
+.hidden { opacity: 0; pointer-events: none; }
+
+/* Lower third (name / title) on the projector — same look as on the live stream. */
+.screen-lt {
+  position: absolute; left: 5.5cqw; bottom: 9cqh; z-index: 2;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1.1cqh;
+  transition: opacity 350ms ease, transform 350ms ease;
+}
+.screen-lt.hidden { transform: translateY(2cqh); }
+.screen-lt .n { background: #fff; color: #111827; font-size: 5cqh; line-height: 1.2; padding: 1.4cqh 2.2cqh; box-shadow: 0 0.6cqh 2cqh rgba(0, 0, 0, .25); }
+.screen-lt .t { background: #2563eb; color: #fff; font-size: 3.4cqh; line-height: 1.2; padding: 1cqh 2cqh; }
+.screen-lt .t:empty, .screen-lt .n:empty { display: none; }
+/* Keep lyrics clear of the name while it shows. */
+.screen.has-lt .screen-layer { padding-bottom: 32cqh; }
+
+/* Countdown before the service (with optional rotating announcements underneath). */
+.screen-count {
+  position: absolute; inset: 0; z-index: 1;
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr); justify-items: center; align-content: center;
+  padding: 7cqh 7cqw 10cqh; text-align: center; gap: 1.5cqh;
+  transition: opacity 300ms ease;
+}
+.screen-count .msg { font-size: 4.6cqh; opacity: .88; letter-spacing: .01em; }
+.screen-count .time { font-size: 19cqh; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.01em; text-shadow: 0 0.4cqh 2cqh rgba(0, 0, 0, .5); }
+.screen-count.done .time { display: none; }
+.screen-count.done .msg { font-size: 9cqh; opacity: 1; }
+.screen-count .ann { width: 100%; height: 100%; max-height: 34cqh; display: flex; align-items: center; justify-content: center; margin-top: 3cqh; }
+.screen-count .ann:empty { display: none; }
+.screen-count .ann .screen-text { font-size: 5cqh; opacity: .95; }
+.screen.light-bg .screen-count .time { text-shadow: none; }
+
+/* Ticker across the bottom of the projector (optional). */
+.screen-ticker { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 7cqh; background: rgba(0, 0, 0, .72); color: #fff; overflow: hidden; font-size: 3.6cqh; display: flex; align-items: center; transition: opacity 300ms ease; }
+.screen-ticker span { white-space: nowrap; padding-left: 100%; animation: tick var(--tick-dur, 20s) linear infinite; }
+@keyframes tick { to { transform: translateX(-100%); } }
+.screen.has-ticker .screen-ref, .screen.has-ticker .screen-tag { bottom: 9cqh; }
+
+/* Picture slides (sermon PDFs / images): fill the screen, letterboxed on black. */
+.screen-img { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
+.screen-img img, .screen-img video { width: 100%; height: 100%; object-fit: contain; display: block; }

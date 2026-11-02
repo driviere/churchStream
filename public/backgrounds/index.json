@@ -1,0 +1,77 @@
+[
+ {
+  "id": "midnight",
+  "name": "Midnight",
+  "light": false
+ },
+ {
+  "id": "black",
+  "name": "Plain black",
+  "light": false
+ },
+ {
+  "id": "slate",
+  "name": "Slate",
+  "light": false
+ },
+ {
+  "id": "ocean",
+  "name": "Deep ocean",
+  "light": false
+ },
+ {
+  "id": "sunrise",
+  "name": "Sunrise",
+  "light": false
+ },
+ {
+  "id": "mountains",
+  "name": "Mountains at dusk",
+  "light": false
+ },
+ {
+  "id": "forest",
+  "name": "Forest evening",
+  "light": false
+ },
+ {
+  "id": "stars",
+  "name": "Starry night",
+  "light": false
+ },
+ {
+  "id": "bokeh",
+  "name": "Golden lights",
+  "light": false
+ },
+ {
+  "id": "rays",
+  "name": "Light from above",
+  "light": false
+ },
+ {
+  "id": "purple",
+  "name": "Worship purple",
+  "light": false
+ },
+ {
+  "id": "teal",
+  "name": "Calm teal",
+  "light": false
+ },
+ {
+  "id": "cross",
+  "name": "Cross at dawn",
+  "light": false
+ },
+ {
+  "id": "wood",
+  "name": "Warm wood",
+  "light": false
+ },
+ {
+  "id": "paper",
+  "name": "Soft cream (dark text)",
+  "light": true
+ }
+]
