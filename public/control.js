@@ -65,6 +65,7 @@ const icons = {
   pause: () => I(html`<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>`),
   yt: () => I(html`<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z" fill="currentColor"/>`),
   download: () => I(html`<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>`),
+  upload: () => I(html`<path d="M12 15V3M7 8l5-5 5 5M4 21h16"/>`),
   film: () => I(html`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/>`),
 };
 
@@ -317,7 +318,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onTemplates }) {
+function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onTemplates, onServices, onNewService }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -384,7 +385,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
   };
 
   return html`<section class="card plan-card" aria-label="Order of service">
-    <div class="plan-head"><b>Order of service</b><button class="btn small ghost" onClick=${onTemplates}>Templates</button><span>${items.length ? 'Next moves on by itself at the end of each item · drag (or press and hold) to reorder' : ''}</span></div>
+    <div class="plan-head"><b>Order of service</b><button class="btn small ghost" onClick=${onNewService}>New</button><button class="btn small ghost" onClick=${onServices}>Save / open</button><button class="btn small ghost" onClick=${onTemplates}>Templates</button><span>${items.length ? 'Next moves on by itself at the end of each item · drag (or press and hold) to reorder' : ''}</span></div>
     ${items.length === 0 && html`<div class="plan-empty">Search above, then press <kbd>Shift</kbd>+<kbd>Enter</kbd> (or “Add”) to build the order of service.</div>`}
     <ul class="plan" ref=${list}>
       ${items.map((it, i) => {
@@ -1081,7 +1082,115 @@ function TemplatesDialog({ s, onClose }) {
     ${!list ? html`<div class="muted">Loading…</div>` : !list.length ? html`<div class="note">No templates yet. Build your usual order of service once (opening hymn, scripture reading, prayer, children's story, sermon, closing hymn…), then save it here.</div>` : html`
       <div style="display:grid;gap:8px">${list.map((t) => html`<div class="row" key=${t.name}>
         <div class="grow"><b>${t.name}</b><div class="hint" style="margin:0">${t.items.length} items · ${t.items.slice(0, 4).map((x) => x.title).join(', ')}${t.items.length > 4 ? '…' : ''}</div></div>
+        <button class=${'btn small' + (s.config.defaultTemplate === t.name ? ' on' : ' ghost')} title="Use as our usual order (New → Our usual order)" aria-label=${'Use “' + t.name + '” as our usual order'}
+          onClick=${() => save({ defaultTemplate: s.config.defaultTemplate === t.name ? '' : t.name }, s.config.defaultTemplate === t.name ? 'No usual order' : `“${t.name}” is now your usual order`)}>${s.config.defaultTemplate === t.name ? '★ Usual' : '☆'}</button>
         <button class="btn small primary" onClick=${() => load(t)}>Use</button><button class="btn small ghost" onClick=${() => del(t)}>Delete</button></div>`)}</div>`}
+    <div class="hint" style="margin-top:10px">★ marks your usual order: <b>New → Our usual order</b> starts from it.</div>
+  </${Modal}>`;
+}
+
+const fmtBytes = (n) => (n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? Math.round(n / 1e6) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB');
+const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+
+// Start a new order of service: blank, our usual order, or a template. The current one is
+// kept in Save / open → Recent first.
+function NewServiceDialog({ s, onClose, onTemplates }) {
+  const [list, setList] = useState(null);
+  useEffect(() => { get('/api/templates').then(setList).catch(fail); }, []);
+  const usual = s.config.defaultTemplate && (list || []).find((t) => t.name === s.config.defaultTemplate);
+  const start = async (from) => {
+    try { await api('/api/service/new', { from }); toast(s.plan.items.length ? 'New service started · the old one is in Save / open → Recent' : 'New service started'); onClose(); } catch (err) { fail(err); }
+  };
+  return html`<${Modal} title="New service" onClose=${onClose}>
+    <div class="choices" style="grid-template-columns:1fr">
+      <button class="choice" disabled=${!usual} onClick=${() => start('default')}><b>★ Our usual order</b>
+        <span>${usual ? `${usual.items.length} items · ${usual.items.slice(0, 5).map((x) => x.title).join(', ')}${usual.items.length > 5 ? '…' : ''}` : 'Not set yet: save your usual order in Templates and mark it with ★.'}</span></button>
+      <button class="choice" onClick=${() => start('blank')}><b>Blank</b><span>An empty order of service.</span></button>
+      ${(list || []).filter((t) => t.name !== s.config.defaultTemplate).map((t) => html`<button class="choice" key=${t.name} onClick=${() => start(t.name)}><b>${t.name}</b><span>Template · ${t.items.length} items</span></button>`)}
+    </div>
+    ${s.plan.items.length > 0 && html`<div class="hint">The current order of service (${s.plan.items.length} items) is kept in <b>Save / open → Recent</b>.</div>`}
+    ${!usual && html`<button class="btn small" style="margin-top:10px" onClick=${onTemplates}>Open Templates</button>`}
+  </${Modal}>`;
+}
+
+// Save a service to a file to share with other computers, open one, or go back to a recent one.
+function ServicesDialog({ s, onClose }) {
+  const [tab, setTab] = useState(s.plan.items.length ? 'save' : 'open');
+  const [name, setName] = useState('');
+  const [info, setInfo] = useState(null);
+  const [withMedia, setWithMedia] = useState(true);
+  const [recent, setRecent] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [drag, setDrag] = useState(false);
+  const loadRecent = () => get('/api/services').then(setRecent).catch(fail);
+  useEffect(() => {
+    get('/api/service/info').then((d) => { setInfo(d); }).catch(() => {});
+    loadRecent();
+    const d = new Date();
+    setName('Sabbath ' + d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }));
+  }, []);
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = '/api/service/export?' + new URLSearchParams({ name: name.trim(), media: withMedia ? '1' : '0' });
+    a.download = '';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Saving “' + (name.trim() || 'Service') + '.churchservice” to Downloads');
+  };
+  const keep = async () => { try { await api('/api/services/save', { name: name.trim() }); toast('Saved on this computer'); loadRecent(); setTab('recent'); } catch (err) { fail(err); } };
+  const openFile = async (f) => {
+    if (!f) return;
+    if (!/\.churchservice$|\.zip$/i.test(f.name)) { fail(new Error('Choose a .churchservice file.')); return; }
+    setBusy('Opening ' + f.name + '…');
+    try {
+      const res = await fetch('/api/service/import', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.error) throw new Error(d.error || 'Could not open the file');
+      const extra = [d.newSongs && `${d.newSongs} song${d.newSongs === 1 ? '' : 's'} added`, d.media && `${d.media} picture/video file${d.media === 1 ? '' : 's'} added`].filter(Boolean).join(' · ');
+      toast(`Opened “${d.name}” (${d.items} items)${extra ? ' · ' + extra : ''}`);
+      if (d.missing) fail(new Error(`${d.missing} song${d.missing === 1 ? ' is' : 's are'} missing words. Add them from the search box.`));
+      if (d.bibles && d.bibles.length) toast(`Readings use ${d.bibles.join(', ').toUpperCase()}, which isn’t on this computer: they show in your default Bible. Add it in Settings → Bible.`);
+      onClose();
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const pick = () => pickFiles('.churchservice,.zip', false, ([f]) => openFile(f));
+  const openRecent = async (r) => {
+    if (s.plan.items.length && !confirm(`Open “${r.name}”? The current order of service is kept in Recent.`)) return;
+    try { await api('/api/services/open', { id: r.id }); toast(`Opened “${r.name}”`); onClose(); } catch (err) { fail(err); }
+  };
+  const del = async (r) => { if (confirm(`Delete “${r.name}” from this computer?`)) { await api('/api/services/delete', { id: r.id }).catch(fail); loadRecent(); } };
+  const tabs = [['save', 'Save this service'], ['open', 'Open a file'], ['recent', 'Recent']];
+  return html`<${Modal} wide title="Services" onClose=${onClose}>
+    <div class="seg" role="tablist" style="margin-bottom:18px;grid-template-columns:repeat(3,minmax(0,1fr))">${tabs.map(([k, t]) => html`<button role="tab" aria-selected=${tab === k} class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}</div>
+    ${tab === 'save' && (!s.plan.items.length ? html`<div class="note">The order of service is empty. Add hymns, readings and more first, or open a service.</div>` : html`
+      <div class="field"><label class="label" for="svc-name">Name</label><input id="svc-name" class="input" value=${name} onInput=${(e) => setName(e.target.value)} /></div>
+      <div class="svc-box">
+        <div class="label" style="margin:0">What's included · ${s.plan.items.length} items</div>
+        <div class="svc-titles">${s.plan.items.map((x) => x.title).join(' · ')}</div>
+        <div class="hint" style="margin-top:6px">Songs are saved with their words, so they open even on a computer without them.</div>
+        ${info && info.media > 0 && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${withMedia} onChange=${(e) => setWithMedia(e.target.checked)} />
+          <span>Include pictures, backgrounds and videos (${info.media} file${info.media === 1 ? '' : 's'}, ${fmtBytes(info.mediaBytes)})</span></label>`}
+      </div>
+      <div class="svc-actions">
+        <button class="btn big primary" onClick=${download}>${icons.download()} Save to a file</button>
+        <button class="btn big" onClick=${keep}>Keep on this computer</button>
+      </div>
+      <div class="hint">The file (<b>.churchservice</b>) goes to your Downloads folder. Email it, send it on WhatsApp or copy it with a USB stick, then open it in ChurchStream on the other computer (Save / open → Open a file).</div>`)}
+    ${tab === 'open' && html`
+      <button class=${'svc-drop' + (drag ? ' over' : '')} disabled=${!!busy} onClick=${pick}
+        onDragOver=${(e) => { e.preventDefault(); setDrag(true); }} onDragLeave=${() => setDrag(false)}
+        onDrop=${(e) => { e.preventDefault(); setDrag(false); openFile(e.dataTransfer.files[0]); }}>
+        ${icons.upload()}
+        <b>${busy || 'Open a service file'}</b><span>${busy ? 'Adding its songs and pictures…' : 'or drop a .churchservice file here'}</span>
+      </button>
+      ${s.plan.items.length > 0 && html`<div class="note" style="margin-top:12px">Opening replaces the current order of service. The current one is kept in <b>Recent</b> first, so you can switch back.</div>`}`}
+    ${tab === 'recent' && (!recent ? html`<div class="muted">Loading…</div>` : !recent.length ? html`<div class="note">Nothing yet. Services you save here, and earlier orders of service (kept automatically when you start a new one or open a file), appear in this list.</div>` : html`
+      <div class="svc-list">${recent.map((r) => html`<div class="svc-row" key=${r.id}>
+        <div class="grow"><b>${r.name}</b><div class="muted" style="font-size:12px">${fmtWhen(r.saved)} · ${r.count} items${r.auto ? ' · kept automatically' : ''} · ${r.titles.join(', ')}${r.count > r.titles.length ? '…' : ''}</div></div>
+        <button class="btn small ghost" onClick=${() => del(r)} aria-label=${'Delete ' + r.name}>Delete</button>
+        <button class="btn small primary" onClick=${() => openRecent(r)}>Open</button>
+      </div>`)}</div>
+      <div class="hint">To send one of these to another computer, open it, then use <b>Save this service</b>.</div>`)}
   </${Modal}>`;
 }
 
@@ -1304,7 +1413,8 @@ function ControlView({ s }) {
     <div class="bottom">
       <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
         onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
-        onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })} />
+        onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })}
+        onServices=${() => setDialog({ type: 'services' })} onNewService=${() => setDialog({ type: 'newservice' })} />
       <div class="controls">
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
@@ -1321,6 +1431,8 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'countdown' && html`<${CountdownEditor} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (it) => saveCountdown(dialog.item.key, it) : null} />`}
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'services' && html`<${ServicesDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'newservice' && html`<${NewServiceDialog} s=${s} onClose=${() => setDialog(null)} onTemplates=${() => setDialog({ type: 'templates' })} />`}
     ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'media' && html`<${MediaDialog} s=${s} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {

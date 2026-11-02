@@ -147,6 +147,13 @@ const routes = {
   'POST /api/youtube/cancel': () => { app.cancelDownload(); return { ok: true }; },
   'POST /api/display/youtube': async (req) => { app.youtubeReport(await json(req)); return { ok: true }; },
   'GET /api/templates': () => app.listTemplates(),
+  'GET /api/services': () => app.listServices().map(({ items, ...e }) => ({ ...e, count: items.length, titles: items.slice(0, 6).map((x) => x.title) })),
+  'GET /api/service/info': () => app.exportInfo(),
+  'POST /api/services/save': async (req) => { app.archivePlan((await json(req)).name); return app.listServices().length; },
+  'POST /api/services/open': async (req) => app.openService((await json(req)).id),
+  'POST /api/services/delete': async (req) => { app.deleteService((await json(req)).id); return { ok: true }; },
+  'POST /api/service/new': async (req) => app.newService(await json(req)),
+  'POST /api/service/import': async (req) => app.importService(await readBody(req, 1024 * 1024 * 1024)),
   'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },
   'POST /api/templates/delete': async (req) => app.deleteTemplate((await json(req)).name),
   'POST /api/plan': async (req) => { app.setPlan((await json(req)).items); return { ok: true }; },
@@ -204,6 +211,13 @@ const server = http.createServer(async (req, res) => {
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); });
       return;
+    }
+    if (req.method === 'GET' && p === '/api/service/export') {
+      const { name, buffer } = app.exportService({ name: url.searchParams.get('name'), media: url.searchParams.get('media') !== '0' });
+      const file = (name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Service') + '.churchservice';
+      res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': buffer.length, 'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename="${file.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file)}` });
+      return res.end(buffer);
     }
     const handler = routes[`${req.method} ${p}`];
     if (handler) return send(res, 200, (await handler(req, url)) ?? { ok: true });

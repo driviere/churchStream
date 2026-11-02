@@ -40,6 +40,12 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 - **Sermon slides:** the pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides you step through with **Next**.
 - **Videos (Mission Spotlight, special music) and background music** play on the screens and *into the live stream* without interrupting it. Background music steps aside automatically while a video plays.
 - **Scrolling ticker** along the bottom of the stream, and optionally the screens too.
+- **New service:** start from a blank order or from *Our usual order* (a template you mark with ★). The previous order is always kept in **Recent**.
+- **Save and share services:** **Save / open** saves an order of service as one **.churchservice** file. The file includes:
+  - the words of its songs;
+  - optionally, its pictures, backgrounds and videos.
+
+  Email it, send it on WhatsApp or copy it with a USB stick, then use **Open a file** on another computer. Anything that computer doesn't have is added. Services can also be kept on the computer and reopened later.
 - **Service templates:** save your usual order of service once, then start each Sabbath from it.
 - **Sunset and Sabbath times** for your church's location, worked out on the computer with no internet needed.
   - A reminder in the top bar, e.g. *Sabbath begins 6:12 pm*.

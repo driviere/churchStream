@@ -191,3 +191,16 @@ test('YouTube links', () => {
   assert.equal(parseYouTube('https://www.youtube.com/@church'), null);
   assert.deepEqual(clean({ id: 'bad id!', list: '<x>', start: -4 }), { id: '', list: '', start: 0 });
 });
+
+test('service files: zip round trip', () => {
+  const { writeZip } = require('../lib/zip');
+  const { readZip } = require('../lib/unzip');
+  const big = Buffer.from('Holy, holy, holy! '.repeat(200));
+  const pic = Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]);
+  const zip = writeZip([{ name: 'service.json', data: big }, { name: 'media/slide-1.jpg', data: pic }]);
+  const entries = readZip(zip);
+  assert.deepEqual(entries.map((e) => e.name), ['service.json', 'media/slide-1.jpg']);
+  assert.ok(entries[0].read().equals(big));
+  assert.ok(entries[1].read().equals(pic));
+  assert.ok(zip.length < big.length); // text is compressed
+});
