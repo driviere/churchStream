@@ -579,7 +579,7 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .plan-card { padding: 14px 16px 16px; gap: 10px; }
 .plan { gap: 10px; padding: 2px 2px 6px; }
 .plan li { background: var(--panel-2); border-color: var(--line); border-radius: 14px; padding: 10px 12px; gap: 5px; transition: transform .16s ease, box-shadow .16s ease, background-color .15s; }
-.plan li:hover { background: var(--panel); transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.plan li[data-i]:hover { background: var(--panel); transform: translateY(-2px); box-shadow: var(--shadow-lift); }
 .plan li.sel { background: var(--panel); border-color: var(--accent); }
 .plan li.live { background: var(--panel); border: 2px solid var(--live); box-shadow: 0 0 0 4px var(--live-soft); padding: 9px 11px; }
 .plan li.dragging { transform: scale(1.04); box-shadow: var(--shadow-lift); }
@@ -653,3 +653,20 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .vchip:active { transform: scale(.95); }
 .vchip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-accent); }
 .plan .verses-tag { font-size: 10px; font-weight: 700; color: var(--muted); }
+
+/* toasts with an action (Undo) */
+.toast { display: flex; align-items: center; gap: 14px; pointer-events: auto; }
+.toast-act { border: 0; background: rgba(255, 255, 255, .16); color: #fff; font: inherit; font-weight: 700; padding: 6px 12px; border-radius: 9px; cursor: pointer; }
+.toast-act:hover { background: rgba(255, 255, 255, .26); }
+
+/* Volunteer mode: only what's needed to run the slides */
+.volunteer .vol-hide, .volunteer .plan .x, .volunteer .plan-head .btn, .volunteer .add-menu, .volunteer .item-head .btn,
+.volunteer .bg-btn, .volunteer .verse-pick, .volunteer .result .acts { display: none !important; }
+.vol-chip { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 99px;
+  border: 1px solid var(--next-line); background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: 13px; font-weight: 700;
+  cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; box-shadow: var(--shadow-xs); white-space: nowrap; }
+.vol-chip svg { width: 16px; height: 16px; position: relative; }
+.vol-chip span { position: relative; }
+.vol-chip i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(15, 118, 110, .22); }
+.vol-chip.holding i { width: 100%; transition: width 2s linear; }
+@media (max-width: 720px) { .vol-chip span { display: none; } }

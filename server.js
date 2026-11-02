@@ -26,7 +26,7 @@ const MIME = {
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.webp': 'image/webp', '.otf': 'font/otf', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
 };
-const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html' };
+const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html', '/remote': 'remote.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
 const OPEN = [/^\/(display|stage)$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
 
@@ -152,6 +152,7 @@ const routes = {
   'POST /api/services/save': async (req) => { app.archivePlan((await json(req)).name); return app.listServices().length; },
   'POST /api/services/open': async (req) => app.openService((await json(req)).id),
   'POST /api/services/delete': async (req) => { app.deleteService((await json(req)).id); return { ok: true }; },
+  'POST /api/plan/undo': () => app.undoPlan(),
   'POST /api/service/new': async (req) => app.newService(await json(req)),
   'POST /api/service/import': async (req) => app.importService(await readBody(req, 1024 * 1024 * 1024)),
   'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },

@@ -14,7 +14,10 @@ const api = async (path, body) => {
 const get = (path, params) => api(path + (params ? '?' + new URLSearchParams(params) : ''));
 
 const toastBus = new EventTarget();
-const toast = (msg, kind = 'info') => toastBus.dispatchEvent(new CustomEvent('t', { detail: { msg, kind, id: Math.random() } }));
+const toast = (msg, kind = 'info', action = null) => toastBus.dispatchEvent(new CustomEvent('t', { detail: { msg, kind, action, id: Math.random() } }));
+// Undo the last change to the order of service (removing an item, New service, opening one…).
+const undoPlan = () => api('/api/plan/undo', {}).then((r) => toast(r.ok ? 'Undone' : 'Nothing to undo')).catch(fail);
+const undoToast = (msg) => toast(msg, 'info', { label: 'Undo', run: undoPlan });
 const fail = (err) => toast(err.message || String(err), 'error');
 const meterBus = new EventTarget();
 
@@ -50,6 +53,7 @@ const icons = {
   grip: () => I(html`<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>`),
   left: () => I(html`<path d="m15 18-6-6 6-6"/>`),
   right: () => I(html`<path d="m9 18 6-6-6-6"/>`),
+  lock: () => I(html`<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>`),
   phone: () => I(html`<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>`),
   gear: () => I(html`<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`),
   edit: () => I(html`<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>`),
@@ -158,12 +162,12 @@ function Toasts() {
     const on = (e) => {
       const t = e.detail;
       setList((l) => [...l.slice(-2), t]);
-      setTimeout(() => setList((l) => l.filter((x) => x.id !== t.id)), t.kind === 'error' ? 6000 : 3000);
+      setTimeout(() => setList((l) => l.filter((x) => x.id !== t.id)), t.kind === 'error' ? 6000 : t.action ? 7000 : 3000);
     };
     toastBus.addEventListener('t', on);
     return () => toastBus.removeEventListener('t', on);
   }, []);
-  return html`<div class="toasts">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}</div>`)}</div>`;
+  return html`<div class="toasts">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}${t.action && html`<button class="toast-act" onClick=${() => { setList((l) => l.filter((x) => x.id !== t.id)); t.action.run(); }}>${t.action.label}</button>`}</div>`)}</div>`;
 }
 
 function Modal({ title, onClose, children, footer, wide }) {
@@ -319,7 +323,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
+function Plan({ s, locked, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -328,7 +332,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
   const list = useRef();
 
   const save = (next) => api('/api/plan', { items: next }).catch(fail);
-  const remove = (uid) => save(items.filter((x) => x.uid !== uid));
+  const remove = (uid) => { const it = items.find((x) => x.uid === uid); save(items.filter((x) => x.uid !== uid)).then(() => undoToast(`Removed “${it ? it.title : 'item'}”`)); };
 
   // Reordering: with a mouse, just drag. On touch screens a swipe scrolls the list, a tap
   // opens the item, and press-and-hold (about half a second) picks a card up to drag it.
@@ -347,7 +351,7 @@ function Plan({ s, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, 
     const y0 = e.clientY;
     let mode = 'press'; // press → drag | scroll
     let hold = null;
-    const begin = () => { mode = 'drag'; dragging.current = true; setDrag(i); setOver(i); if (navigator.vibrate) navigator.vibrate(15); };
+    const begin = () => { if (locked) { mode = 'scroll'; return; } mode = 'drag'; dragging.current = true; setDrag(i); setOver(i); if (navigator.vibrate) navigator.vibrate(15); };
     if (touch) hold = setTimeout(() => { if (mode === 'press') begin(); }, 450);
     const move = (ev) => {
       if (mode === 'scroll') return;
@@ -511,7 +515,7 @@ function TickerCard({ s }) {
   const [text, setText] = useState(tk.text);
   useEffect(() => { if (!document.activeElement || document.activeElement.dataset.role !== 'ticker') setText(tk.text); }, [tk.text]);
   const show = (visible) => api('/api/ticker', { text, visible }).catch(fail);
-  return html`<div class="card">
+  return html`<div class="card vol-hide">
     <div class="card-head"><b>Ticker</b>${tk.visible && html`<span class="tag live" style="margin-left:auto">SCROLLING</span>`}</div>
     <textarea class="input" data-role="ticker" rows="2" style="resize:vertical" placeholder="e.g. Welcome! Potluck lunch after the service · Prayer meeting Wednesday 7 pm" value=${text}
       onInput=${(e) => setText(e.target.value)} onBlur=${() => tk.visible && text !== tk.text && show(true)}></textarea>
@@ -542,7 +546,7 @@ function Aside({ s, onGoLive, onStop, active }) {
         countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
     </div>
 
-    <div class="card stack">
+    <div class="card stack vol-hide">
       <div class="card-head" style="margin:0"><b>Live stream</b>
         <span class="note-r">${st.mode === 'live'
           ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
@@ -1045,7 +1049,7 @@ function MusicCard({ s }) {
       setYtOpen(false); setYtUrl('');
     } catch (err) { fail(err); }
   };
-  return html`<div class="card">
+  return html`<div class="card vol-hide">
     <div class="card-head"><b>Background music</b>${music && html`<span class="tag live" style="margin-left:auto">PLAYING</span>`}</div>
     ${music
       ? html`${music.youtube && html`<div class="muted" style="margin-bottom:8px">${icons.yt()} ${music.title} · from YouTube</div>`}
@@ -1182,7 +1186,7 @@ function NewServiceDialog({ s, onClose, onTemplates }) {
   useEffect(() => { get('/api/templates').then(setList).catch(fail); }, []);
   const usual = s.config.defaultTemplate && (list || []).find((t) => t.name === s.config.defaultTemplate);
   const start = async (from) => {
-    try { await api('/api/service/new', { from }); toast(s.plan.items.length ? 'New service started · the old one is in Save / open → Recent' : 'New service started'); onClose(); } catch (err) { fail(err); }
+    try { await api('/api/service/new', { from }); (s.plan.items.length ? undoToast : toast)('New service started'); onClose(); } catch (err) { fail(err); }
   };
   return html`<${Modal} title="New service" onClose=${onClose}>
     <div class="choices" style="grid-template-columns:1fr">
@@ -1268,7 +1272,7 @@ function ServicesDialog({ s, onClose }) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.error) throw new Error(d.error || 'Could not open the file');
       const extra = [d.newSongs && `${d.newSongs} song${d.newSongs === 1 ? '' : 's'} added`, d.media && `${d.media} picture/video file${d.media === 1 ? '' : 's'} added`].filter(Boolean).join(' · ');
-      toast(`Opened “${d.name}” (${d.items} items)${extra ? ' · ' + extra : ''}`);
+      undoToast(`Opened “${d.name}” (${d.items} items)${extra ? ' · ' + extra : ''}`);
       if (d.missing) fail(new Error(`${d.missing} song${d.missing === 1 ? ' is' : 's are'} missing words. Add them from the search box.`));
       if (d.bibles && d.bibles.length) toast(`Readings use ${d.bibles.join(', ').toUpperCase()}, which isn’t on this computer: they show in your default Bible. Add it in Settings → Bible.`);
       onClose();
@@ -1278,7 +1282,7 @@ function ServicesDialog({ s, onClose }) {
   const pick = () => pickFiles('.churchservice,.zip', false, ([f]) => openFile(f));
   const openRecent = async (r) => {
     if (s.plan.items.length && !confirm(`Open “${r.name}”? The current order of service is kept in Recent.`)) return;
-    try { await api('/api/services/open', { id: r.id }); toast(`Opened “${r.name}”`); onClose(); } catch (err) { fail(err); }
+    try { await api('/api/services/open', { id: r.id }); undoToast(`Opened “${r.name}”`); onClose(); } catch (err) { fail(err); }
   };
   const del = async (r) => { if (confirm(`Delete “${r.name}” from this computer?`)) { await api('/api/services/delete', { id: r.id }).catch(fail); loadRecent(); } };
   const tabs = [['save', 'Save this service'], ['open', 'Open a file'], ['recent', 'Recent']];
@@ -1423,7 +1427,35 @@ function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
 
 // ---------------------------------------------------------------------------------------
 // main operator screen
+// Per-device settings kept in this browser (e.g. volunteer mode on the deacon's tablet).
+function useLocalPref(key, initial) {
+  const [v, setV] = useState(() => { try { const x = localStorage.getItem(key); return x === null ? initial : JSON.parse(x); } catch { return initial; } });
+  const set = (x) => { setV(x); try { localStorage.setItem(key, JSON.stringify(x)); } catch { /* private mode */ } };
+  return [v, set];
+}
+
+// Volunteer mode: a simple screen for whoever is running the slides. Settings, stream setup,
+// editing and removing are hidden. Leave it by pressing and holding the chip for 2 seconds.
+function VolunteerToggle({ on, setOn }) {
+  const [holding, setHolding] = useState(false);
+  const timer = useRef(null);
+  const leftAt = useRef(0);
+  const since = useRef(0);
+  // key: a different button element, so letting go of the hold isn't taken as a tap on it.
+  if (!on) return html`<button key="vol-on" class="btn icon round" title="Volunteer mode: a simple screen for running the slides" aria-label="Turn on volunteer mode"
+    onClick=${() => { if (Date.now() - leftAt.current < 800) return; setOn(true); toast('Volunteer mode on · press and hold the chip at the top to leave'); }}>${icons.lock()}</button>`;
+  const leave = () => { clearTimeout(timer.current); since.current = 0; leftAt.current = Date.now(); setHolding(false); setOn(false); toast('Volunteer mode off'); };
+  const start = () => { since.current = Date.now(); setHolding(true); timer.current = setTimeout(leave, 2000); };
+  // Released after holding long enough (even if the timer was late on a busy computer).
+  const stop = () => { clearTimeout(timer.current); const held = since.current && Date.now() - since.current; since.current = 0; setHolding(false); if (held >= 2000) leave(); };
+  return html`<button key="vol-chip" class=${'vol-chip' + (holding ? ' holding' : '')} title="Press and hold for 2 seconds to leave volunteer mode"
+    onPointerDown=${start} onPointerUp=${stop} onPointerLeave=${stop} onPointerCancel=${stop} onContextMenu=${(e) => e.preventDefault()}
+    onKeyDown=${(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) start(); }} onKeyUp=${stop}>
+    ${icons.lock()}<span>Volunteer mode</span><i></i></button>`;
+}
+
 function ControlView({ s }) {
+  const [vol, setVol] = useLocalPref('cs-volunteer', false);
   const [selected, setSelected] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [tab, setTab] = useState('slides'); // only matters on tablets/phones
@@ -1461,6 +1493,7 @@ function ControlView({ s }) {
 
   useEffect(() => {
     const k = (e) => {
+      if (!isTyping(e) && !dialog && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoPlan(); return; }
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || dialog) return;
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); step(1); }
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); step(-1); }
@@ -1522,15 +1555,16 @@ function ControlView({ s }) {
   const planSong = item && item.kind === 'song' && s.plan.items.find((x) => x.uid === item.key);
 
   const live = s.live;
-  return html`<div class="shell">
+  return html`<div class=${'shell' + (vol ? ' volunteer' : '')}>
     <div class="topbar">
       <div class="brand"><img src="/favicon.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
       <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
       <span class="spacer"></span>
       ${s.sabbath && s.sabbath.label && html`<div class=${'status sun' + (s.sabbath.isSabbath ? ' sabbath' : '')} title="Sunset times for your church's location (Settings → General)">${icons.sun()}<span class="extra-sun">${s.sabbath.label}</span></div>`}
       <${StreamStatus} s=${s} />
-      ${/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && html`<button class="btn icon round" title="Connect a phone or tablet" aria-label="Connect a phone or tablet" onClick=${() => navigate('/settings#devices')}>${icons.phone()}</button>`}
-      <button class="btn icon round" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
+      <${VolunteerToggle} on=${vol} setOn=${setVol} />
+      ${/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && html`<button class="btn icon round vol-hide" title="Connect a phone or tablet" aria-label="Connect a phone or tablet" onClick=${() => navigate('/settings#devices')}>${icons.phone()}</button>`}
+      <button class="btn icon round vol-hide" title="Settings" aria-label="Settings" onClick=${() => navigate('/settings')}>${icons.gear()}</button>
     </div>
     ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
       <button class="btn small" onClick=${() => navigate('/settings#advanced')}>Details</button>
@@ -1547,7 +1581,7 @@ function ControlView({ s }) {
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
-      <${Plan} s=${s} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
+      <${Plan} s=${s} locked=${vol} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
         onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
         onNewResponsive=${() => setDialog({ type: 'responsive' })}
         onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })}
@@ -1985,6 +2019,7 @@ function SectionDevices({ s }) {
   const best = list[pick] || list[0];
   const copy = (t) => (navigator.clipboard ? navigator.clipboard.writeText(t).then(() => toast('Copied')) : Promise.reject(new Error('Copy is not available here'))).catch(fail);
   const pages = best ? [
+    ['Phone remote', best.url + '/remote', 'Big Next and Back buttons and the order of service — turns any phone into the clicker.'],
     ['Control panel', best.url + '/control', 'Run the service from a phone or tablet (same as this screen).'],
     ['Stage screen', best.url + '/stage', 'For musicians and the speaker: current and next slide, and a clock.'],
     ['Projector', best.url + '/display', 'Only if the projector is connected to a different computer.'],
