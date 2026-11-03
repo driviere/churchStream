@@ -23,7 +23,7 @@ This manual is written for volunteers. You don't need any technical knowledge.
 
 ## 1. Getting started
 
-### Installing
+### Installing on Windows
 1. Download **ChurchStream-win-x64.zip** from the project's *Releases* page on GitHub.
 2. Unzip it anywhere, for example to your Desktop or Documents. Nothing needs installing, and FFmpeg (the streaming engine) is included.
 3. Double-click **ChurchStream.exe**.
@@ -33,6 +33,19 @@ The first time you open it, Windows may say *"Windows protected your PC"*, becau
 If Windows asks whether to allow ChurchStream on networks, click **Allow**. Phones and tablets need this to connect.
 
 A small black window opens and keeps ChurchStream running. **Leave it open** during the service; closing it stops everything. Your web browser opens the control panel by itself.
+
+### Installing on a Mac
+1. Download **ChurchStream-mac-arm64.zip** (Macs with Apple chips, M1 and later) or **ChurchStream-mac-x64.zip** (older Intel Macs). Not sure? Apple menu → **About This Mac** shows *Chip: Apple M…* or *Processor: Intel*.
+2. Unzip it and move the **ChurchStream** folder somewhere permanent, e.g. **Documents**.
+3. Double-click **Start ChurchStream.command**.
+   - If macOS says it *can't be opened*, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or Control-click the file, choose **Open**, then **Open** again.
+   - Allow **Terminal** to use the **camera and microphone** when asked, and allow ChurchStream to **accept incoming network connections** (for phones and tablets).
+4. The Terminal window keeps ChurchStream running. Leave it open during the service, and close it to stop.
+
+On a Mac:
+- **Cameras:** the built-in camera, USB webcams, HDMI capture devices and an iPhone (Continuity Camera) all work.
+- **Projector:** install the free **Google Chrome** to get a full-screen projector window on the right screen automatically. Without Chrome, the projector page opens in Safari: drag it to the projector screen and press **Control-Command-F**.
+- **Sleep:** ChurchStream keeps the Mac awake while it's running. Plug the laptop in.
 
 ### First-time setup
 A short setup guide walks you through:
@@ -296,6 +309,8 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
 | Problem | What to do |
 |---|---|
 | **"Windows protected your PC"** | Click **More info → Run anyway**. It appears because the app isn't code-signed. |
+| **Mac: "can't be opened" / "Apple could not verify"** | System Settings → Privacy & Security → **Open Anyway** (or Control-click → Open). |
+| **Mac: no camera or microphone in the list** | System Settings → Privacy & Security → **Camera** and **Microphone**: turn on **Terminal**, then restart ChurchStream. |
 | **Camera not found or busy** | Close other apps that use the camera (Zoom, Teams, the Camera app), check the cable, then pick the camera again in Settings → Camera & sound. |
 | **No sound on the stream** | Check the microphone or sound desk is on and selected in Settings → Camera & sound, and that the meter moves when someone speaks. |
 | **Sound comes before the picture** | Move **Lip-sync** to the right (Settings → Camera & sound). |

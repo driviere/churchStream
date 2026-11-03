@@ -1,4 +1,4 @@
-name: Windows build
+name: Build (Windows and Mac)
 
 on:
   push:
@@ -158,31 +158,114 @@ jobs:
           path: dist/ChurchStream-win-x64.zip
           retention-days: 30
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  mac:
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          files: dist/ChurchStream-win-x64.zip
-          generate_release_notes: true
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build for Apple Silicon Macs
+        run: node scripts/build-exe.js --target mac-arm64
 
-      # Started by hand (Actions → Windows build → Run workflow) with a tag: creates the tag
-      # on the commit that was built and publishes the release with the zip attached.
-      # Release notes come from .github/release-notes/<tag>.md when that file exists.
-      - name: Find release notes
-        id: notes
-        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
+      - name: Smoke test on a Mac (UI, Bible, devices, a live recording through FFmpeg)
         shell: bash
         run: |
-          f=".github/release-notes/${{ inputs.release_tag }}.md"
-          if [ -f "$f" ]; then echo "path=$f" >> "$GITHUB_OUTPUT"; fi
+          set -euo pipefail
+          T="$RUNNER_TEMP/mac-test"; rm -rf "$T"; mkdir -p "$T"
+          ditto -x -k dist/ChurchStream-mac-arm64.zip "$T"
+          cd "$T/ChurchStream"
+          ls -l . ffmpeg
+          test -x ./ChurchStream && test -x ./ffmpeg/ffmpeg && test -x "./Start ChurchStream.command"
+          codesign -v ./ChurchStream && echo "ChurchStream is signed"
+          ./ffmpeg/ffmpeg -hide_banner -version | head -1
+          ./ffmpeg/ffmpeg -hide_banner -encoders 2>/dev/null | grep -E " libx264 | h264_videotoolbox " || { echo "::error::FFmpeg lacks an H.264 encoder"; exit 1; }
+          ./ffmpeg/ffmpeg -hide_banner -devices 2>/dev/null | grep -q avfoundation || { echo "::error::FFmpeg lacks AVFoundation (camera) support"; exit 1; }
+          CHURCHSTREAM_NO_BROWSER=1 ./ChurchStream --port 8126 > "$T/log.txt" 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true; pkill -f "ChurchStream/ffmpeg/ffmpeg" || true; echo "--- server output ---"; tail -30 "$T/log.txt"' EXIT
+          for i in $(seq 1 30); do curl -sf localhost:8126/control >/dev/null && break; sleep 1; done
+          curl -sf localhost:8126/control > /dev/null && echo "Control panel OK"
+          curl -sf localhost:8126/manual > /dev/null && curl -sf localhost:8126/remote > /dev/null && echo "Manual and remote OK"
+          curl -sf "localhost:8126/api/search?q=John%203:16" | grep -q '"bible":{' && echo "Bible OK"
+          curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d);console.log("FFmpeg:",s.ffmpeg.version,"| platform:",s.platform);if(!s.ffmpeg.ok||s.platform!=="darwin")process.exit(1)})'
+          echo "Devices: $(curl -sf localhost:8126/api/devices)"
+          post() { curl -sf -X POST -H 'Content-Type: application/json' -d "$2" "localhost:8126$1"; echo; }
+          post /api/config '{"setupComplete":true,"record":true,"quality":"low","video":{"type":"testsrc"},"audio":{"source":"none","cleanup":"light","delayMs":100}}'
+          post /api/stream/start '{"mode":"preview"}'
+          sleep 8
+          curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("Preview:",s.state,s.problem||"");if(s.state!=="running")process.exit(1)})'
+          post /api/stream/stop '{}'
+          sleep 2
+          post /api/stream/start '{"mode":"live"}'
+          sleep 12
+          curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("Live:",s.state,"encoder:",s.encoder,"speed:",s.speed+"x",s.problem||"");if(s.state!=="running")process.exit(1)})'
+          post /api/stream/stop '{}'
+          sleep 3
+          ls -l ChurchStream-data/recordings
+          SIZE=$(find ChurchStream-data/recordings -name '*.mkv' -exec stat -f %z {} \; | sort -n | tail -1)
+          [ "${SIZE:-0}" -gt 50000 ] || { echo "::error::Recording was not created"; exit 1; }
+          echo "Recording OK: $SIZE bytes"
 
-      - name: Publish GitHub Release (manual run)
-        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v')
-        uses: softprops/action-gh-release@v2
+      - name: Build for Intel Macs
+        run: node scripts/build-exe.js --target mac-x64
+
+      - name: Smoke test the Intel build (through Rosetta; not fatal)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
+          T="$RUNNER_TEMP/mac-x64"; rm -rf "$T"; mkdir -p "$T"
+          ditto -x -k dist/ChurchStream-mac-x64.zip "$T"
+          cd "$T/ChurchStream"
+          file ./ChurchStream ./ffmpeg/ffmpeg
+          arch -x86_64 ./ffmpeg/ffmpeg -hide_banner -version | head -1
+          CHURCHSTREAM_NO_BROWSER=1 arch -x86_64 ./ChurchStream --port 8127 > "$T/log.txt" 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true; tail -20 "$T/log.txt"' EXIT
+          for i in $(seq 1 40); do curl -sf localhost:8127/control >/dev/null && break; sleep 1; done
+          curl -sf localhost:8127/control > /dev/null && echo "Intel build runs"
+
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ inputs.release_tag }}
+          name: ChurchStream-mac
+          path: dist/ChurchStream-mac-*.zip
+          retention-days: 30
+
+  # One release with the Windows and Mac downloads: on a v* tag push, or when started by hand
+  # (Actions → Build → Run workflow) with a tag, which then creates that tag on the commit built.
+  # Release notes come from .github/release-notes/<tag>.md when that file exists.
+  release:
+    needs: [windows, mac]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release name and notes
+        id: rel
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          [ -n "$TAG" ] || TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          f=".github/release-notes/$TAG.md"
+          if [ -f "$f" ]; then echo "notes=$f" >> "$GITHUB_OUTPUT"; fi
+          ls -l dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: ChurchStream ${{ inputs.release_tag }}
-          files: dist/ChurchStream-win-x64.zip
-          body_path: ${{ steps.notes.outputs.path }}
-          generate_release_notes: ${{ steps.notes.outputs.path == '' }}
+          name: ChurchStream ${{ steps.rel.outputs.tag }}
+          files: dist/*.zip
+          body_path: ${{ steps.rel.outputs.notes }}
+          generate_release_notes: ${{ steps.rel.outputs.notes == '' }}

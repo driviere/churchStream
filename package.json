@@ -12,7 +12,8 @@
     "start": "node server.js",
     "test": "node --test test/*.test.js",
     "fetch-bible": "node scripts/fetch-bible.js",
-    "build:exe": "node scripts/build-exe.js"
+    "build:exe": "node scripts/build-exe.js",
+    "build:mac": "node scripts/build-exe.js --target mac-arm64 && node scripts/build-exe.js --target mac-x64"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
