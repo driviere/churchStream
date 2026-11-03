@@ -33,10 +33,20 @@ const FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const opt = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : null; };
+// --target win-x64 (default) | mac-arm64 (Apple Silicon) | mac-x64 (Intel Macs)
+const TARGET = opt('--target') || 'win-x64';
+if (!['win-x64', 'mac-arm64', 'mac-x64'].includes(TARGET)) throw new Error('Unknown --target ' + TARGET);
+const MAC = TARGET.startsWith('mac-');
+const MAC_ARCH = TARGET === 'mac-arm64' ? 'arm64' : 'x64';
+// Static macOS FFmpeg builds (GPL, with libx264), by Martin Riedl; evermeet.cx as an Intel fallback.
+const MAC_FFMPEG = process.env.FFMPEG_URL ? [process.env.FFMPEG_URL] : MAC_ARCH === 'arm64'
+  ? ['https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip']
+  : ['https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip', 'https://evermeet.cx/ffmpeg/getrelease/zip'];
+const run = (cmd, a, o = {}) => execFileSync(cmd, a, { stdio: 'inherit', ...o });
 const step = (m) => console.log(`\n▸ ${m}`);
 
 async function fetchTo(url, file) {
-  if (fs.existsSync(file)) { console.log(`  cached ${path.basename(file)}`); return file; }
+  if (fs.existsSync(file) && fs.statSync(file).size > 0) { console.log(`  cached ${path.basename(file)}`); return file; }
   console.log(`  downloading ${url}`);
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`);
@@ -93,6 +103,8 @@ async function main() {
   fs.writeFileSync(path.join(BUILD, 'sea-config.json'), JSON.stringify(seaConfig, null, 2));
   execFileSync(process.execPath, ['--experimental-sea-config', path.join(BUILD, 'sea-config.json')], { stdio: 'inherit' });
 
+  if (MAC) return buildMac();
+
   step(`Creating ChurchStream.exe (Node ${NODE_VERSION})`);
   const nodeExe = await fetchTo(NODE_URL, path.join(CACHE, `node-${NODE_VERSION}-win-x64.exe`));
   const exe = path.join(APP, 'ChurchStream.exe');
@@ -131,6 +143,109 @@ async function main() {
   console.log(`\n✓ ${path.relative(ROOT, exe)} (${mb(exe)})`);
   console.log(`✓ ${path.relative(ROOT, zipOut)} (${mb(zipOut)})\n`);
 }
+
+// macOS: the official Node binary for the chosen chip with the app injected, ad-hoc signed
+// (Apple Silicon only runs signed code), plus FFmpeg and a double-clickable start script.
+// Must run on a Mac (codesign and ditto are macOS tools).
+async function buildMac() {
+  if (process.platform !== 'darwin') throw new Error('Build the Mac version on a Mac (it needs codesign).');
+  const name = `node-${NODE_VERSION}-darwin-${MAC_ARCH}`;
+  step(`Creating ChurchStream for Mac (${MAC_ARCH}, Node ${NODE_VERSION})`);
+  const tgz = await fetchTo(`https://nodejs.org/dist/${NODE_VERSION}/${name}.tar.gz`, path.join(CACHE, name + '.tar.gz'));
+  run('tar', ['-xzf', tgz, '-C', CACHE, `${name}/bin/node`]);
+  const bin = path.join(APP, 'ChurchStream');
+  fs.copyFileSync(path.join(CACHE, name, 'bin', 'node'), bin);
+  fs.chmodSync(bin, 0o755);
+  run('codesign', ['--remove-signature', bin]);
+  const postject = require.resolve('postject/dist/cli.js');
+  run(process.execPath, [postject, bin, 'NODE_SEA_BLOB', path.join(BUILD, 'sea-prep.blob'), '--sentinel-fuse', FUSE, '--macho-segment-name', 'NODE_SEA', '--overwrite']);
+  run('codesign', ['--sign', '-', '--force', bin]);
+
+  if (!flag('--no-ffmpeg')) {
+    step('Adding FFmpeg');
+    let zipFile = opt('--ffmpeg-zip');
+    for (const url of zipFile ? [] : MAC_FFMPEG) {
+      try { zipFile = await fetchTo(url, path.join(CACHE, `ffmpeg-mac-${MAC_ARCH}-${MAC_FFMPEG.indexOf(url)}.zip`)); ffmpegUrl = url; break; } catch (err) { console.log(`  ${err.message}`); }
+    }
+    if (!zipFile) throw new Error('Could not download FFmpeg for Mac. Pass --ffmpeg-zip <file> or --no-ffmpeg.');
+    const entries = readZip(fs.readFileSync(zipFile));
+    const ff = entries.find((e) => /(^|\/)ffmpeg$/.test(e.name));
+    if (!ff) throw new Error('ffmpeg not found in ' + zipFile);
+    const ffPath = path.join(APP, 'ffmpeg', 'ffmpeg');
+    fs.mkdirSync(path.dirname(ffPath), { recursive: true });
+    fs.writeFileSync(ffPath, ff.read(), { mode: 0o755 });
+    try { execFileSync('codesign', ['-v', ffPath], { stdio: 'ignore' }); } catch { run('codesign', ['--sign', '-', '--force', ffPath]); }
+    fs.writeFileSync(path.join(APP, 'ffmpeg', 'LICENSE.txt'),
+      `This ffmpeg is an unmodified static build of FFmpeg (GPL), from ${ffmpegUrl || path.basename(zipFile)}.\nFFmpeg is licensed under the GNU GPL; source code: https://ffmpeg.org/download.html\n`);
+  }
+
+  step('Writing the start script and README');
+  const start = path.join(APP, 'Start ChurchStream.command');
+  fs.writeFileSync(start, `#!/bin/bash
+# Double-click to start ChurchStream. Keep this window open during the service;
+# close it (or press Control-C) to stop everything.
+cd "$(dirname "$0")" || exit 1
+# Files downloaded from the internet are marked by macOS; clear that so ChurchStream and
+# FFmpeg are allowed to run.
+xattr -dr com.apple.quarantine . 2>/dev/null
+echo ""
+echo "  ChurchStream is starting. Keep this window open during the service."
+echo "  Close it to stop ChurchStream."
+echo ""
+exec ./ChurchStream
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(APP, 'README.txt'), README_MAC);
+
+  step('Zipping');
+  const zipOut = path.join(DIST, `ChurchStream-${TARGET}.zip`);
+  fs.rmSync(zipOut, { force: true });
+  // ditto keeps the executable permissions and signatures that a plain zip would lose.
+  run('ditto', ['-c', '-k', '--keepParent', APP, zipOut]);
+  const mb = (f) => (fs.statSync(f).size / 1048576).toFixed(1) + ' MB';
+  console.log(`\n✓ ${path.relative(ROOT, bin)} (${mb(bin)})`);
+  console.log(`✓ ${path.relative(ROOT, zipOut)} (${mb(zipOut)})\n`);
+}
+
+const README_MAC = `ChurchStream for Mac
+====================
+
+Live streaming to YouTube and Facebook, hymns, Bible readings and lower thirds for
+Seventh-day Adventist churches. Everything runs on this one Mac.
+
+Getting started
+---------------
+1. Move this ChurchStream folder somewhere permanent, e.g. your Documents folder.
+2. Double-click "Start ChurchStream.command".
+   The first time, macOS may say it "cannot be opened" or "Apple could not verify" it,
+   because ChurchStream isn't from the App Store. Then:
+     - open System Settings → Privacy & Security, scroll down, and click "Open Anyway"
+       next to "Start ChurchStream.command"; or
+     - in Finder, Control-click the file, choose Open, then Open again.
+3. A Terminal window opens and keeps ChurchStream running. Your browser opens the
+   setup page. Follow the steps.
+4. When macOS asks whether Terminal may use the camera and microphone, click Allow.
+   When it asks whether ChurchStream may accept incoming network connections, click
+   Allow, so phones and tablets can connect.
+
+Every Sabbath
+-------------
+- Double-click "Start ChurchStream.command". Keep its window open.
+- Close that window to stop everything.
+- For the projector, Google Chrome (free) gives an automatic full-screen window on the
+  projector. Without it the projector page opens in Safari: drag it to the projector
+  and press Control-Command-F.
+- ChurchStream keeps the Mac awake while it's running. Plug the laptop in.
+
+User manual
+-----------
+Click the "?" button at the top of the control panel (or open
+http://localhost:8080/manual while ChurchStream is running).
+
+Moving to another computer
+--------------------------
+Copy the whole ChurchStream folder. Your settings, songs and services are in the
+"ChurchStream-data" folder next to the ChurchStream program.
+`;
 
 const README = `ChurchStream
 ============

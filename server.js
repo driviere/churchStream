@@ -274,6 +274,11 @@ function shutdown() {
   setTimeout(() => process.exit(0), 1600);
 }
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) { try { process.on(sig, shutdown); } catch { /* unsupported */ } }
+// On a Mac, keep the laptop and its screens awake while ChurchStream is open (built-in
+// caffeinate; it ends by itself when ChurchStream does).
+if (process.platform === 'darwin') {
+  try { require('child_process').spawn('caffeinate', ['-d', '-i', '-m', '-w', String(process.pid)], { stdio: 'ignore', detached: false }).on('error', () => {}); } catch { /* not available */ }
+}
 
 const portArg = process.argv.indexOf('--port');
 listen(portArg > 0 ? parseInt(process.argv[portArg + 1], 10) : (parseInt(process.env.PORT, 10) || app.cfg.port || 8080));

@@ -1,6 +1,6 @@
 {
   "name": "churchstream",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lightweight live streaming (YouTube + Facebook), projection, lyrics, Bible and lower thirds for small churches.",
   "main": "server.js",
   "private": true,
@@ -12,7 +12,8 @@
     "start": "node server.js",
     "test": "node --test test/*.test.js",
     "fetch-bible": "node scripts/fetch-bible.js",
-    "build:exe": "node scripts/build-exe.js"
+    "build:exe": "node scripts/build-exe.js",
+    "build:mac": "node scripts/build-exe.js --target mac-arm64 && node scripts/build-exe.js --target mac-x64"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

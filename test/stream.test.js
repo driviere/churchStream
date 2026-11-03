@@ -21,7 +21,7 @@ test('YouTube + Facebook from one encode via tee', () => {
 
 test('dshow camera + microphone use one capture input', () => {
   const c = cfg({ video: { type: 'dshow', device: 'USB Capture HDMI' }, audio: { source: 'device', device: 'Line (USB Capture HDMI)' }, outputs: { youtube: { enabled: true, key: 'k' } } });
-  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_qsv' });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_qsv', platform: 'win32' });
   assert.ok(args.includes('video=USB Capture HDMI:audio=Line (USB Capture HDMI)'));
   const fc = args[args.indexOf('-filter_complex') + 1];
   assert.match(fc, /\[0:a\]aresample/);
@@ -120,4 +120,32 @@ test('sound clean-up for online viewers', () => {
   assert.deepEqual(micFilters({ delayMs: 5000, gainDb: 40 }), ['adelay=1000|1000', 'volume=12dB']); // clamped
   const args = buildFfmpegArgs({ cfg: cfg({ outputs: { youtube: { enabled: true, key: 'k' } }, audio: { cleanup: 'light' } }), mode: 'live' });
   assert.match(args[args.indexOf('-filter_complex') + 1], /afftdn=.*ebur128/);
+});
+
+test('macOS: camera and microphone through AVFoundation, VideoToolbox encoder', () => {
+  const { encoderArgs } = require('../lib/stream');
+  const both = buildFfmpegArgs({ cfg: cfg({ video: { type: 'dshow', device: 'FaceTime HD Camera' }, audio: { source: 'device', device: 'MacBook Pro Microphone' }, outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', platform: 'darwin' });
+  const i = both.indexOf('avfoundation');
+  assert.ok(i > 0);
+  assert.equal(both[both.indexOf('-i', i) ], '-i');
+  assert.equal(both[both.indexOf('-i', i) + 1], 'FaceTime HD Camera:MacBook Pro Microphone');
+  assert.ok(!both.includes('dshow'));
+  // Separate microphone (e.g. IP camera + USB sound interface)
+  const mic = buildFfmpegArgs({ cfg: cfg({ video: { type: 'rtsp', rtspUrl: 'rtsp://cam/1' }, audio: { source: 'device', device: 'USB Audio' }, outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', platform: 'darwin' });
+  assert.ok(mic.includes('none:USB Audio'));
+  // Camera without a microphone gets silence
+  const silent = buildFfmpegArgs({ cfg: cfg({ video: { type: 'dshow', device: 'Cam' }, audio: { source: 'none' }, outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', platform: 'darwin' });
+  assert.ok(silent.includes('Cam:none'));
+  assert.ok(silent.some((x) => /anullsrc/.test(x)));
+  assert.deepEqual(encoderArgs('h264_videotoolbox', QUALITY.good).slice(0, 4), ['-c:v', 'h264_videotoolbox', '-realtime', '1']);
+});
+
+test('macOS device and display lists', () => {
+  const { parseAvfDevices, parseMacScreens } = require('../lib/ffmpeg');
+  const d = parseAvfDevices('[AVFoundation indev @ 0x1] AVFoundation video devices:\n[AVFoundation indev @ 0x1] [0] FaceTime HD Camera\n[AVFoundation indev @ 0x1] [1] Capture screen 0\n[AVFoundation indev @ 0x1] AVFoundation audio devices:\n[AVFoundation indev @ 0x1] [0] MacBook Pro Microphone\n[in#0 @ 0x2] Error opening input');
+  assert.deepEqual(d, { video: ['FaceTime HD Camera'], audio: ['MacBook Pro Microphone'] });
+  const m = parseMacScreens('Built-in Retina Display|0|0|1512|982\nProjector|1512|0|1920|1080');
+  assert.equal(m.length, 2);
+  assert.equal(m[0].primary, true);
+  assert.deepEqual([m[1].x, m[1].y, m[1].width], [1512, -98, 1920]); // top-left coordinates for the browser
 });

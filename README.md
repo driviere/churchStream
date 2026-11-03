@@ -81,7 +81,7 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 
 ## Install (Windows)
 
-1. Download **`ChurchStream-win-x64.zip`** from the [Releases page](../../releases) (or from the latest *Windows build* workflow run).
+1. Download **`ChurchStream-win-x64.zip`** from the [Releases page](../../releases) (or from the latest *Build* workflow run).
 2. Unzip it anywhere, for example `Documents\ChurchStream`.
 3. Double-click **`ChurchStream.exe`**.
    - The first time, Windows SmartScreen may say *“Windows protected your PC”*. Click **More info → Run anyway**. The app isn't code-signed.
@@ -94,6 +94,27 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
    5. Hymnal downloads
 
 Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the exe. Copy the folder to move everything to another laptop.
+
+## Install (Mac)
+
+ChurchStream also runs on Mac laptops and desktops (macOS 13 Ventura or later).
+
+1. From the [Releases page](../../releases), download:
+   - **`ChurchStream-mac-arm64.zip`** for Macs with Apple chips (M1–M4, 2020 and later);
+   - **`ChurchStream-mac-x64.zip`** for older Intel Macs.
+
+   Not sure which you have? Apple menu → **About This Mac**: *Chip: Apple M…* means arm64; *Processor: Intel* means x64.
+2. Unzip it and move the **ChurchStream** folder somewhere permanent, e.g. **Documents**.
+3. Double-click **Start ChurchStream.command**. A Terminal window opens and keeps ChurchStream running; close it to stop.
+   - The first time, macOS may say the file *can't be opened* or *Apple could not verify it*, because the app isn't from the App Store. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**. Or Control-click the file in Finder, choose **Open**, then **Open** again.
+   - When macOS asks whether **Terminal** may use the camera and microphone, click **Allow**. When it asks whether ChurchStream may accept incoming network connections, click **Allow** too, so phones and tablets can connect.
+4. Set it up in your browser, the same as on Windows.
+
+On a Mac:
+- **Cameras:** the built-in camera, USB webcams, HDMI capture devices and an iPhone (Continuity Camera) all work.
+- **Encoding:** the stream is encoded with Apple's hardware encoder (VideoToolbox).
+- **Projector:** install the free **Google Chrome** to get an automatic full-screen projector window. Without it, the projector page opens in Safari: drag it to the projector and press **Control-Command-F**.
+- **Sleep:** ChurchStream keeps the Mac awake while it's running. Plug the laptop in.
 
 ## A Sabbath with ChurchStream
 

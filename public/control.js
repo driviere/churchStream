@@ -15,6 +15,10 @@ const get = (path, params) => api(path + (params ? '?' + new URLSearchParams(par
 
 const toastBus = new EventTarget();
 const toast = (msg, kind = 'info', action = null) => toastBus.dispatchEvent(new CustomEvent('t', { detail: { msg, kind, action, id: Math.random() } }));
+// Open the projector window. On a Mac without Chrome or Edge it opens in Safari instead.
+const openProjector = () => api('/api/projector/open', {}).then((r) => {
+  if (r && r.browser === 'safari') toast('Opened in Safari: drag the window to the projector screen, then press Control-Command-F for full screen. (Google Chrome does this by itself.)', 'info');
+}).catch(fail);
 // Undo the last change to the order of service (removing an item, New service, opening one…).
 const undoPlan = () => api('/api/plan/undo', {}).then((r) => toast(r.ok ? 'Undone' : 'Nothing to undo')).catch(fail);
 const undoToast = (msg) => toast(msg, 'info', { label: 'Undo', run: undoPlan });
@@ -540,7 +544,7 @@ function Aside({ s, onGoLive, onStop, active }) {
       <div class="card-head"><b>Screens</b>
         <span class="note-r">${s.projectorOpen
           ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
-          : html`<button class="btn small" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open on projector</button>`}</span></div>
+          : html`<button class="btn small" onClick=${openProjector}>Open on projector</button>`}</span></div>
       <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
         lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
         countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
@@ -1736,7 +1740,7 @@ function SectionCamera({ s, autoPreview }) {
     if (autoPreview && s.stream.mode === 'off') api('/api/stream/start', { mode: 'preview' }).catch(() => {});
   }, []);
   const types = [
-    ['dshow', 'USB camera or capture card', 'Webcams and HDMI-to-USB capture devices'],
+    ['dshow', s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card', s.platform === 'darwin' ? 'The built-in camera, USB webcams, HDMI capture devices or an iPhone (Continuity Camera)' : 'Webcams and HDMI-to-USB capture devices'],
     ['rtsp', 'Network (IP) camera', 'PTZ and IP cameras on your network'],
     ['testsrc', 'Test pattern', 'Try everything without a camera'],
   ];
@@ -1802,7 +1806,7 @@ function SectionProjector({ s }) {
       <div class="choices">${mons.map((m) => html`<button class=${'choice' + (cur.monitor === m.id ? ' on' : '')} onClick=${() => save({ projector: { monitor: m.id, x: m.x, y: m.y } })}><b>${m.label}</b><span>${m.primary ? 'This is usually the laptop screen' : 'Probably the HDMI output'}</span></button>`)}</div></div>`}
     ${devs && !mons.length && html`<div class="note" style="margin-bottom:16px">Open <b>${location.origin}/display</b> in a browser on the projector screen and press <kbd>F11</kbd> for full screen.</div>`}
     <div class="row wrap" style="margin-bottom:16px">
-      <button class="btn primary" onClick=${() => api('/api/projector/open', {}).catch(fail)}>Open projector window</button>
+      <button class="btn primary" onClick=${openProjector}>Open projector window</button>
       <button class="btn" onClick=${() => api('/api/projector/identify', {}).catch(fail)}>Show test on projector</button>
       ${s.projectorOpen && html`<button class="btn ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close it</button>`}
     </div>
@@ -1984,7 +1988,7 @@ function SectionAdvanced({ s }) {
   useEffect(() => { load(); }, []);
   return html`<div>
     <div class="field"><label class="label">FFmpeg</label>
-      <div class="note">${s.ffmpeg.ok ? s.ffmpeg.version : html`<b>FFmpeg was not found.</b> Put ffmpeg.exe in the “ffmpeg” folder next to ChurchStream.exe, or enter its location below.`}</div>
+      <div class="note">${s.ffmpeg.ok ? s.ffmpeg.version : html`<b>FFmpeg was not found.</b> ${s.platform === 'darwin' ? 'Put ffmpeg in the “ffmpeg” folder next to ChurchStream (or install it with Homebrew: brew install ffmpeg)' : 'Put ffmpeg.exe in the “ffmpeg” folder next to ChurchStream.exe'}, or enter its location below.`}</div>
       <div class="key-row" style="margin-top:8px"><input class="input" value=${ff} placeholder="Automatic" onInput=${(e) => setFf(e.target.value)} /><button class="btn" onClick=${() => save({ ffmpegPath: ff.trim() }, 'Saved')}>Save</button></div></div>
     <div class="field"><label class="label">Video encoder</label>
       <select class="select" value=${s.config.encoder} onChange=${(e) => save({ encoder: e.target.value })}>
@@ -2047,7 +2051,9 @@ function SectionDevices({ s }) {
       <div class="note" style="margin-top:16px">
         <b>How to connect:</b> scan a code with the phone’s camera, or type the address into its browser (Chrome, Safari, Edge). The phone must be on the <b>same Wi-Fi</b> as this computer, not on mobile data.
         <ul style="margin:8px 0 0;padding-left:20px;line-height:1.6">
-          <li>Not loading? Windows may be blocking it: the first time ChurchStream started, Windows asked to allow it on networks. Choose <b>Allow</b> (or set the church Wi-Fi to a <b>Private</b> network in Windows settings).</li>
+          <li>${s.platform === 'darwin'
+            ? html`Not loading? If the Mac asked whether ChurchStream may accept incoming network connections, choose <b>Allow</b> (System Settings → Network → Firewall → Options).`
+            : html`Not loading? Windows may be blocking it: the first time ChurchStream started, Windows asked to allow it on networks. Choose <b>Allow</b> (or set the church Wi-Fi to a <b>Private</b> network in Windows settings).`}</li>
           <li>The address can change when the computer reconnects. To keep it the same every week, ask whoever manages the router to give this computer a fixed address (a “DHCP reservation”).</li>
           <li>${s.config.controlPassword ? 'The control panel asks for the password set in General. The stage screen and projector never do.' : 'Anyone on this Wi-Fi can open the control panel. If visitors use the same Wi-Fi, set a password in General.'}</li>
         </ul>
