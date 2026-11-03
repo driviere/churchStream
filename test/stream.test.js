@@ -21,7 +21,7 @@ test('YouTube + Facebook from one encode via tee', () => {
 
 test('dshow camera + microphone use one capture input', () => {
   const c = cfg({ video: { type: 'dshow', device: 'USB Capture HDMI' }, audio: { source: 'device', device: 'Line (USB Capture HDMI)' }, outputs: { youtube: { enabled: true, key: 'k' } } });
-  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_qsv' });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', encoder: 'h264_qsv', platform: 'win32' });
   assert.ok(args.includes('video=USB Capture HDMI:audio=Line (USB Capture HDMI)'));
   const fc = args[args.indexOf('-filter_complex') + 1];
   assert.match(fc, /\[0:a\]aresample/);
