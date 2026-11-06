@@ -58,7 +58,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Sung in order | Refrains are placed after every verse, so the operator just presses Next. Your edits to a hymn are kept when the hymnal is updated. |
 | Choose the verses | Sing only some verses, e.g. 1, 2 and 4. Refrains come and go with their verse. |
 | Your own songs | Paste the words of any song or chorus; a blank line starts a new slide. |
-| Bible | KJV and BSB built in, all 66 books offline; ASV, YLT, Darby and Webster downloadable. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
+| Bible | KJV and BSB built in, all 66 books offline; ASV, YLT and Darby downloadable. **Import a Bible file** your church is licensed to use (NRSV, NIV…: JSON, Zefania, OSIS or USFX), kept on that computer only. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
 | Responsive readings | Built from any Bible passage: Leader and Congregation take turns, and All read the last verse. The congregation's words show in gold. |
 | Sermon slides | The pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides to step through. |
 | Announcements | Text slides that can change by themselves every few seconds, on a loop. |
@@ -257,10 +257,7 @@ Keys are stored only on this computer and are never shown in full again.
 - **Copyright:** many hymns are public domain, but some are not. Projecting or streaming copyrighted hymns needs your church's **CCLI** licence (Church Copyright License, plus the Streaming License for online use). Hymn texts are therefore **downloaded on your computer** and are not shipped with the app.
 - **Your own songs:** search for the title and choose **Create a song**, or click **Edit** on any song. Paste the lyrics; a blank line starts a new slide, and `[Chorus]`-style labels are optional. Songs are plain `.txt` files in `ChurchStream-data\songs`.
 - **Bibles:** KJV and the modern-English **BSB** (Berean Standard Bible) are included. Both are public domain. ASV, YLT and Darby can be downloaded in Settings → Bible.
-  - Copyrighted translations (NIV, ESV…) can't be included. If you hold a licence and have the text as JSON, convert it with:
-    ```
-    node scripts/fetch-bible.js --file mybible.json --id niv --name "New International Version" --abbrev NIV --out ChurchStream-data/bible
-    ```
+  - Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be included or downloaded. A church licensed to use one can bring its own copy: **Settings → Bible → Import a Bible file…** reads JSON (scrollmapper, thiagobodruk or ChurchStream format) and Zefania, OSIS or USFX XML, asks for the name and short name, and needs you to confirm the licence. The text stays on that computer only; saved services carry just the references.
 
 ## Troubleshooting
 

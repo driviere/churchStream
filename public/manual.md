@@ -120,6 +120,16 @@ On the screens, each slide is labelled, and the congregation's words are shown i
 
 *The numbered responsive readings at the back of the SDA Hymnal aren't freely available, so ChurchStream builds readings from the Bible translations you have installed.*
 
+### Bible translations
+**KJV** and the modern-English **BSB** are built in. In **Settings → Bible** you can choose the default translation and download **ASV**, **YLT** or **Darby** (all public domain). To use another translation for one reading, add its short name: `John 3:16 ASV`.
+
+**A translation your church is licensed to use** (NRSV, NIV, NKJV, ESV…) can be imported if you have its text as a file:
+1. Open **Settings → Bible** and click **Import a Bible file…**. ChurchStream reads JSON files and Zefania, OSIS and USFX XML files, the formats most Bible software and publishers export.
+2. Check the **Name** (e.g. *New Revised Standard Version*) and **Short name** (e.g. *NRSV*). They are filled in from the file when it says.
+3. Tick **Our church is licensed to use this translation**, then click **Import**.
+
+The file needs the whole Bible, or at least the whole New Testament. Importing the same short name again replaces the earlier copy, and **Remove** deletes it. An imported translation stays **on this computer only**: saved services carry just the reading references, so another computer shows them in its own Bible.
+
 ### Editing, reordering and removing
 - **Edit:** open the item and click **Edit** (songs, text, responsive readings and countdowns).
 - **Reorder:** drag an item along the order of service. On a phone or tablet, **press and hold** it for half a second, then drag.
@@ -332,5 +342,5 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
   - your own recordings;
   - ministries' videos that allow rebroadcast;
   - songs your congregation sings live, under a CCLI Streaming Licence.
-- **Bibles:** KJV and BSB are built in; ASV, YLT, Darby and Webster can be downloaded. All are public domain. Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be included.
+- **Bibles:** KJV and BSB are built in; ASV, YLT and Darby can be downloaded. All are public domain. Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be included or downloaded. A church licensed to use one can import its own copy ([Bible translations](#bible-translations)); projecting and streaming it under that licence is the church's responsibility.
 - **ChurchStream** is an independent project made for Seventh-day Adventist churches. It is not an official product of the Seventh-day Adventist Church.

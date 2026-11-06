@@ -1897,7 +1897,69 @@ function SectionBible({ s }) {
         : html`<button class="btn small" disabled=${busy} onClick=${() => api('/api/import/bible', { id }).catch(fail)}>Download</button>`}</div>`)}
     </div>
     ${s.task && (s.task.running || s.task.error) && html`<div class="note">${s.task.error || s.task.label}</div>`}
-    <div class="note">Modern translations such as NIV, ESV or NKJV are copyrighted and can't be included. If your church holds a licence and has the text as a JSON file, see the README for how to import it.</div>
+    <${BibleImport} have=${have} />
+  </div>`;
+}
+
+// Import a Bible file the church is licensed to use (NRSV, NIV, NKJV, ESV…). It is converted
+// and kept on this computer only.
+function BibleImport({ have }) {
+  const [file, setFile] = useState(null); // { file, books, name, abbrev }
+  const [name, setName] = useState('');
+  const [abbrev, setAbbrev] = useState('');
+  const [licensed, setLicensed] = useState(false);
+  const [busy, setBusy] = useState('');
+  const imported = have.filter((t) => t.imported);
+  const send = async (f, params) => {
+    const res = await fetch('/api/import/bible-file?' + new URLSearchParams(params), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.error) throw new Error(d.error || 'The file could not be read.');
+    return d;
+  };
+  const choose = () => pickFiles('.json,.xml,.osis,.usfx,application/json,text/xml,application/xml', false, async ([f]) => {
+    if (!f) return;
+    setBusy('Reading ' + f.name + '…');
+    try {
+      const d = await send(f, { check: '1' });
+      setFile({ file: f, books: d.books });
+      setName(d.name || ''); setAbbrev(d.abbrev || ''); setLicensed(false);
+    } catch (err) { fail(err); }
+    setBusy('');
+  });
+  const doImport = async () => {
+    setBusy('Importing…');
+    try {
+      const d = await send(file.file, { name: name.trim(), abbrev: abbrev.trim(), licensed: licensed ? '1' : '0' });
+      toast(`${d.name} (${d.abbrev}) is ready${d.replaced ? ' (replaced the earlier copy)' : ''}. Choose it as the default translation above, or type e.g. “John 3:16 ${d.abbrev}”.`);
+      setFile(null);
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const remove = async (t) => {
+    if (!confirm(`Remove ${t.name} (${t.abbrev}) from this computer?`)) return;
+    try { await api('/api/bible/remove', { id: t.id }); toast(`${t.abbrev} removed`); } catch (err) { fail(err); }
+  };
+  return html`<div class="field" style="margin-top:20px">
+    <label class="label">Translations your church is licensed to use</label>
+    ${imported.length > 0 && html`<div style="display:grid;gap:8px;margin-bottom:12px">${imported.map((t) => html`<div class="row" key=${t.id}>
+      <span class="grow">${t.name} (${t.abbrev})${t.complete ? '' : html` <span class="muted">· New Testament</span>`}</span>
+      <span class="muted" style="font-size:12px">On this computer only</span>
+      <button class="btn small ghost" onClick=${() => remove(t)}>Remove</button></div>`)}</div>`}
+    ${!file ? html`<div class="row wrap">
+        <button class="btn" disabled=${!!busy} onClick=${choose}>${icons.upload()} ${busy || 'Import a Bible file…'}</button>
+        <span class="hint" style="margin:0">JSON, or Zefania, OSIS or USFX XML.</span></div>`
+      : html`<div class="svc-box">
+        <div><b>${file.file.name}</b> <span class="muted">· ${file.books >= 66 ? 'the whole Bible' : file.books + ' books (New Testament included)'}</span></div>
+        <div class="two" style="gap:12px;margin-top:10px">
+          <div class="field" style="margin:0"><label class="label" for="bi-name">Name</label><input id="bi-name" class="input" value=${name} placeholder="e.g. New Revised Standard Version" onInput=${(e) => setName(e.target.value)} /></div>
+          <div class="field" style="margin:0"><label class="label" for="bi-abbrev">Short name</label><input id="bi-abbrev" class="input" value=${abbrev} placeholder="e.g. NRSV" maxlength="12" onInput=${(e) => setAbbrev(e.target.value)} /></div>
+        </div>
+        <label class="switch" style="margin-top:8px"><input type="checkbox" checked=${licensed} onChange=${(e) => setLicensed(e.target.checked)} /><span>Our church is licensed to use this translation</span></label>
+        <div class="row" style="margin-top:8px">
+          <button class="btn primary" disabled=${!licensed || !name.trim() || !abbrev.trim() || !!busy} onClick=${doImport}>${busy || 'Import'}</button>
+          <button class="btn ghost" disabled=${!!busy} onClick=${() => setFile(null)}>Cancel</button></div>
+      </div>`}
+    <div class="note" style="margin-top:12px">Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be downloaded here. If your church is licensed to use one and has its text as a file, import it with the button above. It stays on this computer: it isn't shared with other computers, and saved services carry only the reading references.</div>
   </div>`;
 }
 

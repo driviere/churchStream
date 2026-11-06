@@ -63,7 +63,7 @@ function readBody(req, limit = 15 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new Error('Too large')); req.destroy(); } else chunks.push(c); });
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new Error('This file is too large.')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
@@ -181,6 +181,9 @@ const routes = {
   'POST /api/projector/identify': async () => { app.identifyProjector(); return { ok: true }; },
   'POST /api/import/hymnal': async (req) => { app.importHymnal((await json(req)).id); return { ok: true }; },
   'POST /api/import/bible': async (req) => { app.importBible((await json(req)).id); return { ok: true }; },
+  'POST /api/import/bible-file': async (req, url) => (url.searchParams.get('check') === '1' ? app.checkBibleFile(await readBody(req, 40 * 1024 * 1024)) : app.importBibleFile(await readBody(req, 40 * 1024 * 1024), {
+    name: url.searchParams.get('name'), abbrev: url.searchParams.get('abbrev'), licensed: url.searchParams.get('licensed') === '1' })),
+  'POST /api/bible/remove': async (req) => app.removeBible((await json(req)).id),
   'POST /api/media': async (req, url) => {
     const name = app.saveMedia(url.searchParams.get('kind'), await readBody(req), (req.headers['content-type'] || '').split(';')[0]);
     return { ok: true, name };
