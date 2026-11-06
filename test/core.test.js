@@ -9,7 +9,7 @@ const { parseReference, Bible } = require('../lib/bible');
 const { parseSong, serializeSong, toSlides, SongLibrary } = require('../lib/songs');
 const { wrap, captionText, Overlay } = require('../lib/overlay');
 const { parseChMarkdown, sdahRowToSong } = require('../lib/importers/hymnals');
-const { convert } = require('../lib/importers/bible');
+const { convert, parseBibleFile } = require('../lib/importers/bible');
 const { parseDshowDevices } = require('../lib/ffmpeg');
 const { readZip } = require('../lib/unzip');
 
@@ -203,4 +203,57 @@ test('service files: zip round trip', () => {
   assert.ok(entries[0].read().equals(big));
   assert.ok(entries[1].read().equals(pic));
   assert.ok(zip.length < big.length); // text is compressed
+});
+
+// Importing a Bible file (Settings → Bible). Small generated fixtures, one verse per book.
+const OSIS_BOOKS = ['Gen', 'Exod', 'Lev', 'Num', 'Deut', 'Josh', 'Judg', 'Ruth', '1Sam', '2Sam', '1Kgs', '2Kgs', '1Chr', '2Chr', 'Ezra', 'Neh', 'Esth', 'Job', 'Ps', 'Prov', 'Eccl', 'Song', 'Isa', 'Jer', 'Lam', 'Ezek', 'Dan', 'Hos', 'Joel', 'Amos', 'Obad', 'Jonah', 'Mic', 'Nah', 'Hab', 'Zeph', 'Hag', 'Zech', 'Mal',
+  'Matt', 'Mark', 'Luke', 'John', 'Acts', 'Rom', '1Cor', '2Cor', 'Gal', 'Eph', 'Phil', 'Col', '1Thess', '2Thess', '1Tim', '2Tim', 'Titus', 'Phlm', 'Heb', 'Jas', '1Pet', '2Pet', '1John', '2John', '3John', 'Jude', 'Rev'];
+const USFM_BOOKS = ['GEN', 'EXO', 'LEV', 'NUM', 'DEU', 'JOS', 'JDG', 'RUT', '1SA', '2SA', '1KI', '2KI', '1CH', '2CH', 'EZR', 'NEH', 'EST', 'JOB', 'PSA', 'PRO', 'ECC', 'SNG', 'ISA', 'JER', 'LAM', 'EZK', 'DAN', 'HOS', 'JOL', 'AMO', 'OBA', 'JON', 'MIC', 'NAM', 'HAB', 'ZEP', 'HAG', 'ZEC', 'MAL',
+  'MAT', 'MRK', 'LUK', 'JHN', 'ACT', 'ROM', '1CO', '2CO', 'GAL', 'EPH', 'PHP', 'COL', '1TH', '2TH', '1TI', '2TI', 'TIT', 'PHM', 'HEB', 'JAS', '1PE', '2PE', '1JN', '2JN', '3JN', 'JUD', 'REV'];
+const verseFor = (i) => (i === 42 ? 'For God so loved the world' : `Verse of book ${i + 1}`);
+
+test('Import a Bible file: Zefania XML', () => {
+  const xml = `<?xml version="1.0"?><XMLBIBLE biblename="Test"><INFORMATION><title>Test Revised Version</title><identifier>TRV</identifier></INFORMATION>` +
+    OSIS_BOOKS.map((b, i) => `<BIBLEBOOK bnumber="${i + 1}"><CHAPTER cnumber="3"><VERS vnumber="16">${verseFor(i)}<NOTE>a footnote</NOTE> &amp; more</VERS></CHAPTER></BIBLEBOOK>`).join('') + '</XMLBIBLE>';
+  const r = parseBibleFile(Buffer.from(xml));
+  assert.equal(r.name, 'Test Revised Version'); assert.equal(r.abbrev, 'TRV'); assert.equal(r.booksWithText, 66);
+  assert.equal(r.books[42][2][15], 'For God so loved the world & more');
+  assert.equal(r.books[42][2][0], ''); // verses before are empty, not holes
+});
+
+test('Import a Bible file: OSIS XML (container and milestone verses)', () => {
+  const container = `<osis><osisText osisIDWork="NTV"><header><work osisWork="NTV"><title>New Test Version</title></work></header>` +
+    OSIS_BOOKS.map((b, i) => `<div type="book" osisID="${b}"><chapter osisID="${b}.3"><verse osisID="${b}.3.16">${verseFor(i)}<note type="x">see 1:1</note></verse></chapter></div>`).join('') + '</osisText></osis>';
+  const a = parseBibleFile(container);
+  assert.equal(a.name, 'New Test Version'); assert.equal(a.abbrev, 'NTV'); assert.equal(a.booksWithText, 66);
+  assert.equal(a.books[42][2][15], 'For God so loved the world');
+  const milestone = '<osis><osisText osisIDWork="MS">' +
+    OSIS_BOOKS.map((b, i) => `<chapter sID="${b}.3" osisID="${b}.3"/><verse sID="${b}.3.16" osisID="${b}.3.16"/>${verseFor(i)}, <w lemma="x">that</w> he gave<verse eID="${b}.3.16"/><chapter eID="${b}.3"/>`).join('') + '</osisText></osis>';
+  const m = parseBibleFile(milestone);
+  assert.equal(m.booksWithText, 66);
+  assert.equal(m.books[42][2][15], 'For God so loved the world, that he gave');
+});
+
+test('Import a Bible file: USFX XML, JSON, New Testament only, refusals', () => {
+  const usfx = '<usfx>' + USFM_BOOKS.map((b, i) => `<book id="${b}"><c id="3"/><p><v id="16"/>${verseFor(i)}<f>note</f><ve/></p><v id="17"/>Next verse<ve/></book>`).join('') + '</usfx>';
+  const u = parseBibleFile(usfx);
+  assert.equal(u.booksWithText, 66);
+  assert.equal(u.books[42][2][15], 'For God so loved the world');
+  assert.equal(u.books[42][2][16], 'Next verse');
+
+  // scrollmapper-style JSON
+  const json = { translation: 'JSON Test', abbrev: 'JT', books: OSIS_BOOKS.map((b, i) => ({ name: b, chapters: [{ chapter: 1, verses: [{ verse: 1, text: verseFor(i) }] }] })) };
+  const j = parseBibleFile(JSON.stringify(json));
+  assert.equal(j.booksWithText, 66); assert.equal(j.abbrev, 'JT'); assert.equal(j.name, 'JSON Test');
+
+  // The New Testament alone is accepted.
+  const nt = '<usfx>' + USFM_BOOKS.slice(39).map((b, i) => `<book id="${b}"><c id="1"/><v id="1"/>${verseFor(i + 39)}<ve/></book>`).join('') + '</usfx>';
+  assert.equal(parseBibleFile(nt).booksWithText, 27);
+  // A few books are not enough.
+  const few = '<usfx>' + USFM_BOOKS.slice(0, 5).map((b) => `<book id="${b}"><c id="1"/><v id="1"/>x<ve/></book>`).join('') + '</usfx>';
+  assert.throws(() => parseBibleFile(few), /Only 5 books/);
+  assert.throws(() => parseBibleFile('<html><body>hello</body></html>'), /isn’t a Bible/);
+  assert.throws(() => parseBibleFile('{"songs": []}'), /isn’t a Bible/);
+  assert.throws(() => parseBibleFile('{ broken'), /could not be read/);
+  assert.throws(() => parseBibleFile('<XMLBIBLE></XMLBIBLE>'), /No Bible verses/);
 });
