@@ -1,0 +1,30 @@
+name: Stream quality benchmark
+
+# Compares ChurchStream's encoder settings (before / now) with OBS Studio's x264 settings on
+# the same footage at the same bitrate, scored with VMAF. Run it from Actions → "Stream quality
+# benchmark" → Run workflow; results appear on the run's summary page.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['scripts/bench-quality.sh', '.github/workflows/quality-benchmark.yml']
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: FFmpeg with libx264 and libvmaf
+        run: |
+          curl -sSfL -o ff.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          mkdir ffbin && tar -xf ff.tar.xz -C ffbin --strip-components=1
+          ffbin/bin/ffmpeg -hide_banner -version | head -1
+          ffbin/bin/ffmpeg -hide_banner -filters | grep -E " libvmaf " || { echo "::error::no libvmaf"; exit 1; }
+      - name: Run the benchmark
+        run: FFMPEG="$PWD/ffbin/bin/ffmpeg" WORK="$RUNNER_TEMP/bench" bash scripts/bench-quality.sh
+      - name: Results
+        run: cat results.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quality-benchmark
+          path: results.md

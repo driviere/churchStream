@@ -2158,7 +2158,7 @@ function programKey(s) {
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
   return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
-    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, themeClasses(t), slide && slide.part]);
+    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, themeClasses(t), slide && slide.part, s.config.quality]);
 }
 
 function wrapLines(ctx, text, maxW) {
@@ -2174,9 +2174,13 @@ function wrapLines(ctx, text, maxW) {
   return out;
 }
 
+// Stream sizes (lib/stream.js QUALITY) and the JPEG quality of the picture sent to FFmpeg:
+// high enough that lettering has no visible blocking before the stream is encoded.
+const STREAM_SIZE = { low: [854, 480], good: [1280, 720], high: [1920, 1080] };
+const PROGRAM_JPEG = 0.94;
 async function renderProgram(s) {
-  const W = 1280;
-  const H = 720;
+  // Drawn at the stream's own size, so slide text stays sharp at 1080p (no upscaling).
+  const [W, H] = STREAM_SIZE[s.config.quality] || STREAM_SIZE.good;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
@@ -2188,7 +2192,7 @@ async function renderProgram(s) {
   try { await document.fonts.load(`600 40px "Inter ChurchStream"`); } catch { /* fall back to system font */ }
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  if (s.black) return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88));
+  if (s.black) return new Promise((r) => c.toBlob(r, 'image/jpeg', PROGRAM_JPEG));
 
   const bg = bgInfo(effectiveBg(slide, live && live.item, t));
   const img = bg.url && await loadImg(bg.url);
@@ -2342,7 +2346,7 @@ async function renderProgram(s) {
       ctx.globalAlpha = 1;
     }
   }
-  return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88));
+  return new Promise((r) => c.toBlob(r, 'image/jpeg', PROGRAM_JPEG));
 }
 
 let lastProgramKey = null;
