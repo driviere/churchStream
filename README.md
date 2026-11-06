@@ -9,73 +9,116 @@ ChurchStream runs a whole Sabbath service from one calm screen. It projects hymn
 
 📖 **[User manual](public/manual.md)**: a step-by-step guide for volunteers. It's also built into the app: click **?** in the top bar, or open `/manual`.
 
-## What's included
+## Features
 
-### 📖 The Bible
-- **King James Version (KJV)** and the modern-English **Berean Standard Bible (BSB)** are built in. All 66 books work offline, and both are public domain.
-- **More free translations** can be downloaded in one click: American Standard Version (ASV), Young's Literal Translation and Darby.
-- **Type a reference the way you'd say it:** `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7` or `Rom 8:28-9:2`.
-- **Readable slides:** verses are grouped into slides of comfortable length, with small verse numbers and the reference along the bottom.
+ChurchStream runs your church's projector and live stream from one simple control panel. It is free, and works on a Windows PC or a Mac.
 
-### 🎵 Both Adventist hymnals
-- **Seventh-day Adventist Hymnal (1985):** all 695 hymns.
-- **Church Hymnal (1941):** the 703-hymn hymnal that came before it. 694 hymns have lyrics in the source data.
-- **One click to install each**, from Settings or the setup wizard.
-- **Type the hymn number:** `100` opens your default hymnal, and `sdah 100` or `ch 100` picks the book. You can also search by title or by any line of the words.
-- **Sung order:** refrains are placed after every verse, so the operator just presses **Next**. Edits you make to a hymn are kept when the hymnal is updated.
-- **Pick the verses to sing**, e.g. 1, 2 and 4. Refrains come and go with their verse.
-- **Responsive readings** from any Bible passage: the leader and congregation take turns, and the last verse is read by all. The congregation's words show in gold.
-- **Your own songs**, choruses and announcements can be added too. Paste the words, and a blank line starts a new slide.
-
-### 📺 Projection
-- **Exact preview:** a projector window on your HDMI output, which can feed a splitter for two screens. The slide thumbnails look exactly like the projector.
-- **15 built-in backgrounds** made for projection, plus your own photos. Choose one for everything, for one hymn or reading, or for a single slide.
-- **Quick screen controls:** **Black**, **Clear** (hide the words) and **Logo**, each a single tap.
-- **Stage screen** for musicians on any phone or tablet, showing the current and next slide and a clock.
-- **Text options:** choose the font, put the words in the middle or along the bottom (leaving photos and the camera visible), centred or left, with an optional outline.
+**At a glance**
+- **One computer** does everything: shows hymns, Bible readings and announcements on the screens, and streams the service to YouTube and Facebook at the same time.
+- **Made for volunteers:** a setup guide, one search box, a big Next button, and a simple mode that hides everything else.
+- **Runs from phones and tablets** on the church Wi-Fi: as a remote clicker, a stage screen for musicians, or the full control panel.
+- **Works offline** during the service: the hymnals and Bibles are stored on the computer. Internet is only needed to stream.
+- **Light on resources:** one small program plus FFmpeg. There's no OBS, and nothing else to install.
 
 ### 🔴 Live streaming
-- **YouTube and Facebook at the same time**, plus an optional recording. The video is encoded **once**, so two platforms cost no extra computer power.
-- **Choose what viewers see:** the **Camera**, the **Slides**, **Slides + camera** (picture-in-picture) or **Auto**. Switching is instant and never interrupts the stream.
-- **Names (lower thirds)** with one tap, on the stream and, if you like, the projector screens.
-- **Safety checks:** before going live, ChurchStream checks the camera and sound. It warns you if there's no sound, and reconnects a platform automatically if it drops.
-- **Sound clean-up for online viewers:**
-  - noise reduction (hum and fans);
-  - even volume between loud and quiet speakers;
-  - no distortion;
-  - a mic level control and a lip-sync delay.
 
-### 🎬 Before, during and after the service
-- **Countdown** to the start of the service, with announcements changing underneath on their own. It runs on the screens and the stream.
-- **Announcement loops:** any text slides can change automatically every few seconds.
-- **Sermon slides:** the pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides you step through with **Next**.
-- **Videos (Mission Spotlight, special music) and background music** play on the screens and *into the live stream* without interrupting it. Background music steps aside automatically while a video plays.
-- **Scrolling ticker** along the bottom of the stream, and optionally the screens too.
-- **New service:** start from a blank order or from *Our usual order* (a template you mark with ★). The previous order is always kept in **Recent**.
-- **Save and share services:** **Save / open** saves an order of service as one **.churchservice** file. The file includes:
-  - the words of its songs;
-  - optionally, its pictures, backgrounds and videos.
+| Feature | What it does |
+| --- | --- |
+| YouTube and Facebook at once | Streams to both at the same time, from one encode, so the second platform costs no extra computer power. If one drops, the other keeps going and the dropped one reconnects. |
+| Recording | Optionally keeps a copy of each service on the computer. |
+| What viewers see | **Camera**, **Slides** (exactly what the projector shows), **Slides + camera** in a corner, or **Auto**. Switching never interrupts the stream. |
+| Words on the camera view | Lyrics and verses can appear as captions along the bottom of the camera picture. |
+| Names (lower thirds) | One tap shows a name and title, e.g. *Pastor John Smith · Sermon*, on the stream and optionally the screens. |
+| Scrolling ticker | A message line along the bottom, e.g. *Potluck lunch after the service*. |
+| Sound clean-up | Off, Light or Strong: removes hum and fan noise, evens out loud and quiet voices, and prevents distortion. |
+| Mic level and lip-sync | Adjust the microphone, and line the sound up with the picture. |
+| Safety checks | Before going live it checks the camera, sound and stream keys. It warns when there's no sound or the connection is struggling. |
+| Hardware encoding | Uses the computer's built-in video encoder where available (Intel, NVIDIA, AMD or Apple), so the laptop stays cool. |
+| Broadcast title | Filled in from a pattern, e.g. `{church} · Sabbath Service · {date} · {sermon}`, ready to copy into YouTube and Facebook. |
 
-  Email it, send it on WhatsApp or copy it with a USB stick, then use **Open a file** on another computer. Anything that computer doesn't have is added. Services can also be kept on the computer and reopened later.
-- **Service templates:** save your usual order of service once, then start each Sabbath from it.
-- **Sunset and Sabbath times** for your church's location, worked out on the computer with no internet needed.
-  - A reminder in the top bar, e.g. *Sabbath begins 6:12 pm*.
-  - A ready-made **Sunset times** slide.
-  - Placeholders you can use in any slide or the ticker: `{sunset}`, `{sabbath-begins}`, `{sabbath-ends}` and `{next-sabbath-begins}`.
-- **Broadcast title** filled in from a pattern (`{church} · Sabbath Service · {date} · {sermon}`), ready to copy into YouTube and Facebook.
+### 📺 Projection
 
-### 🙌 Made for volunteers
-- **No settings files:** a setup wizard in the browser handles everything.
-- **One search box** for hymn numbers, songs and verses.
-- **A big Next button** that a $15 presentation clicker also works with.
-- **Order of service** that you build before the service and simply step through.
-- **Runs from a tablet** on the church Wi-Fi, as well as from the computer. **Settings → Phones & tablets** shows QR codes to scan.
-- **Phone remote:** any phone becomes the clicker, with big Next and Back buttons, what's next, and the order of service.
-- **Volunteer mode:** a simple screen with settings and editing hidden. Press and hold to leave it.
-- **Undo** for removed items and replaced services (or **Ctrl+Z**). There's also a **printable order of service**.
-- **A user manual** built into the app (**?** in the top bar).
-- **Light and dark themes.**
-- **Light on resources:** one small program plus FFmpeg. There's no OBS, and nothing to install.
+| Feature | What it does |
+| --- | --- |
+| Projector window | Opens full screen on the projector output. It also works with an HDMI splitter feeding two screens. |
+| Exact preview | The slide thumbnails and the small screen in the control panel look exactly like the projector. |
+| Backgrounds | 15 built-in backgrounds made for projection, plus your own photos. Set one for everything, one item, or a single slide. |
+| Church logo | Your logo full screen with one tap, optionally with the church name under it, in three sizes. |
+| Black, Clear, Logo | Blank the screens, hide just the words, or show the logo. Each is one tap or one key. |
+| Text options | Choose the font; put the words in the middle or along the bottom; centred or left; with an outline for busy photos. |
+| Stage screen | Current slide, next slide and a clock for musicians and the speaker, on any phone or tablet. |
+| Readable sizing | Text fits itself to the screen. Song lines are kept whole where possible, and Bible verses show small verse numbers. |
+
+### 🎵 Hymns, Bible and worship
+
+| Feature | What it does |
+| --- | --- |
+| Both Adventist hymnals | *Seventh-day Adventist Hymnal* (1985, 695 hymns) and *Church Hymnal* (1941, 703 hymns; 694 have lyrics in the source data). One click to download each onto your computer. |
+| Hymn numbers | Type `100` for your default hymnal, `ch 100` or `sda 100` to pick the book, or search by title or any line of the words. |
+| Sung in order | Refrains are placed after every verse, so the operator just presses Next. Your edits to a hymn are kept when the hymnal is updated. |
+| Choose the verses | Sing only some verses, e.g. 1, 2 and 4. Refrains come and go with their verse. |
+| Your own songs | Paste the words of any song or chorus; a blank line starts a new slide. |
+| Bible | KJV and BSB built in, all 66 books offline; ASV, YLT, Darby and Webster downloadable. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
+| Responsive readings | Built from any Bible passage: Leader and Congregation take turns, and All read the last verse. The congregation's words show in gold. |
+| Sermon slides | The pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides to step through. |
+| Announcements | Text slides that can change by themselves every few seconds, on a loop. |
+| Countdown | Counts down to the start of the service, with announcements changing underneath, on the screens and the stream. |
+| Sunset and Sabbath times | Worked out for your church's location, with no internet needed. A reminder in the top bar, a ready-made *Sunset times* slide, and placeholders for any slide or the ticker: `{sunset}`, `{sabbath-begins}`, `{sabbath-ends}`, `{next-sabbath-begins}`. |
+
+### 📋 Order of service and sharing
+
+| Feature | What it does |
+| --- | --- |
+| Order of service | Build the service during the week, then step through it with Next. At the end of each item it moves on to the next. |
+| New service | Start blank, or from *Our usual order*, a template you mark with ★. |
+| Templates | Save your usual service once (welcome, opening hymn, scripture, prayer, children's story, sermon, closing hymn) and reuse it every week. |
+| Save and share | Save a service as one `.churchservice` file, with its songs' words and optionally its pictures and videos. Email it, send it on WhatsApp, or copy it with a USB stick; another computer opens it and adds anything missing. |
+| Recent services | Earlier orders of service are kept automatically, so nothing is lost when you start a new one. |
+| Printable bulletin | The order of service as a page to print or save as a PDF, with your logo, hymn numbers, verses and readings. |
+| Undo | Brings back a removed item or a replaced service, with one tap or **Ctrl+Z**. |
+| Reorder | Drag items into a new order. On a phone or tablet, press and hold, then drag. |
+
+### 🙌 Volunteers, phones and tablets
+
+| Feature | What it does |
+| --- | --- |
+| Setup guide | First-run steps: church name and location, camera and sound, projector, stream keys, and hymnals. No settings files. |
+| One search box | Hymn numbers, song titles, words and Bible references, all in one place. |
+| Big Next button | Also works with the arrow keys, Space or a presentation clicker. |
+| Volunteer mode | A simple screen with settings, stream setup and editing hidden, so nothing changes by accident. Press and hold for 2 seconds to leave. |
+| Phone remote | Any phone on the church Wi-Fi becomes the clicker: huge Next and Back buttons, what's next, and the order of service to tap. |
+| Control from a tablet | The full control panel works on a tablet, with swipe-friendly controls. |
+| QR codes | **Settings → Phones & tablets** shows the computer's address and codes to scan. Nothing to install on the phones. |
+| Optional password | Keeps visitors on the Wi-Fi out of the control panel. |
+| Light and dark themes | A dark control panel for a dim room. |
+| Built-in user manual | Click **?** in the top bar for step-by-step help. It works offline and prints well. |
+
+### 🎬 Videos, music and YouTube
+
+| Feature | What it does |
+| --- | --- |
+| Videos | Mission Spotlight, special music and other MP4, MOV or WebM videos play full screen on the projector **and** into the live stream with sound, without interrupting it. |
+| Video controls | Play, Stop, From the start, volume, and repeat until stopped. |
+| Background music | Quiet MP3 or M4A tracks loop before and after the service, on the stream and through the room speakers. They step aside while a video plays. |
+| Play from YouTube | Paste a link to play a YouTube video on the projector, or use a video or playlist as background music. Needs internet during the service. |
+| Download from YouTube | Save a copy of a video, or just its sound, so it plays offline and goes into the stream with sound. Only for videos you have permission to use. |
+
+### 💻 Requirements
+
+| | Windows | Mac |
+| --- | --- | --- |
+| Computer | A Windows 10 or 11 laptop or PC | macOS 13 or later; Apple chip (M1–M4) or Intel |
+| Download | `ChurchStream-win-x64.zip` | `ChurchStream-mac-arm64.zip` (Apple chip) or `ChurchStream-mac-x64.zip` (Intel) |
+| Start it | Unzip and double-click **ChurchStream.exe** | Unzip and double-click **Start ChurchStream.command** |
+| First time | SmartScreen: **More info → Run anyway** | System Settings → Privacy & Security → **Open Anyway** |
+| Projector | Microsoft Edge (already installed) | Google Chrome recommended; Safari works too |
+
+You also need:
+- **A camera:** a USB webcam, an HDMI capture card, an IP camera, or on a Mac the built-in camera or an iPhone.
+- **A microphone or a feed from the sound desk.**
+- **Internet upload of about 6 Mbps** to stream to YouTube and Facebook together at the default quality (720p). That's about 3 Mbps for one platform, or for both on the low-bandwidth setting (480p). See [Hardware & internet](#hardware--internet).
+
+Downloads are on the [Releases page](../../releases).
 
 ---
 
