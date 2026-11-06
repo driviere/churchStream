@@ -137,7 +137,7 @@ test('macOS: camera and microphone through AVFoundation, VideoToolbox encoder', 
   const silent = buildFfmpegArgs({ cfg: cfg({ video: { type: 'dshow', device: 'Cam' }, audio: { source: 'none' }, outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', platform: 'darwin' });
   assert.ok(silent.includes('Cam:none'));
   assert.ok(silent.some((x) => /anullsrc/.test(x)));
-  assert.deepEqual(encoderArgs('h264_videotoolbox', QUALITY.good).slice(0, 4), ['-c:v', 'h264_videotoolbox', '-realtime', '1']);
+  assert.deepEqual(encoderArgs('h264_videotoolbox', QUALITY.good).slice(0, 4), ['-c:v', 'h264_videotoolbox', '-profile:v', 'high']);
 });
 
 test('macOS device and display lists', () => {
@@ -148,4 +148,25 @@ test('macOS device and display lists', () => {
   assert.equal(m.length, 2);
   assert.equal(m[0].primary, true);
   assert.deepEqual([m[1].x, m[1].y, m[1].width], [1512, -98, 1920]); // top-left coordinates for the browser
+});
+
+test('encoder settings: quality first (B-frames, no zero-latency), plainer fallback per encoder', () => {
+  const { encoderArgs, splitEncoder } = require('../lib/encoders');
+  const q = QUALITY.good;
+  const x = encoderArgs('libx264', q);
+  assert.ok(!x.includes('zerolatency'));
+  assert.equal(x[x.indexOf('-bf') + 1], '2');
+  assert.equal(x[x.indexOf('-b:v') + 1], '2500k'); // same bitrate: better picture, same upload
+  assert.equal(x[x.indexOf('-g') + 1], '60'); // keyframe every 2 s
+  for (const enc of ['h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_videotoolbox']) {
+    const a = encoderArgs(enc, q);
+    const c = encoderArgs(enc + ':compat', q);
+    assert.equal(a[1], enc); assert.equal(c[1], enc);
+    assert.notDeepEqual(a, c);
+    assert.equal(c[c.indexOf('-bf') + 1] || '0', '0');
+  }
+  assert.deepEqual(splitEncoder('h264_qsv:compat'), { name: 'h264_qsv', variant: 'compat' });
+  // QSV still gets NV12 frames with the fallback set
+  const args = buildFfmpegArgs({ cfg: cfg({ outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', encoder: 'h264_qsv:compat' });
+  assert.match(args[args.indexOf('-filter_complex') + 1], /format=nv12\[venc\]/);
 });
