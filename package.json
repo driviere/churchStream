@@ -1,6 +1,6 @@
 {
   "name": "churchstream",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Lightweight live streaming (YouTube + Facebook), projection, lyrics, Bible and lower thirds for small churches.",
   "main": "server.js",
   "private": true,
