@@ -271,6 +271,9 @@ test('Import songs: numbered songbook listing, verse numbers are not song number
   assert.deepEqual(r.songs[0].sections.map((x) => x.label), ['Verse 1', 'Verse 2', 'Chorus']);
   assert.equal(r.songs[0].sections[0].text, 'He is Lord, He is Lord,\nHe is risen from the dead');
   assert.deepEqual(r.songs[2].sections.map((x) => x.label), ['Verse 1', 'Verse 2']);
+  const { wordsToSections } = require('../lib/importers/songs');
+  assert.deepEqual(wordsToSections(['3.', '', 'By the crystal flowing river,', '', 'Chorus:', '', 'All that thrills']),
+    [{ label: 'Verse 3', text: 'By the crystal flowing river,' }, { label: 'Chorus', text: 'All that thrills' }]);
 });
 
 test('Import songs: SongSelect, ChordPro, OpenLyrics, CSV, Word, refusals', () => {
