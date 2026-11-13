@@ -257,3 +257,54 @@ test('Import a Bible file: USFX XML, JSON, New Testament only, refusals', () => 
   assert.throws(() => parseBibleFile('{ broken'), /could not be read/);
   assert.throws(() => parseBibleFile('<XMLBIBLE></XMLBIBLE>'), /No Bible verses/);
 });
+
+// Importing songs (Settings → Hymnals & songs → Import songs…) and AY Sing numbers.
+test('Import songs: numbered songbook listing, verse numbers are not song numbers', () => {
+  const { parseSongFile } = require('../lib/importers/songs');
+  const txt = [
+    '1. HE IS LORD', '', '1. He is Lord, He is Lord,', 'He is risen from the dead', '', '2. Every knee shall bow,', 'every tongue confess', '', 'Chorus', 'That Jesus Christ is Lord.', '',
+    '2 Give Me Oil in My Lamp', '', 'Give me oil in my lamp,', 'keep me burning', '',
+    '3', 'Into My Heart', '', '1', 'Into my heart, into my heart,', '', '2', 'Out of my heart', '',
+  ].join('\n');
+  const r = parseSongFile('ay.txt', Buffer.from(txt));
+  assert.deepEqual(r.songs.map((x) => [x.number, x.title]), [[1, 'He Is Lord'], [2, 'Give Me Oil in My Lamp'], [3, 'Into My Heart']]);
+  assert.deepEqual(r.songs[0].sections.map((x) => x.label), ['Verse 1', 'Verse 2', 'Chorus']);
+  assert.equal(r.songs[0].sections[0].text, 'He is Lord, He is Lord,\nHe is risen from the dead');
+  assert.deepEqual(r.songs[2].sections.map((x) => x.label), ['Verse 1', 'Verse 2']);
+});
+
+test('Import songs: SongSelect, ChordPro, OpenLyrics, CSV, Word, refusals', () => {
+  const { parseSongFile } = require('../lib/importers/songs');
+  const { writeZip } = require('../lib/zip');
+  const ss = parseSongFile('w.txt', Buffer.from('Way Maker\n\nVerse 1\nYou are here\n\nChorus\nWay maker\n\nCCLI Song # 7115744\nOsinachi Kalu\n© 2016 Integrity\nFor use solely with the SongSelect® Terms of Use.\nCCLI License # 123')).songs[0];
+  assert.deepEqual([ss.title, ss.ccli, ss.author, ss.copyright, ss.sections.length], ['Way Maker', '7115744', 'Osinachi Kalu', '© 2016 Integrity', 2]);
+  const cp = parseSongFile('a.cho', Buffer.from('{title: Amazing}\n{artist: Newton}\n[G]Amazing [C]grace\nhow sweet\n\n{soc}\n[D]Chorus line\n{eoc}')).songs[0];
+  assert.equal(cp.title, 'Amazing'); assert.equal(cp.sections[0].text, 'Amazing grace\nhow sweet'); assert.equal(cp.sections[1].label, 'Chorus');
+  const ol = parseSongFile('o.xml', Buffer.from('<?xml version="1.0"?><song xmlns="http://openlyrics.info/namespace/2009/song"><properties><titles><title>Test OL</title></titles></properties><lyrics><verse name="v1"><lines>Line one<br/>Line two</lines></verse><verse name="c"><lines>Chorus here</lines></verse></lyrics></song>')).songs[0];
+  assert.deepEqual(ol.sections, [{ label: 'Verse 1', text: 'Line one\nLine two' }, { label: 'Chorus', text: 'Chorus here' }]);
+  const csv = parseSongFile('c.csv', Buffer.from('Number,Title,Lyrics\n5,Jesus Loves Me,"Jesus loves me\nthis I know"\n')).songs;
+  assert.deepEqual([csv[0].number, csv[0].title, csv[0].sections[0].text], [5, 'Jesus Loves Me', 'Jesus loves me\nthis I know']);
+  const para = (t) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const docXml = '<w:document><w:body>' + ['1. Song One', '', 'Words of one', '', '2. Song Two', '', 'Words of two'].map(para).join('') + '</w:body></w:document>';
+  const docx = writeZip([{ name: 'word/document.xml', data: Buffer.from(docXml) }]);
+  assert.deepEqual(parseSongFile('ay.docx', docx).songs.map((x) => [x.number, x.title, x.sections[0].text]), [[1, 'Song One', 'Words of one'], [2, 'Song Two', 'Words of two']]);
+  assert.throws(() => parseSongFile('ay.pdf', Buffer.from('%PDF-1.4 ...')), /PDF/);
+  assert.throws(() => parseSongFile('x.xml', Buffer.from('<?xml version="1.0"?><note>hi</note>')), /OpenLyrics/);
+  assert.throws(() => parseSongFile('x.txt', Buffer.from('\n\n')), /No song words/);
+});
+
+test('Import songs: .churchsongs round trip and AY numbers', () => {
+  const { parseSongFile, writeChurchSongs } = require('../lib/importers/songs');
+  const lib = new SongLibrary(tmp());
+  lib.save({ title: 'He Is Lord', hymnal: 'AY', number: 25, lyrics: '[Chorus]\nHe is Lord' });
+  lib.save({ title: 'Give Me Oil', hymnal: 'AY', number: 2, lyrics: 'Give me oil in my lamp' });
+  assert.equal(lib.search('ay 25')[0].title, 'He Is Lord');
+  assert.equal(lib.search('AY Sing 2')[0].title, 'Give Me Oil');
+  assert.equal(lib.search('25', { defaultHymnal: 'AY' })[0].title, 'He Is Lord');
+  assert.deepEqual(lib.list('AY').map((x) => x.number), [2, 25]);
+  const file = writeChurchSongs(lib.list('AY'), { code: 'AY', name: 'Advent Youth Sing' });
+  const r = parseSongFile('Advent Youth Sing.churchsongs', file);
+  assert.deepEqual(r.book, { code: 'AY', name: 'Advent Youth Sing' });
+  assert.deepEqual(r.songs.map((x) => [x.hymnal, x.number, x.title]), [['AY', 2, 'Give Me Oil'], ['AY', 25, 'He Is Lord']]);
+  assert.equal(r.songs[1].sections[0].label, 'Chorus');
+});

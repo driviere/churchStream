@@ -27,7 +27,7 @@ const meterBus = new EventTarget();
 
 const navigate = (path) => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); };
 const fmtTime = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const hh = Math.floor(s / 3600); const mm = Math.floor((s % 3600) / 60); const ss = s % 60; return `${hh ? hh + ':' : ''}${String(mm).padStart(hh ? 2 : 1, '0')}:${String(ss).padStart(2, '0')}`; };
-const hymnLabel = (s) => (s.number ? `${s.hymnal === 'CH1941' ? 'Church Hymnal' : s.hymnal === 'SDAH' ? 'SDA Hymnal' : 'Hymn'} ${s.number}` : (s.author || ''));
+const hymnLabel = (s) => (s.number ? `${s.hymnal === 'CH1941' ? 'Church Hymnal' : s.hymnal === 'SDAH' ? 'SDA Hymnal' : s.hymnal === 'AY' ? 'AY Sing' : 'Hymn'} ${s.number}` : (s.author || ''));
 const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 
 function parseSections(body) {
@@ -279,7 +279,7 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
       ${rows.map((row, i) => row.type === 'song' && html`
         <div class=${'result' + (i === sel ? ' sel' : '')} onMouseEnter=${() => setSel(i)} onClick=${() => act(row, 'open')}>
           <span class="num">${row.data.number ? row.data.number : icons.music()}</span>
-          <div class="grow"><div class="t">${row.data.title}</div><div class="s">${[row.data.hymnal === 'CH1941' ? 'Church Hymnal' : row.data.hymnal === 'SDAH' ? 'SDA Hymnal' : '', row.data.firstLine].filter(Boolean).join(' · ')}</div></div>
+          <div class="grow"><div class="t">${row.data.title}</div><div class="s">${[row.data.hymnal === 'CH1941' ? 'Church Hymnal' : row.data.hymnal === 'SDAH' ? 'SDA Hymnal' : row.data.hymnal === 'AY' ? 'AY Sing ' + row.data.number : '', row.data.firstLine].filter(Boolean).join(' · ')}</div></div>
           <div class="acts"><button class="btn small" onClick=${(e) => { e.stopPropagation(); act(row, 'add'); }}>Add</button><button class="btn small primary" onClick=${(e) => { e.stopPropagation(); act(row, 'show'); }}>Show</button></div>
         </div>`)}
       ${!rows.length && html`<div class="empty">Nothing found for “${q}”.<br/><button class="btn small" style="margin-top:10px" onClick=${() => { onNewSong(q); setOpen(false); }}>Create a song called “${q}”</button></div>`}
@@ -1873,10 +1873,95 @@ function SectionSongs({ s }) {
     ${task && (task.running || task.error || task.result) && html`<div class="note" style=${'margin-bottom:16px;' + (task.error ? 'color:#ffd2d3' : '')}>${task.error || task.label || task.result}</div>`}
     <div class="field"><label class="label">When you type just a number (e.g. 100), open the hymn from</label>
       <select class="select" value=${def} onChange=${(e) => { setDef(e.target.value); save({ hymnal: { default: e.target.value } }); }}>
-        <option value="SDAH">Seventh-day Adventist Hymnal (1985)</option><option value="CH1941">Church Hymnal (1941)</option>
-      </select><div class="hint">Type <kbd>sdah 100</kbd> or <kbd>ch 100</kbd> to choose a hymnal directly.</div></div>
+        <option value="SDAH">Seventh-day Adventist Hymnal (1985)</option><option value="CH1941">Church Hymnal (1941)</option><option value="AY">Advent Youth Sing</option>
+      </select><div class="hint">Type <kbd>sdah 100</kbd>, <kbd>ch 100</kbd> or <kbd>ay 25</kbd> to choose a songbook directly.</div></div>
     <div class="note">Hymn texts are downloaded from free community projects (github.com/joshpetit/sda-hymnal and github.com/adventhymnals). Many hymns are public domain, but some are still under copyright. <b>Projecting them requires your church's CCLI licence</b>, which most churches already have.</div>
-    <p class="muted" style="margin-top:16px">${counts.total} songs in your library in total. To add your own, search for a title in the control panel and choose “Create a song”.</p>
+    <${SongFiles} s=${s} />
+  </div>`;
+}
+
+// Import songs from files, and save songs to a .churchsongs file to carry to another computer.
+const SONG_ACCEPT = '.churchsongs,.txt,.docx,.xml,.cho,.chordpro,.chopro,.pro,.csv,.zip';
+const BOOKS = [['AY', 'Advent Youth Sing (AY)'], ['own', 'My own songs (no songbook)'], ['SDAH', 'SDA Hymnal'], ['CH1941', 'Church Hymnal (1941)']];
+function SongFiles({ s }) {
+  const counts = { ...s.library.songs };
+  counts.own = counts.total - Object.keys(s.library.hymnals || {}).reduce((n, h) => n + (counts[h] || 0), 0);
+  const [files, setFiles] = useState(null); // [{ file, info, error }]
+  const [book, setBook] = useState('own');
+  const [busy, setBusy] = useState('');
+  const [out, setOut] = useState(counts.AY ? 'AY' : counts.own ? 'own' : 'SDAH');
+  const send = async (f, params) => {
+    const res = await fetch('/api/import/songs?' + new URLSearchParams({ name: f.name, ...params }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.error) throw new Error(d.error || 'The file could not be read.');
+    return d;
+  };
+  const choose = (preset) => pickFiles(SONG_ACCEPT, true, async (list) => {
+    if (!list || !list.length) return;
+    setBusy('Reading…');
+    const got = [];
+    for (const f of list) { try { got.push({ file: f, info: await send(f, { check: '1' }) }); } catch (err) { got.push({ file: f, error: err.message }); } }
+    const fromFile = got.find((g) => g.info && g.info.book);
+    const numbered = got.some((g) => g.info && g.info.numbered > 1);
+    setBook(preset || (fromFile ? fromFile.info.book.code : numbered ? 'AY' : 'own'));
+    setFiles(got);
+    setBusy('');
+  });
+  const ok = files ? files.filter((g) => g.info) : [];
+  const total = ok.reduce((n, g) => n + g.info.count, 0);
+  const doImport = async () => {
+    setBusy('Importing…');
+    let added = 0; let replaced = 0; let kept = 0;
+    try {
+      for (const g of ok) { const d = await send(g.file, { book }); added += d.added; replaced += d.replaced; kept += d.kept; }
+      toast(`${added} songs added${replaced ? `, ${replaced} updated` : ''}${kept ? `, ${kept} you'd edited were kept` : ''}.${book === 'AY' ? ' Type “ay 25” to find AY Sing 25.' : ''}`);
+      setFiles(null);
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const saveFile = () => {
+    const a = document.createElement('a');
+    a.href = '/api/songs/export?' + new URLSearchParams({ book: out });
+    a.download = '';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Saving the songs file to Downloads');
+  };
+  const bookName = (code) => (BOOKS.find((b) => b[0] === code) || [code, code])[1];
+  const range = (i) => (i.numbered ? ` · numbers ${i.from}–${i.to}` : '');
+  return html`<div>
+    <div class="choices" style="margin-top:20px">
+      <div class="choice" style="cursor:default">
+        <b>Advent Youth Sing</b><span>AY Sing · youth songbook</span>
+        <span>${counts.AY ? html`<span style="color:var(--ok)">✓ ${counts.AY} songs installed</span>` : 'Not installed · import your copy'}</span>
+        <div style="margin-top:8px"><button class=${'btn small' + (counts.AY ? '' : ' primary')} disabled=${!!busy} onClick=${() => choose('AY')}>${counts.AY ? 'Import again…' : 'Import…'}</button></div>
+      </div>
+    </div>
+    <div class="field" style="margin-top:4px"><label class="label">Choruses and other songs</label>
+      ${!files ? html`<div class="row wrap">
+          <button class="btn" disabled=${!!busy} onClick=${() => choose('')}>${icons.upload()} ${busy || 'Import songs…'}</button>
+          <span class="hint" style="margin:0">ChurchStream songs files, text, Word, CCLI SongSelect, OpenLyrics, ChordPro or CSV.</span></div>`
+        : html`<div class="svc-box">
+          ${files.map((g) => html`<div key=${g.file.name} style="margin-bottom:6px"><b>${g.file.name}</b> ${g.info
+            ? html`<span class="muted">· ${g.info.count} ${g.info.count === 1 ? 'song' : 'songs'}${range(g.info)} · ${g.info.format}</span><div class="muted" style="font-size:13px">${g.info.titles.join(' · ')}${g.info.count > 3 ? ' …' : ''}</div>`
+            : html`<span style="color:var(--danger,#d92d20)">· ${g.error}</span>`}</div>`)}
+          ${ok.length > 0 && html`<div class="field" style="margin:10px 0 0"><label class="label" for="song-book">Add them to</label>
+            <select id="song-book" class="select" value=${book} onChange=${(e) => setBook(e.target.value)}>
+              ${BOOKS.map(([id, label]) => html`<option value=${id}>${label}</option>`)}
+            </select>
+            <div class="hint">${book === 'own' ? 'Found by title or words.' : `Numbered songs can be found by number too, e.g. “${book === 'AY' ? 'ay' : book === 'CH1941' ? 'ch' : 'sdah'} ${ok[0].info.from || 1}”.`} Songs you've edited are kept.</div></div>`}
+          <div class="row" style="margin-top:10px">
+            ${ok.length > 0 && html`<button class="btn primary" disabled=${!!busy} onClick=${doImport}>${busy || `Import ${total} ${total === 1 ? 'song' : 'songs'}`}</button>`}
+            <button class="btn ghost" disabled=${!!busy} onClick=${() => setFiles(null)}>Cancel</button></div>
+        </div>`}
+    </div>
+    <div class="field"><label class="label">Take songs to another computer</label>
+      <div class="row wrap">
+        <select class="select" style="width:auto;flex:1;min-width:200px" value=${out} onChange=${(e) => setOut(e.target.value)} aria-label="Songs to save">
+          ${BOOKS.filter(([id]) => counts[id]).map(([id, label]) => html`<option value=${id}>${label}${counts[id] ? ` · ${counts[id]}` : ''}</option>`)}
+        </select>
+        <button class="btn" disabled=${!counts[out]} onClick=${saveFile}>Save to a file…</button></div>
+      <div class="hint">Saves a <b>.churchsongs</b> file to Downloads. Copy it to the other laptop (USB stick, email, WhatsApp) and open it there with <b>Import songs…</b>.</div></div>
+    <p class="muted" style="margin-top:16px">${counts.total} songs in your library in total. To type in one song, search for its title in the control panel and choose “Create a song”.</p>
   </div>`;
 }
 
