@@ -54,10 +54,10 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Feature | What it does |
 | --- | --- |
 | Both Adventist hymnals | *Seventh-day Adventist Hymnal* (1985, 695 hymns) and *Church Hymnal* (1941, 703 hymns; 694 have lyrics in the source data). One click to download each onto your computer. |
-| Hymn numbers | Type `100` for your default hymnal, `ch 100` or `sda 100` to pick the book, or search by title or any line of the words. |
+| Hymn numbers | Type `100` for your default hymnal, `ch 100`, `sda 100` or `ay 25` (Advent Youth Sing) to pick the book, or search by title or any line of the words. |
 | Sung in order | Refrains are placed after every verse, so the operator just presses Next. Your edits to a hymn are kept when the hymnal is updated. |
 | Choose the verses | Sing only some verses, e.g. 1, 2 and 4. Refrains come and go with their verse. |
-| Your own songs | Paste the words of any song or chorus; a blank line starts a new slide. |
+| Your own songs | Paste the words of any song or chorus, or **Import songs…** in bulk (text, Word, SongSelect, OpenLyrics, ChordPro, CSV). Import your own copy of **AY Sing**. Carry songs between laptops as a `.churchsongs` file. |
 | Bible | KJV and BSB built in, all 66 books offline; ASV, YLT and Darby downloadable. **Import a Bible file** your church is licensed to use (NRSV, NIV…: JSON, Zefania, OSIS or USFX), kept on that computer only. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
 | Responsive readings | Built from any Bible passage: Leader and Congregation take turns, and All read the last verse. The congregation's words show in gold. |
 | Sermon slides | The pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides to step through. |
@@ -256,6 +256,7 @@ Keys are stored only on this computer and are never shown in full again.
 - **Edited hymns are kept** when you update a hymnal.
 - **Copyright:** many hymns are public domain, but some are not. Projecting or streaming copyrighted hymns needs your church's **CCLI** licence (Church Copyright License, plus the Streaming License for online use). Hymn texts are therefore **downloaded on your computer** and are not shipped with the app.
 - **Your own songs:** search for the title and choose **Create a song**, or click **Edit** on any song. Paste the lyrics; a blank line starts a new slide, and `[Chorus]`-style labels are optional. Songs are plain `.txt` files in `ChurchStream-data\songs`.
+- **Import songs:** Settings → Hymnals & songs → **Import songs…** reads ChurchStream `.churchsongs` files, text or Word files (one song, or a numbered list), CCLI SongSelect, OpenLyrics, ChordPro and CSV. Choose a songbook (e.g. **Advent Youth Sing**, then `ay 25` finds song 25) or "My own songs". **Save to a file…** makes a `.churchsongs` file to copy to another laptop. ChurchStream doesn't include AY Sing; import your church's own copy.
 - **Bibles:** KJV and the modern-English **BSB** (Berean Standard Bible) are included. Both are public domain. ASV, YLT and Darby can be downloaded in Settings → Bible.
   - Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be included or downloaded. A church licensed to use one can bring its own copy: **Settings → Bible → Import a Bible file…** reads JSON (scrollmapper, thiagobodruk or ChurchStream format) and Zefania, OSIS or USFX XML, asks for the name and short name, and needs you to confirm the licence. The text stays on that computer only; saved services carry just the references.
 

@@ -94,7 +94,22 @@ The previous order of service is never lost: it's kept in **Save / open → Rece
 1. Type in the search bar, for example `73`, `holy holy` or `Isaiah 40:28-31`.
 2. Press **Shift + Enter**, or click **Add**, to add the result to the order of service. Press **Enter** to show it straight away.
 
-Hymn numbers search your default hymnal. Type `ch 100` for the Church Hymnal or `sda 100` for the SDA Hymnal.
+Hymn numbers search your default hymnal. Type `ch 100` for the Church Hymnal, `sda 100` for the SDA Hymnal or `ay 25` for Advent Youth Sing.
+
+### Adding songs and choruses
+- **One song:** type its title in the search bar. If it isn't found, click **Create a song**, paste the words and save. A blank line starts a new slide; a line such as `Chorus` or `Verse 2` names the part that follows.
+- **Many songs at once:** open **Settings → Hymnals & songs** and click **Import songs…**. You can pick several files. ChurchStream reads:
+  - ChurchStream songs files (**.churchsongs**);
+  - text files and Word documents, either one song or a numbered list of songs (`25. Title`, then the words);
+  - CCLI SongSelect downloads, OpenLyrics (OpenLP and other church software), ChordPro (chords are left out) and CSV spreadsheets with title and lyrics columns.
+- Before importing, choose where the songs go: **Advent Youth Sing**, **My own songs**, or a hymnal. Songs in a songbook can be found by number (`ay 25`) as well as by title or words. Importing again updates the songs, but keeps any you've edited.
+- PDF files can't be read directly. Copy the words into a Word or text file first.
+
+### Advent Youth Sing (AY Sing)
+ChurchStream doesn't include the AY Sing songbook: there's no free copy to download. If your church has it as a file, import it with the **Import…** button on the **Advent Youth Sing** card in **Settings → Hymnals & songs**. After that, type `ay 25` to open song 25. To make `25` alone open AY Sing, choose it under **When you type just a number**.
+
+### Taking songs to another computer
+In **Settings → Hymnals & songs → Take songs to another computer**, choose the songbook (for example Advent Youth Sing, or My own songs) and click **Save to a file…**. A **.churchsongs** file is saved to Downloads. Copy it to the other laptop (USB stick, email or WhatsApp) and open it there with **Import songs…**.
 
 ### Choosing which verses to sing
 Open a hymn in the order of service. Under its title, **Verses to sing** shows a button for each verse.
@@ -342,5 +357,6 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
   - your own recordings;
   - ministries' videos that allow rebroadcast;
   - songs your congregation sings live, under a CCLI Streaming Licence.
+- **Songs and choruses you import** (AY Sing, CCLI SongSelect downloads…) stay on your computers. Projecting and streaming songs still under copyright needs your church's CCLI licence (and the Streaming Licence online).
 - **Bibles:** KJV and BSB are built in; ASV, YLT and Darby can be downloaded. All are public domain. Copyrighted translations (NIV, NKJV, NRSV, ESV…) can't be included or downloaded. A church licensed to use one can import its own copy ([Bible translations](#bible-translations)); projecting and streaming it under that licence is the church's responsibility.
 - **ChurchStream** is an independent project made for Seventh-day Adventist churches. It is not an official product of the Seventh-day Adventist Church.

@@ -183,6 +183,9 @@ const routes = {
   'POST /api/import/bible': async (req) => { app.importBible((await json(req)).id); return { ok: true }; },
   'POST /api/import/bible-file': async (req, url) => (url.searchParams.get('check') === '1' ? app.checkBibleFile(await readBody(req, 40 * 1024 * 1024)) : app.importBibleFile(await readBody(req, 40 * 1024 * 1024), {
     name: url.searchParams.get('name'), abbrev: url.searchParams.get('abbrev'), licensed: url.searchParams.get('licensed') === '1' })),
+  'POST /api/import/songs': async (req, url) => (url.searchParams.get('check') === '1'
+    ? app.checkSongFile(url.searchParams.get('name') || '', await readBody(req, 20 * 1024 * 1024))
+    : app.importSongFile(url.searchParams.get('name') || '', await readBody(req, 20 * 1024 * 1024), { book: url.searchParams.get('book') || '' })),
   'POST /api/bible/remove': async (req) => app.removeBible((await json(req)).id),
   'POST /api/media': async (req, url) => {
     const name = app.saveMedia(url.searchParams.get('kind'), await readBody(req), (req.headers['content-type'] || '').split(';')[0]);
@@ -215,6 +218,14 @@ const server = http.createServer(async (req, res) => {
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); });
       return;
+    }
+    if (req.method === 'GET' && p === '/api/songs/export') {
+      let out;
+      try { out = app.exportSongs(url.searchParams.get('book') || 'own'); } catch (err) { return send(res, 400, { error: err.message }); }
+      const file = out.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.churchsongs';
+      res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': out.buffer.length, 'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename="${file.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file)}` });
+      return res.end(out.buffer);
     }
     if (req.method === 'GET' && p === '/api/service/export') {
       const { name, buffer } = app.exportService({ name: url.searchParams.get('name'), media: url.searchParams.get('media') !== '0' });
