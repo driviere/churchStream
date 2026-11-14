@@ -60,7 +60,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Your own songs | Paste the words of any song or chorus, or **Import songs…** in bulk (text, Word, SongSelect, OpenLyrics, ChordPro, CSV). Import your own copy of **AY Sing**. Carry songs between laptops as a `.churchsongs` file. |
 | Bible | KJV and BSB built in, all 66 books offline; ASV, YLT and Darby downloadable. **Import a Bible file** your church is licensed to use (NRSV, NIV…: JSON, Zefania, OSIS or USFX), kept on that computer only. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
 | Responsive readings | Built from any Bible passage: Leader and Congregation take turns, and All read the last verse. The congregation's words show in gold. |
-| Sermon slides | The pastor's PowerPoint, Keynote or Google Slides, saved as a PDF, becomes slides to step through. |
+| PowerPoint slides | Add the pastor's PowerPoint file directly (PowerPoint on the computer opens it, so it looks the same), or a PDF or pictures. Step through the slides like any other item. |
 | Announcements | Text slides that can change by themselves every few seconds, on a loop. |
 | Countdown | Counts down to the start of the service, with announcements changing underneath, on the screens and the stream. |
 | Sunset and Sabbath times | Worked out for your church's location, with no internet needed. A reminder in the top bar, a ready-made *Sunset times* slide, and placeholders for any slide or the ticker: `{sunset}`, `{sabbath-begins}`, `{sabbath-ends}`, `{next-sabbath-begins}`. |
@@ -181,7 +181,7 @@ Scan one with a phone on the **same Wi-Fi**. The stage screen (`/stage`) shows m
 
 ## Videos, music and slides
 
-- **Add to the order of service:** use **+ Add**, then choose *Text or announcements*, *Sermon slides*, *Countdown* or *Video, music or YouTube*.
+- **Add to the order of service:** use **+ Add**, then choose *Song or chorus*, *Text or announcements*, *Slides (PowerPoint, PDF or pictures)*, *Countdown* or *Video, music or YouTube*.
 - **Videos:** upload MP4, MOV or WebM files (they stay on this computer).
   - A video starts as soon as it goes on screen, or when you press **Play**.
   - It fills the projector and the stream; names and the ticker stay on top. **Stop** returns to the normal view.
@@ -199,7 +199,7 @@ Scan one with a phone on the **same Wi-Fi**. The stage screen (`/stage`) shows m
   - ministries' videos that allow rebroadcast;
   - songs your congregation sings live under a CCLI Streaming Licence.
 - **Sound routing:** if this computer's sound already goes into your sound desk, and the desk feeds the stream, choose *It already reaches the stream through our sound desk* in Settings → Camera & sound. Otherwise viewers would hear it twice.
-- **Sermon slides:** in PowerPoint choose **File → Save As → PDF**, then add that PDF. Each page becomes a slide. Picture files work too.
+- **PowerPoint slides:** **+ Add → Slides**, then pick the `.pptx`. ChurchStream asks PowerPoint on the computer to open it (Keynote or LibreOffice also work), so it looks the same. Animations and embedded videos don't carry over. A PDF or picture files work too.
 
 ## What the stream shows
 

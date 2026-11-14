@@ -97,7 +97,7 @@ The previous order of service is never lost: it's kept in **Save / open → Rece
 Hymn numbers search your default hymnal. Type `ch 100` for the Church Hymnal, `sda 100` for the SDA Hymnal or `ay 25` for Advent Youth Sing.
 
 ### Adding songs and choruses
-- **One song:** type its title in the search bar. If it isn't found, click **Create a song**, paste the words and save. A blank line starts a new slide; a line such as `Chorus` or `Verse 2` names the part that follows.
+- **One song:** click **+ Add → Song or chorus** at the end of the order of service (or type its title in the search bar and, if it isn't found, click **Create a song**), paste the words and save. A blank line starts a new slide; a line such as `Chorus` or `Verse 2` names the part that follows.
 - **Many songs at once:** open **Settings → Hymnals & songs** and click **Import songs…**. You can pick several files. ChurchStream reads:
   - ChurchStream songs files (**.churchsongs**);
   - text files and Word documents, either one song or a numbered list of songs (`25. Title`, then the words);
@@ -119,9 +119,10 @@ Open a hymn in the order of service. Under its title, **Verses to sing** shows a
 
 ### The + Add menu
 Click **+ Add** at the end of the order of service:
+- **Song or chorus:** type or paste the words of a song that isn't in your library; a blank line starts a new slide. **Save and add to service** keeps it in your song library and adds it to the end of the order of service.
 - **Text or announcements:** type words; a blank line starts a new slide. Slides can change by themselves (*Change slides automatically*), which is good for announcements before the service.
 - **Responsive reading:** see below.
-- **Sermon slides:** in PowerPoint choose **File → Save As → PDF**, then add the PDF; each page becomes a slide. Picture files work too.
+- **Slides (PowerPoint, PDF or pictures):** pick the pastor's PowerPoint file (or drop it on the dialog). PowerPoint on this computer opens it in the background, so each slide looks exactly as it does in PowerPoint; this can take up to a minute. A PDF or picture files (one per slide) work too, and from Google Slides choose **File → Download → PDF**. Animations, videos and sounds inside a PowerPoint don't carry over; add a video separately with *Video, music or YouTube*. If PowerPoint isn't installed, ChurchStream uses Keynote (Mac) or LibreOffice when they are, or asks you to save the file as a PDF.
 - **Countdown:** counts down to the start of the service, optionally with announcements changing underneath.
 - **Sunset times:** a ready-made slide showing when this Sabbath ends and the next begins.
 - **Video, music or YouTube:** see [section 9](#9-videos-music-and-youtube).

@@ -268,6 +268,7 @@ test('Import songs: numbered songbook listing, verse numbers are not song number
   ].join('\n');
   const r = parseSongFile('ay.txt', Buffer.from(txt));
   assert.deepEqual(r.songs.map((x) => [x.number, x.title]), [[1, 'He Is Lord'], [2, 'Give Me Oil in My Lamp'], [3, 'Into My Heart']]);
+  assert.equal(require('../lib/importers/songs').titleCase('HE’S COMING SOON'), 'He’s Coming Soon');
   assert.deepEqual(r.songs[0].sections.map((x) => x.label), ['Verse 1', 'Verse 2', 'Chorus']);
   assert.equal(r.songs[0].sections[0].text, 'He is Lord, He is Lord,\nHe is risen from the dead');
   assert.deepEqual(r.songs[2].sections.map((x) => x.label), ['Verse 1', 'Verse 2']);
@@ -310,4 +311,32 @@ test('Import songs: .churchsongs round trip and AY numbers', () => {
   assert.deepEqual(r.book, { code: 'AY', name: 'Advent Youth Sing' });
   assert.deepEqual(r.songs.map((x) => [x.hymnal, x.number, x.title]), [['AY', 2, 'Give Me Oil'], ['AY', 25, 'He Is Lord']]);
   assert.equal(r.songs[1].sections[0].label, 'Chorus');
+});
+
+// PowerPoint → PDF with the office software on the computer.
+test('PowerPoint files: converters and scripts', () => {
+  const office = require('../lib/office');
+  assert.equal(office.converters('win32')[0].id, 'powerpoint');
+  assert.deepEqual(office.converters('darwin').slice(0, 2).map((c) => c.id), ['powerpoint', 'keynote']);
+  // Paths are passed as environment variables (Windows) or arguments (Mac), never inside the script.
+  const win = office.converters('win32')[0];
+  assert.ok(!win.args('C:\\x\\in.pptx', 'C:\\x\\out.pdf').join(' ').includes('in.pptx'));
+  assert.deepEqual(win.env('a', 'b'), { CS_IN: 'a', CS_OUT: 'b' });
+  assert.deepEqual(office.converters('darwin')[0].args('/i.pptx', '/o.pdf').slice(-2), ['/i.pptx', '/o.pdf']);
+  assert.match(office.PS_POWERPOINT, /SaveAs\(\$env:CS_OUT, 32\)/);
+});
+
+test('PowerPoint files: refusals and a LibreOffice conversion', { timeout: 200000 }, async (t) => {
+  const office = require('../lib/office');
+  await assert.rejects(office.presentationToPdf(Buffer.from('x'), 'notes.docx', { list: [] }), /PowerPoint file/);
+  await assert.rejects(office.presentationToPdf(Buffer.from('x'), 'a.pptx', { list: [] }), /Save As → PDF/);
+  const failing = [{ id: 'x', name: 'PowerPoint', cmd: process.execPath, args: () => ['-e', 'process.exit(3)'] }];
+  await assert.rejects(office.presentationToPdf(Buffer.from('x'), 'a.pptx', { list: failing, tmpDir: tmp() }), /tried PowerPoint/);
+  const lo = office.converters(process.platform).find((c) => c.id === 'libreoffice');
+  if (!lo) { t.skip('LibreOffice is not installed'); return; }
+  const buf = fs.readFileSync(path.join(__dirname, 'fixtures', 'three-slides.pptx'));
+  const r = await office.presentationToPdf(buf, 'Sermon.pptx', { list: [lo], tmpDir: tmp() });
+  assert.equal(r.via, 'LibreOffice');
+  assert.equal(r.pdf.slice(0, 5).toString(), '%PDF-');
+  assert.equal((r.pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 3);
 });
