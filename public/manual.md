@@ -121,7 +121,7 @@ Open a hymn in the order of service. Under its title, **Verses to sing** shows a
 Click **+ Add** at the end of the order of service:
 - **Text or announcements:** type words; a blank line starts a new slide. Slides can change by themselves (*Change slides automatically*), which is good for announcements before the service.
 - **Responsive reading:** see below.
-- **Sermon slides:** in PowerPoint choose **File → Save As → PDF**, then add the PDF; each page becomes a slide. Picture files work too.
+- **Slides (PowerPoint, PDF or pictures):** pick the pastor's PowerPoint file (or drop it on the dialog). PowerPoint on this computer opens it in the background, so each slide looks exactly as it does in PowerPoint; this can take up to a minute. A PDF or picture files (one per slide) work too, and from Google Slides choose **File → Download → PDF**. Animations, videos and sounds inside a PowerPoint don't carry over; add a video separately with *Video, music or YouTube*. If PowerPoint isn't installed, ChurchStream uses Keynote (Mac) or LibreOffice when they are, or asks you to save the file as a PDF.
 - **Countdown:** counts down to the start of the service, optionally with announcements changing underneath.
 - **Sunset times:** a ready-made slide showing when this Sabbath ends and the next begins.
 - **Video, music or YouTube:** see [section 9](#9-videos-music-and-youtube).

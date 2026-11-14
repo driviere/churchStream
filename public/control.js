@@ -413,7 +413,7 @@ function Plan({ s, locked, selectedKey, onOpen, onNewText, onNewCountdown, onNew
         <${AddMenu} items=${[
           ['Text or announcements', 'Words you type; can change by themselves', onNewText],
           ['Responsive reading', 'Leader and congregation take turns', onNewResponsive],
-          ['Sermon slides', 'From a PDF or pictures', onNewSlides],
+          ['Slides', 'PowerPoint, PDF or pictures', onNewSlides],
           ['Countdown', 'Before the service, with announcements', onNewCountdown],
           ['Sunset times', 'When this Sabbath ends and the next begins', onNewSunset],
           ...(onNewMedia ? [['Video, music or YouTube', 'Mission Spotlight, special music, a YouTube link', onNewMedia]] : []),
@@ -1076,7 +1076,7 @@ function MusicCard({ s }) {
   </div>`;
 }
 
-// Sermon slides: a PDF (PowerPoint → File → Save As → PDF) or picture files become slides.
+// Slides: a PowerPoint file, a PDF or picture files become slides.
 async function uploadSlideImage(blob) {
   const res = await fetch('/api/media?kind=slide', { method: 'POST', headers: { 'Content-Type': blob.type || 'image/jpeg' }, body: blob });
   const d = await res.json().catch(() => ({}));
@@ -1084,61 +1084,67 @@ async function uploadSlideImage(blob) {
   return d.name;
 }
 
+const PPT_RE = /\.(pptx|ppt|ppsx|pps|pptm|odp|key)$/i;
+const SLIDE_ACCEPT = '.pptx,.ppt,.ppsx,.pps,.pptm,.odp,.key,application/pdf,.pdf,image/png,image/jpeg,image/webp';
 function SlidesImport({ onClose, onAdd, onShow }) {
   const [title, setTitle] = useState('');
   const [slides, setSlides] = useState([]);
   const [busy, setBusy] = useState('');
   const [auto, setAuto] = useState(0);
-  const pick = () => {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.multiple = true;
-    inp.accept = 'application/pdf,.pdf,image/png,image/jpeg,image/webp';
-    inp.onchange = async () => {
-      const files = [...inp.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      if (!files.length) return;
-      if (!title) setTitle(files[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '));
-      const out = [...slides];
-      try {
-        for (const f of files) {
-          if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
-            setBusy('Opening ' + f.name + '…');
-            const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
-            pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
-            const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
-            for (let i = 1; i <= doc.numPages; i++) {
-              setBusy(`Preparing slide ${i} of ${doc.numPages}…`);
-              const page = await doc.getPage(i);
-              const base = page.getViewport({ scale: 1 });
-              const vp = page.getViewport({ scale: Math.min(4, 1920 / base.width) });
-              const c = document.createElement('canvas');
-              c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-              const ctx = c.getContext('2d');
-              ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-              await page.render({ canvasContext: ctx, viewport: vp }).promise;
-              const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
-              out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(blob) });
-              setSlides([...out]);
-            }
-          } else if (/^image\//.test(f.type)) {
-            setBusy('Adding ' + f.name + '…');
-            out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(f) });
-            setSlides([...out]);
-          }
-        }
-      } catch (err) { fail(err); }
-      setBusy('');
-    };
-    inp.click();
+  // A PDF (bytes) → slide pictures, 1920 px wide.
+  const renderPdf = async (bytes, out) => {
+    const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+    const doc = await pdfjs.getDocument({ data: bytes }).promise;
+    for (let i = 1; i <= doc.numPages; i++) {
+      setBusy(`Preparing slide ${i} of ${doc.numPages}…`);
+      const page = await doc.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(4, 1920 / base.width) });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+      out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(blob) });
+      setSlides([...out]);
+    }
   };
+  const addFiles = async (list) => {
+    const files = [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (!files.length) return;
+    if (!title) setTitle(files[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '));
+    const out = [...slides];
+    try {
+      for (const f of files) {
+        if (PPT_RE.test(f.name)) {
+          setBusy(`Opening ${f.name} in PowerPoint… (this can take a minute)`);
+          const res = await fetch('/api/convert/presentation?' + new URLSearchParams({ name: f.name }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'The presentation could not be opened.'); }
+          await renderPdf(new Uint8Array(await res.arrayBuffer()), out);
+        } else if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+          setBusy('Opening ' + f.name + '…');
+          await renderPdf(new Uint8Array(await f.arrayBuffer()), out);
+        } else if (/^image\//.test(f.type)) {
+          setBusy('Adding ' + f.name + '…');
+          out.push({ label: `Slide ${out.length + 1}`, text: '', image: await uploadSlideImage(f) });
+          setSlides([...out]);
+        }
+      }
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const pick = () => pickFiles(SLIDE_ACCEPT, true, addFiles);
+  const onDrop = (e) => { e.preventDefault(); if (!busy && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); };
   const item = () => ({ key: 'images:' + Date.now(), kind: 'images', title: title.trim() || 'Slides', subtitle: '', slides, autoAdvance: auto });
   const ready = slides.length > 0 && !busy;
-  return html`<${Modal} wide title="Sermon slides" onClose=${onClose} footer=${html`
+  return html`<${Modal} wide title="Slides" onClose=${onClose} footer=${html`
       <button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`}>
-    <div class="note" style="margin-bottom:14px">In PowerPoint, Keynote or Google Slides choose <b>File → Save As / Download → PDF</b>, then pick that PDF here. You can also pick picture files (PNG/JPG), one per slide.</div>
-    <div class="row wrap" style="margin-bottom:12px">
-      <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PDF or pictures…'}</button>
+    <div class="note" style="margin-bottom:14px">Pick a <b>PowerPoint</b> file, a PDF, or pictures (one per slide). You can also drop them here. PowerPoint on this computer opens the file, so the slides look exactly the same. Animations, videos and sounds inside it don't carry over. From Google Slides, choose File → Download → PDF.</div>
+    <div class="row wrap" style="margin-bottom:12px" onDragOver=${(e) => e.preventDefault()} onDrop=${onDrop}>
+      <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PowerPoint, PDF or pictures…'}</button>
       ${busy && html`<span class="muted">${busy}</span>`}
       ${slides.length > 0 && !busy && html`<span class="muted">${slides.length} slide${slides.length === 1 ? '' : 's'} ready</span>`}
     </div>

@@ -17,6 +17,7 @@ process.emitWarning = function (warning, ...rest) {
 };
 
 const paths = require('./lib/paths');
+const office = require('./lib/office');
 const assets = require('./lib/assets');
 const { App } = require('./lib/app');
 
@@ -218,6 +219,13 @@ const server = http.createServer(async (req, res) => {
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); });
       return;
+    }
+    if (req.method === 'POST' && p === '/api/convert/presentation') {
+      // A PowerPoint file → PDF, made by PowerPoint (or Keynote/LibreOffice) on this computer.
+      let r;
+      try { r = await office.presentationToPdf(await readBody(req, 300 * 1024 * 1024), url.searchParams.get('name') || '', { tmpDir: paths.runDir }); } catch (err) { return send(res, 400, { error: err.message }); }
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': r.pdf.length, 'Cache-Control': 'no-store', 'X-Converted-By': r.via });
+      return res.end(r.pdf);
     }
     if (req.method === 'GET' && p === '/api/songs/export') {
       let out;
