@@ -158,7 +158,7 @@ const routes = {
   'POST /api/service/import': async (req) => app.importService(await readBody(req, 1024 * 1024 * 1024)),
   'POST /api/templates': async (req) => { const { name, items } = await json(req); return app.saveTemplate(name, items || app.state.plan.items); },
   'POST /api/templates/delete': async (req) => app.deleteTemplate((await json(req)).name),
-  'POST /api/plan': async (req) => { app.setPlan((await json(req)).items); return { ok: true }; },
+  'POST /api/plan': async (req) => { app.setPlan((await json(req)).items); return { ok: true, uids: app.state.plan.items.map((x) => x.uid) }; },
   'POST /api/plan/open': async (req) => {
     const { uid, index } = await json(req);
     const it = app.state.plan.items.find((x) => x.uid === uid);

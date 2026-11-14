@@ -181,7 +181,7 @@ Scan one with a phone on the **same Wi-Fi**. The stage screen (`/stage`) shows m
 
 ## Videos, music and slides
 
-- **Add to the order of service:** use **+ Add**, then choose *Text or announcements*, *Slides (PowerPoint, PDF or pictures)*, *Countdown* or *Video, music or YouTube*.
+- **Add to the order of service:** use **+ Add**, then choose *Song or chorus*, *Text or announcements*, *Slides (PowerPoint, PDF or pictures)*, *Countdown* or *Video, music or YouTube*.
 - **Videos:** upload MP4, MOV or WebM files (they stay on this computer).
   - A video starts as soon as it goes on screen, or when you press **Play**.
   - It fills the projector and the stream; names and the ticker stay on top. **Stop** returns to the normal view.

@@ -327,7 +327,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, locked, selectedKey, onOpen, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
+function Plan({ s, locked, selectedKey, onOpen, onNewSong, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -411,6 +411,7 @@ function Plan({ s, locked, selectedKey, onOpen, onNewText, onNewCountdown, onNew
       })}
       <li style="flex:0 0 auto;padding:0;border:0;background:none;min-height:0">
         <${AddMenu} items=${[
+          ['Song or chorus', 'Type or paste the words; kept in your song library', onNewSong],
           ['Text or announcements', 'Words you type; can change by themselves', onNewText],
           ['Responsive reading', 'Leader and congregation take turns', onNewResponsive],
           ['Slides', 'PowerPoint, PDF or pictures', onNewSlides],
@@ -651,7 +652,7 @@ function StopDialog({ onClose }) {
   </${Modal}>`;
 }
 
-function SongEditor({ song, onClose, onSaved }) {
+function SongEditor({ song, addToService, onClose, onSaved }) {
   const [title, setTitle] = useState(song.title || '');
   const [author, setAuthor] = useState(song.author || '');
   const [lyrics, setLyrics] = useState(song.sections ? sectionsToText(song.sections) : '');
@@ -661,7 +662,7 @@ function SongEditor({ song, onClose, onSaved }) {
     setBusy(true);
     try {
       const saved = await api('/api/song', { id: song.id, title, author, lyrics, hymnal: song.hymnal, number: song.number, copyright: song.copyright, ccli: song.ccli });
-      toast('Song saved');
+      if (!addToService) toast('Song saved');
       onSaved && onSaved(saved);
       onClose();
     } catch (err) { fail(err); setBusy(false); }
@@ -676,7 +677,7 @@ function SongEditor({ song, onClose, onSaved }) {
   return html`<${Modal} wide title=${song.id ? 'Edit song' : 'New song'} onClose=${onClose} footer=${html`
       ${song.id && html`<button class="btn ghost" onClick=${del}>Delete</button>`}<span class="spacer"></span>
       <button class="btn" onClick=${onClose}>Cancel</button>
-      <button class="btn primary" disabled=${busy || !title.trim() || !sections.length} onClick=${save}>Save song</button>`}>
+      <button class="btn primary" disabled=${busy || !title.trim() || !sections.length} onClick=${save}>${addToService ? 'Save and add to service' : 'Save song'}</button>`}>
     <div class="editor">
       <div>
         <div class="two" style="gap:10px">
@@ -1479,7 +1480,7 @@ function ControlView({ s }) {
   const addToPlan = (it) => {
     const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
       slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown, media: it.media };
-    api('/api/plan', { items: [...s.plan.items, entry] }).then(() => toast(`Added “${it.title}”`)).catch(fail);
+    return api('/api/plan', { items: [...s.plan.items, entry] }).then((d) => { toast(`Added “${it.title}”`); return d; }).catch(fail);
   };
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
   const showSlide = (i) => {
@@ -1592,7 +1593,7 @@ function ControlView({ s }) {
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
-      <${Plan} s=${s} locked=${vol} selectedKey=${item && item.key} onOpen=${openPlan} onNewText=${() => setDialog({ type: 'text' })}
+      <${Plan} s=${s} locked=${vol} selectedKey=${item && item.key} onOpen=${openPlan} onNewSong=${() => setDialog({ type: 'song', song: {}, addToService: true })} onNewText=${() => setDialog({ type: 'text' })}
         onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
         onNewResponsive=${() => setDialog({ type: 'responsive' })}
         onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })}
@@ -1619,10 +1620,12 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'newservice' && html`<${NewServiceDialog} s=${s} onClose=${() => setDialog(null)} onTemplates=${() => setDialog({ type: 'templates' })} />`}
     ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'media' && html`<${MediaDialog} s=${s} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
-    ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} onClose=${() => setDialog(null)} onSaved=${(saved) => {
+    ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} addToService=${dialog.addToService} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
       const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
       setSelected(it);
+      // Added from + Add: open it as an item of the order of service.
+      if (dialog.addToService) addToPlan(it).then((d) => { const uid = d && d.uids && d.uids[d.uids.length - 1]; if (uid) openPlan(uid); });
     }} />`}
   </div>`;
 }
