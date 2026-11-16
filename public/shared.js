@@ -32,6 +32,14 @@ export function fitText(el, { max = 8.5, min = 3.2 } = {}) {
   search(el, min, max);
 }
 
+// Text sizes for the screens (cqh): the largest from "Text size", the smallest from
+// "Smallest text size" (Settings → Appearance). The server splits slides that don't fit at
+// the smallest size (lib/fit.js), so they never need to go smaller.
+export function textSizes(theme = {}) {
+  const min = Math.max(2.5, Math.min(9, Number(theme.minText) || 3.2));
+  return { min, max: Math.max(min, 8.5 * (theme.textScale || 1)) };
+}
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

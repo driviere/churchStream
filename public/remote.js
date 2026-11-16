@@ -1,6 +1,6 @@
 // Phone remote: big Next / Back buttons, what's on screen and what's next, and the order of
 // service to jump to. Works on any phone on the church Wi-Fi; nothing to install.
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, themeClasses, escapeHtml } from '/shared.js';
+import { connect, fitText, textSizes, slideHtml, bgInfo, effectiveBg, themeClasses, escapeHtml } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 let S = null;
@@ -87,7 +87,7 @@ function render(s) {
     $('words').innerHTML = words;
     $('screen').style.background = s.black ? '#000' : '';
     $('bg').style.opacity = s.black ? '0' : '1';
-    requestAnimationFrame(() => fitText($('words'), { max: 8.5 * (theme.textScale || 1) }));
+    requestAnimationFrame(() => fitText($('words'), textSizes(theme)));
   }
   $('title').textContent = item ? item.title : 'Nothing on screen yet';
   $('pos').textContent = item ? `${live.index + 1} of ${item.slides.length}` : '';

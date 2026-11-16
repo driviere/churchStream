@@ -122,7 +122,7 @@ const routes = {
   'GET /api/state': () => ({ ...app.snapshot(), lan: lanAddresses(server.address().port), lanInfo: lanInfo(server.address().port) }),
   'GET /api/search': (req, url) => app.search(url.searchParams.get('q') || ''),
   'GET /api/songs': (req, url) => app.songs.search(url.searchParams.get('q') || '', { limit: 2000, defaultHymnal: app.cfg.hymnal.default }),
-  'GET /api/song': (req, url) => app.songs.get(url.searchParams.get('id')) || { error: 'Song not found' },
+  'GET /api/song': (req, url) => { const sg = app.songs.get(url.searchParams.get('id')); return sg ? { ...sg, slides: app.fit(sg.slides, 'song').slides } : { error: 'Song not found' }; },
   'POST /api/song': async (req) => {
     const body = await json(req);
     const existing = body.id && app.songs.get(body.id);
@@ -132,8 +132,8 @@ const routes = {
     return s;
   },
   'POST /api/song/delete': async (req) => { const { id } = await json(req); app.songs.remove(id); app.changed(); return { ok: true }; },
-  'GET /api/bible': (req, url) => app.bible.lookup(url.searchParams.get('ref') || '', url.searchParams.get('t') || app.cfg.bible.translation),
-  'POST /api/live': async (req) => { const { item, index } = await json(req); app.showItem(item, index || 0); return { ok: true }; },
+  'GET /api/bible': (req, url) => { const r = app.bible.lookup(url.searchParams.get('ref') || '', url.searchParams.get('t') || app.cfg.bible.translation); return r.slides ? { ...r, slides: app.fit(r.slides, 'bible').slides } : r; },
+  'POST /api/live': async (req) => { const { item, index } = await json(req); const live = app.showItem(item, index || 0); return { ok: true, item: live.item, index: live.index }; },
   'POST /api/goto': async (req) => { const b = await json(req); if (b.delta) app.step(b.delta); else app.goTo(b.index | 0); return { ok: true }; },
   'POST /api/toggle': async (req) => { const { name, value } = await json(req); app.setToggle(name, value); return { ok: true }; },
   'POST /api/lower-third': async (req) => { app.setLowerThird(await json(req)); return { ok: true }; },

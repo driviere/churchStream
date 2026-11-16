@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
+import { connect, fitText, textSizes, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
@@ -79,6 +79,18 @@ const icons = {
 
 // ---------------------------------------------------------------------------------------
 // the projected screen, used for thumbnails and the mini projector view
+// Slides split to fit the screens (lib/fit.js) → the slides as typed, for editing.
+function unsplit(item) {
+  if (!item || !item.slides || !item.slides.some((sl) => sl.src != null)) return item;
+  const out = [];
+  for (const sl of item.slides) {
+    const prev = out[out.length - 1];
+    if (prev && sl.src != null && prev.src === sl.src) prev.text += '\n' + sl.text;
+    else out.push({ ...sl, label: String(sl.label || '').replace(/\s*\(\d+\/\d+\)$/, '') });
+  }
+  return { ...item, slides: out };
+}
+
 function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg, lt, countdown, skew = 0 }) {
   const ref = useRef();
   const scale = theme.textScale || 1;
@@ -88,7 +100,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const text = !black && !clear && !logo && slide && !isCount && !slide.image && kind !== 'media' ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   const tcls = themeClasses(theme);
-  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, text && text.part, scale, ltOn, tcls]);
+  useLayoutEffect(() => { if (ref.current) fitText(ref.current, textSizes(theme)); }, [text && text.text, text && text.part, scale, theme.minText, ltOn, tcls]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
   useEffect(() => {
     const el = ref.current && ref.current.closest('.screen');
@@ -96,7 +108,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     let w = 0;
     const ro = new ResizeObserver(([e]) => {
       const nw = Math.round(e.contentRect.width);
-      if (nw && nw !== w) { w = nw; if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }
+      if (nw && nw !== w) { w = nw; if (ref.current) fitText(ref.current, textSizes(theme)); }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -1488,7 +1500,8 @@ function BackgroundGallery({ value, onPick, defaultTile }) {
 function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
   const plan = s.plan.items.find((x) => x.uid === item.key) || {};
   const [scope, setScope] = useState(slideIndex === null ? 'item' : 'slide');
-  const i = slideIndex === null ? 0 : slideIndex;
+  // A slide split to fit the screens saves its background on the slide it came from.
+  const i = slideIndex === null ? 0 : (item && item.slides && item.slides[slideIndex] && item.slides[slideIndex].src != null ? item.slides[slideIndex].src : slideIndex);
   const current = scope === 'slide' ? ((plan.slideBackgrounds || {})[i] || '') : (plan.background || '');
   const [pick, setPick] = useState(current);
   useEffect(() => setPick(current), [scope]);
@@ -1565,7 +1578,8 @@ function ControlView({ s }) {
   const item = selected || (s.live ? s.live.item : null);
   const inPlan = item && s.plan.items.some((x) => x.uid === item.key);
 
-  const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
+  // The server may split slides that are too full for the screens; show its version.
+  const show = (it, index = 0) => api('/api/live', { item: it, index }).then((d) => { setSelected(d && d.item ? { ...it, ...d.item, songId: it.songId, ref: it.ref, translation: it.translation } : it); }).catch(fail);
   const addToPlan = (it) => {
     const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
       slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown, media: it.media };
@@ -1678,7 +1692,7 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item: unsplit(item) }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
         onVerses=${(verses) => setVerses(item.key, verses)} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
@@ -2182,8 +2196,16 @@ function SectionAppearance({ s }) {
       <${LogoField} s=${s} />
       <div class="field"><label class="label">Control panel colours</label>
         <div class="choices">${[['light', 'Light', 'Bright and easy to read'], ['dark', 'Dark', 'Less glare in a dim room']].map(([v, t, d]) => html`<button class=${'choice' + ((s.config.uiTheme || 'light') === v ? ' on' : '')} onClick=${() => save({ uiTheme: v })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
-      <div class="field"><label class="label">Projector text size</label>
-        <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div></div>
+      <div class="field"><label class="label">Largest text size</label>
+        <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger'], [1.3, 'Largest']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div>
+        <div class="hint">Every slide uses this size whenever its words fit. A slide with more words shrinks only as much as it needs, down to the smallest size below.</div></div>
+      <div class="field"><label class="label">Smallest text size</label>
+        <div class="choices">${[[3.2, 'Small', 'Fits the most words'], [4.2, 'Medium', ''], [5.2, 'Large', 'Easier from the back'], [6.5, 'Extra large', 'Big rooms, older eyes']].map(([v, t, d]) => html`<button class=${'choice' + ((theme.minText || 3.2) === v ? ' on' : '')} onClick=${() => save({ theme: { minText: v } })}><b>${t}</b>${d && html`<span>${d}</span>`}</button>`)}</div>
+        ${(theme.minText || 3.2) >= 8.5 * (theme.textScale || 1) * 0.85 && html`<div class="hint" style="margin-top:4px">The smallest size is close to the largest, so most slides will be the same size.</div>`}
+        <label class="switch" style="margin-top:8px"><input type="checkbox" checked=${theme.overflow !== false} onChange=${(e) => save({ theme: { overflow: e.target.checked } })} /><span>When the words don't fit at this size, continue on the next slide</span></label>
+        <div class="hint">${theme.overflow !== false
+          ? 'Words never get smaller than this. A slide that would need smaller text is split in two (“Verse 1 (1/2)”, “(2/2)”), keeping whole lines and whole Bible verses together. Next steps through the parts as usual.'
+          : 'Words never get smaller than this, so a very full slide may not fit on the screen.'}</div></div>
       <div class="field"><label class="label" for="proj-font">Projector font</label>
         <select id="proj-font" class="select" value=${theme.font || 'inter'} onChange=${(e) => save({ theme: { font: e.target.value } })}>
           ${Object.entries(FONTS).map(([k, f]) => html`<option value=${k}>${f.label}</option>`)}</select></div>
@@ -2428,7 +2450,7 @@ function programKey(s) {
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
   return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
-    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, themeClasses(t), slide && slide.part, s.config.quality]);
+    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, t.minText, themeClasses(t), slide && slide.part, s.config.quality]);
 }
 
 function wrapLines(ctx, text, maxW) {
@@ -2570,8 +2592,9 @@ async function renderProgram(s) {
     }
     const part = slide.part && PARTS[slide.part] ? slide.part : '';
     const labelH = part ? 0.62 : 0; // the Leader / Congregation label, in lines of text
-    const max = H * 0.085 * (t.textScale || 1);
-    const min = H * 0.032;
+    const sz = textSizes(t); // same sizes as the screens (percent of height)
+    const max = H * sz.max / 100;
+    const min = H * sz.min / 100;
     const layout = (size, wrap) => {
       ctx.font = `${WT} ${size}px ${FONT}`;
       const lines = wrap ? wrapLines(ctx, slide.text, box.w) : String(slide.text).split('\n');

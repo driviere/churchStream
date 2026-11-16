@@ -263,7 +263,9 @@ Click **Open on projector** in the Screens card. ChurchStream opens a full-scree
 ### Appearance (Settings → Appearance)
 - **Default background:** used everywhere unless an item or slide has its own.
 - **Church logo:** upload your logo (a PNG with a transparent background looks best). You can show the church name under it, and choose Small, Medium or Large. Also in Settings → General.
-- **Projector text size:** Smaller, Normal or Larger.
+- **Largest text size:** Smaller, Normal, Larger or Largest. Every slide uses this size whenever its words fit.
+- **Smallest text size:** Small, Medium, Large or Extra large. A slide with more words shrinks only as much as it needs, and never below this size.
+- **When the words don't fit at this size, continue on the next slide** (on by default): a slide that would need smaller text is split into parts, e.g. *Verse 1 (1/2)* and *Verse 1 (2/2)*. Whole lines and whole Bible verses stay together, each part of a reading shows its own verses (*John 3:16–17*), and **Next** steps through the parts. **Edit** still shows the slide as you typed it. With this off, a very full slide may not fit on the screen.
 - **Projector font:** Clean, Windows, Classic serif or Bold & plain.
 - **Where the words go:**
   - **Middle of the screen:** the usual layout.

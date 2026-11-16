@@ -49,7 +49,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Black, Clear, Logo | Blank the screens, hide just the words, or show the logo. Each is one tap or one key. |
 | Text options | Choose the font; put the words in the middle or along the bottom; centred or left; with an outline for busy photos. |
 | Stage screen | Current slide, next slide and a clock for musicians and the speaker, on any phone or tablet. |
-| Readable sizing | Text fits itself to the screen. Song lines are kept whole where possible, and Bible verses show small verse numbers. |
+| Readable sizing | Text uses the largest size you choose whenever it fits, and shrinks only as needed down to a smallest size you choose. Words that still don't fit continue on the next slide automatically, keeping whole lines and Bible verses together. Bible verses show small verse numbers. |
 
 ### 🎵 Hymns, Bible and worship
 
