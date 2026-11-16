@@ -206,11 +206,16 @@ test('two cameras: switch on air without a restart, and record each camera on it
   for (const f of [rec, ...files]) assert.ok(fs.statSync(f).size > 1000, path.basename(f));
   // The stream recording shows camera 1 (testsrc2: dark corner) early and camera 2 (SMPTE bars: grey corner) late.
   const corner = (file, t) => spawnSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', 'crop=8:8:2:2,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer' }).stdout[0];
-  const early = corner(rec, 0.5);
-  const late = corner(rec, 4);
+  // Read the frames near the real end: on a slow machine the files are shorter than 5 s.
+  const duration = (file) => parseFloat(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).stdout);
+  const end = duration(rec);
+  assert.ok(end > 2, `recording is ${end} s`);
+  const early = corner(rec, 0.3);
+  const late = corner(rec, Math.max(0.5, end - 0.4));
   assert.ok(Math.abs(early - late) > 20, `picture changed when switching cameras (${early} → ${late})`);
   // The camera recordings never switch.
-  assert.ok(Math.abs(corner(files[1], 0.5) - corner(files[1], 4)) < 10);
+  const end2 = duration(files[1]);
+  assert.ok(Math.abs(corner(files[1], 0.3) - corner(files[1], Math.max(0.5, end2 - 0.4))) < 10);
 });
 
 test('recording quality: a separate, better recording; the picture is built at 1080p and scaled for the stream', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 60000 }, async () => {
