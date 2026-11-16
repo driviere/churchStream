@@ -21,15 +21,19 @@ function search(el, lo, hi) {
   return lo;
 }
 
+// Long lines wrap onto the next line when that keeps the words noticeably bigger; otherwise
+// each line stays whole (short song lines look best that way).
+export const WRAP_GAIN = 1.08;
 export function fitText(el, { max = 8.5, min = 3.2 } = {}) {
   if (!el || !el.parentElement) return;
-  if (!el.classList.contains('bible')) {
-    el.style.whiteSpace = 'pre';
-    const size = search(el, min, max);
-    if (size >= Math.min(5.4, max * 0.65) && fits(el)) return;
-  }
   el.style.whiteSpace = '';
-  search(el, min, max);
+  const wrapped = search(el, min, max);
+  if (el.classList.contains('bible')) return;
+  el.style.whiteSpace = 'pre';
+  const whole = search(el, min, max);
+  if (fits(el) && whole * WRAP_GAIN >= wrapped) return;
+  el.style.whiteSpace = '';
+  el.style.fontSize = wrapped + 'cqh';
 }
 
 // Text sizes for the screens (cqh): the largest from "Text size", the smallest from

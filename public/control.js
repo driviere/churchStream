@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, textSizes, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
+import { connect, fitText, textSizes, WRAP_GAIN, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
@@ -2607,9 +2607,14 @@ async function renderProgram(s) {
       for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (layout(mid, wrap).fits) lo = mid; else hi = mid; }
       return lo;
     };
-    let wrap = live.item.kind === 'bible';
-    let size = search(wrap);
-    if (!wrap && size < Math.min(H * 0.054, max * 0.65)) { wrap = true; size = search(true); }
+    // Same rule as the screens (shared.js fitText): wrap long lines when that keeps the words
+    // noticeably bigger; otherwise keep each line whole.
+    let wrap = true;
+    let size = search(true);
+    if (live.item.kind !== 'bible') {
+      const whole = search(false);
+      if (layout(whole, false).fits && whole * WRAP_GAIN >= size) { wrap = false; size = whole; }
+    }
     const { lines } = layout(size, wrap);
     const lh = size * 1.28;
     const blockH = (lines.length + labelH) * lh;
