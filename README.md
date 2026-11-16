@@ -25,7 +25,9 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Feature | What it does |
 | --- | --- |
 | YouTube and Facebook at once | Streams to both at the same time, from one encode, so the second platform costs no extra computer power. If one drops, the other keeps going and the dropped one reconnects. |
-| Recording | Optionally keeps a copy of each service on the computer. |
+| Two cameras | Add a second camera (USB, capture card or network camera) and switch with **Camera 1 / Camera 2** or the **1**/**2** keys, instantly and without interrupting the stream. |
+| Recording | One switch on the Live stream card keeps a copy of each service on the computer. Choose the quality: the stream itself (no extra work), or a better 720p/1080p copy encoded separately. Optionally each camera on its own, without slides or names, for editing afterwards. |
+| Starting soon / thank-you screens | Go live with a countdown ("Our service begins in 4:59") that switches to the service by itself; end with "Thank you for worshipping with us" for a few seconds before the stream stops. |
 | What viewers see | **Camera**, **Slides** (exactly what the projector shows), **Slides + camera** in a corner, or **Auto**. Switching never interrupts the stream. |
 | Words on the camera view | Lyrics and verses can appear as captions along the bottom of the camera picture. |
 | Names (lower thirds) | One tap shows a name and title, e.g. *Pastor John Smith · Sermon*, on the stream and optionally the screens. |

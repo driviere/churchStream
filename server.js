@@ -166,8 +166,10 @@ const routes = {
     if (!r) throw new Error('That item could not be found.');
     return r;
   },
-  'POST /api/stream/start': async (req) => { const { mode } = await json(req); await app.startStream(mode === 'live' ? 'live' : 'preview'); return { ok: true }; },
-  'POST /api/stream/stop': async () => { await app.stopStream(); return { ok: true }; },
+  'POST /api/stream/start': async (req) => { const { mode, startScreen } = await json(req); await app.startStream(mode === 'live' ? 'live' : 'preview', { startScreen: !!startScreen }); return { ok: true }; },
+  'POST /api/stream/stop': async (req) => { const b = await json(req).catch(() => ({})); return app.stopStream({ endScreen: !!b.endScreen, now: !!b.now }); },
+  'POST /api/stream/begin': async () => { app.skipStartScreen(); return { ok: true }; },
+  'POST /api/camera': async (req) => app.setCamera((await json(req)).camera),
   'POST /api/config': async (req) => { app.updateConfig(await json(req)); return { ok: true }; },
   'GET /api/devices': () => app.devices(),
   'GET /api/logs': () => app.logs.slice(-80),

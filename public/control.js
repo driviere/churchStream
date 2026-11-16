@@ -559,6 +559,8 @@ function Aside({ s, onGoLive, onStop, active }) {
             ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
             : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
+      <${StreamPhase} s=${s} />
+      <${CameraSwitch} s=${s} />
       <div>
         <div class="seg-label">Stream shows</div>
         <div class="seg" role="radiogroup" aria-label="What the stream shows">
@@ -575,6 +577,7 @@ function Aside({ s, onGoLive, onStop, active }) {
       </div>
       ${(cfg.streamScene || 'camera') !== 'slides' && (cfg.streamScene || 'camera') !== 'pip' && html`
         <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}
+      <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
         : st.mode === 'live'
@@ -611,6 +614,72 @@ function TitleHelper({ s }) {
   </div>`;
 }
 
+const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc'; };
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// "Starting soon" / "Thank you for watching" on the stream, with a way to skip ahead.
+function StreamPhase({ s }) {
+  const ph = s.stream.phase;
+  const [, tick] = useState(0);
+  useEffect(() => { if (!ph) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [ph && ph.until]);
+  if (!ph) return null;
+  const left = Math.max(0, Math.round((ph.until - Date.now()) / 1000));
+  return html`<div class="note row" style="margin:0;gap:8px">
+    <span class="grow">${ph.kind === 'start'
+      ? html`<b>Starting screen</b> on the stream until ${clock(ph.until)}`
+      : html`<b>Thank-you screen</b> · the stream ends in ${left} s`}</span>
+    ${ph.kind === 'start'
+      ? html`<button class="btn small" onClick=${() => api('/api/stream/begin', {}).catch(fail)}>Start service now</button>`
+      : html`<button class="btn small danger" onClick=${() => api('/api/stream/stop', { now: true }).catch(fail)}>End now</button>`}
+  </div>`;
+}
+
+// Camera 1 / Camera 2 on air.
+function CameraSwitch({ s }) {
+  const cfg = s.config;
+  if (!hasCam2(cfg)) return null;
+  const cur = cfg.activeCamera === 2 ? 2 : 1;
+  return html`<div>
+    <div class="seg-label">Camera on air <span class="muted" style="font-weight:400">(keys 1 and 2)</span></div>
+    <div class="seg" role="radiogroup" aria-label="Camera on air" style="grid-template-columns:1fr 1fr">
+      ${[1, 2].map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>Camera ${n}</button>`)}
+    </div></div>`;
+}
+
+// Recording on this computer: on/off, quality, and each camera on its own. Shown on the Live
+// stream card (easy to find) and in Settings.
+const STREAM_GB = { low: 0.6, good: 1.2, high: 2.1 };
+function RecordingOptions({ s, compact }) {
+  const cfg = s.config;
+  const live = s.stream.mode === 'live';
+  const size = { low: '480p', good: '720p', high: '1080p' }[cfg.quality] || '720p';
+  const opts = compact ? [
+    ['stream', `Same as stream (${size}) · ${STREAM_GB[cfg.quality] || 1.2} GB/h`],
+    ['hd', '720p high · 2.3 GB/h'],
+    ['fullhd', '1080p high · 3.6 GB/h'],
+    ['best', '1080p best · 5.5 GB/h'],
+  ] : [
+    ['stream', `Same as the stream (${size}) · about ${STREAM_GB[cfg.quality] || 1.2} GB per hour`],
+    ['hd', '720p, high quality · about 2.3 GB per hour'],
+    ['fullhd', '1080p, high quality · about 3.6 GB per hour'],
+    ['best', '1080p, best · about 5.5 GB per hour'],
+  ];
+  const q = cfg.recordQuality || 'stream';
+  const gpu = s.stream.encoder && !/libx264/.test(s.stream.encoder);
+  return html`<div class="stack" style="gap:6px">
+    <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!cfg.record} onChange=${(e) => save({ record: e.target.checked })} /><span>Record this service on this computer</span></label>
+    ${cfg.record && html`
+      <select class="select" aria-label="Recording quality" value=${q} onChange=${(e) => save({ recordQuality: e.target.value })}>
+        ${opts.map(([id, label]) => html`<option value=${id}>${label}</option>`)}</select>
+      ${!compact && html`<div class="hint" style="margin-top:0">${q === 'stream'
+        ? 'Saves exactly what viewers see, with no extra work for the computer.'
+        : html`Saved at higher quality than the stream, for editing or uploading later. It's encoded separately${gpu ? ' on the graphics card' : html`, which uses <b>more processor</b> without a graphics encoder`}.`}</div>`}
+      ${hasCam2(cfg) || !compact ? html`<label class="switch" style="min-height:32px"><input type="checkbox" checked=${!!cfg.recordCameras} onChange=${(e) => save({ recordCameras: e.target.checked })} /><span>Also record each camera on its own${compact ? '' : ' (no slides or names)'}</span></label>` : ''}
+      ${live && html`<div class="hint" style="margin-top:0">Changes apply the next time you go live.</div>`}
+      ${!compact && html`<div class="hint" style="margin-top:0">Recordings are saved in the <b>ChurchStream-data${s.platform === 'win32' ? '\\' : '/'}recordings</b> folder${cfg.recordCameras ? ', with each camera as its own file (“… - Camera 1.mkv”)' : ''}.</div>`}`}
+  </div>`;
+}
+
 function GoLiveDialog({ s, onClose }) {
   const st = s.stream;
   const cfg = s.config;
@@ -626,7 +695,7 @@ function GoLiveDialog({ s, onClose }) {
   const sound = loud !== null && loud > -50;
   const go = async () => {
     setBusy(true);
-    try { await api('/api/stream/start', { mode: 'live' }); onClose(); toast('You are live'); } catch (err) { fail(err); setBusy(false); }
+    try { await api('/api/stream/start', { mode: 'live', startScreen: !!(cfg.startScreen && cfg.startScreen.enabled) }); onClose(); toast('You are live'); } catch (err) { fail(err); setBusy(false); }
   };
   return html`<${Modal} title="Ready to go live?" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
@@ -638,17 +707,33 @@ function GoLiveDialog({ s, onClose }) {
       <li><span class=${sound ? 'ok' : 'bad'}>${sound ? icons.check() : icons.alert()}</span>${cfg.audio.source === 'none' ? 'No microphone selected — the stream will be silent' : sound ? 'Sound is coming through' : 'No sound yet — say something into the microphone'}</li>
       <li><span class=${dests.length ? 'ok' : 'bad'}>${dests.length ? icons.check() : icons.alert()}</span>${dests.length ? `Streaming to ${dests.join(' and ')}` : 'Recording only (no YouTube/Facebook key set)'}${cfg.record && dests.length ? ' + recording' : ''}</li>
     </ul>
+    <div class="row wrap" style="margin-top:12px;gap:8px">
+      <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!(cfg.startScreen && cfg.startScreen.enabled)} onChange=${(e) => save({ startScreen: { enabled: e.target.checked } })} /><span>Start with a countdown on the stream</span></label>
+      ${cfg.startScreen && cfg.startScreen.enabled && html`<select class="select" style="width:auto" aria-label="Countdown length" value=${cfg.startScreen.minutes || 5} onChange=${(e) => save({ startScreen: { minutes: +e.target.value } })}>
+        ${[2, 5, 10, 15, 20, 30].map((m) => html`<option value=${m}>${m} minutes</option>`)}</select>`}
+    </div>
+    ${cfg.startScreen && cfg.startScreen.enabled && html`<div class="hint" style="margin-top:0">Viewers (and the screens) see “${cfg.startScreen.message || 'Our service begins in'}” counting down; then the stream switches to “${{ camera: 'Camera', slides: 'Slides', pip: 'Slides + camera', auto: 'Auto' }[cfg.streamScene || 'camera']}”. You can start sooner.</div>`}
     <${TitleHelper} s=${s} />
     <p class="hint">On YouTube and Facebook, the broadcast may take 10–30 seconds to appear.</p>
   </${Modal}>`;
 }
 
-function StopDialog({ onClose }) {
+function StopDialog({ s, onClose }) {
   const [busy, setBusy] = useState(false);
+  const es = s.config.endScreen || {};
+  const end = async () => {
+    setBusy(true);
+    const r = await api('/api/stream/stop', { endScreen: !!es.enabled }).catch(fail);
+    onClose();
+    toast(r && r.ending ? `Showing the thank-you screen; the stream ends in ${r.ending} seconds` : 'Stream ended');
+  };
   return html`<${Modal} title="End the live stream?" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Keep streaming</button>
-      <button class="btn danger" disabled=${busy} onClick=${async () => { setBusy(true); await api('/api/stream/stop', {}).catch(fail); onClose(); toast('Stream ended'); }}>End stream</button>`}>
-    <p class="muted" style="margin:0">Viewers will see the broadcast end. Any recording is saved to the Recordings folder.</p>
+      <button class="btn danger" disabled=${busy} onClick=${end}>${es.enabled ? 'Thank viewers, then end' : 'End stream'}</button>`}>
+    <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!es.enabled} onChange=${(e) => save({ endScreen: { enabled: e.target.checked } })} /><span>First show “${es.text || 'Thank you for worshipping with us'}” for</span>
+      <select class="select" style="width:auto;margin-left:4px" aria-label="Seconds" value=${es.seconds || 30} onClick=${(e) => e.preventDefault()} onChange=${(e) => save({ endScreen: { seconds: +e.target.value } })}>
+        ${[10, 20, 30, 60].map((n) => html`<option value=${n}>${n} seconds</option>`)}</select></label>
+    <p class="muted" style="margin:8px 0 0">Viewers will see the broadcast end. Any recording is saved to the Recordings folder.</p>
   </${Modal}>`;
 }
 
@@ -1511,6 +1596,7 @@ function ControlView({ s }) {
       else if (e.key === 'b' || e.key === 'B' || e.key === '.') toggle('black');
       else if (e.key === 'c' || e.key === 'C') toggle('clear');
       else if (e.key === 'l' || e.key === 'L') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
+      else if ((e.key === '1' || e.key === '2') && hasCam2(s.config)) api('/api/camera', { camera: +e.key }).catch(fail);
     };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
@@ -1607,7 +1693,7 @@ function ControlView({ s }) {
       </div>
     </div>
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
-    ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} preset=${dialog.preset} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveText(dialog.item.key, title, slides, auto) : null} />`}
@@ -1768,6 +1854,7 @@ function SectionCamera({ s, autoPreview }) {
       ${v.type === 'rtsp' && html`<div class="field"><label class="label">Camera address (RTSP)</label>
         <input class="input" value=${rtsp} placeholder="rtsp://user:password@192.168.1.50:554/stream1" onInput=${(e) => setRtsp(e.target.value)} onBlur=${() => save({ video: { rtspUrl: rtsp.trim() } })} />
         <div class="hint">Found in your camera's manual or app. Usually starts with rtsp://</div></div>`}
+      <${SecondCamera} s=${s} devs=${devs} />
       <div class="field"><label class="label">Sound</label>
         <select class="select" value=${a.source === 'device' ? 'device:' + a.device : a.source} onChange=${(e) => {
           const val = e.target.value;
@@ -1801,6 +1888,28 @@ function SectionCamera({ s, autoPreview }) {
       </div>
     </div>
   </div>`;
+}
+
+// Camera 2 (optional): switched on air with Camera 1 / Camera 2 on the control panel.
+function SecondCamera({ s, devs }) {
+  const v1 = s.config.video;
+  const v2 = s.config.video2 || { type: 'none' };
+  const [url, setUrl] = useState(v2.rtspUrl || '');
+  const cams = devs ? devs.video.filter((d) => !(v1.type === 'dshow' && d === v1.device)) : [];
+  return html`<div class="field"><label class="label">Second camera (optional)</label>
+    <select class="select" value=${v2.type || 'none'} onChange=${(e) => save({ video2: { type: e.target.value } })}>
+      <option value="none">None</option>
+      <option value="dshow">${s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card'}</option>
+      <option value="rtsp">Network (IP) camera</option>
+      <option value="testsrc">Test pattern (to try it out)</option>
+    </select>
+    ${v2.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Second camera" value=${v2.device} onChange=${(e) => save({ video2: { device: e.target.value } })}>
+      <option value="">${devs ? (cams.length ? 'Choose the second camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
+      ${cams.map((d) => html`<option value=${d}>${d}</option>`)}
+      ${v2.device && devs && !devs.video.includes(v2.device) && html`<option value=${v2.device}>${v2.device} (not connected)</option>`}
+    </select></div>`}
+    ${v2.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label="Second camera address" value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ video2: { rtspUrl: url.trim() } })} />`}
+    <div class="hint">${hasCam2(s.config) ? 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.' : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div></div>`;
 }
 
 function SectionProjector({ s }) {
@@ -1851,7 +1960,8 @@ function SectionStreaming({ s }) {
     <label class="label" style="margin-top:20px">Quality</label>
     <div class="choices">${qualities.map(([id, t, d]) => html`<button class=${'choice' + (cfg.quality === id ? ' on' : '')} onClick=${() => save({ quality: id })}><b>${t}</b><span>${d}</span></button>`)}</div>
     <div class="note" style="margin-bottom:16px">The video is encoded <b>once</b> and sent to every platform, so the computer works no harder for two platforms. Your internet upload needs to cover each platform. Check it at <a href="https://fast.com" target="_blank" rel="noopener">fast.com</a> (“Show more info”). If unsure, start with <b>Good</b>.</div>
-    <label class="switch"><input type="checkbox" checked=${cfg.record} onChange=${(e) => save({ record: e.target.checked })} /><span>Also record a copy on this computer</span></label>
+    <label class="label" style="margin-top:20px">Recording</label>
+    <${RecordingOptions} s=${s} />
   </div>`;
 }
 
@@ -2336,7 +2446,10 @@ const STREAM_SIZE = { low: [854, 480], good: [1280, 720], high: [1920, 1080] };
 const PROGRAM_JPEG = 0.94;
 async function renderProgram(s) {
   // Drawn at the stream's own size, so slide text stays sharp at 1080p (no upscaling).
-  const [W, H] = STREAM_SIZE[s.config.quality] || STREAM_SIZE.good;
+  // The stream's size, or the recording's when that is larger (a 1080p recording of a 720p stream).
+  const rec = s.config.record && { hd: 720, fullhd: 1080, best: 1080 }[s.config.recordQuality];
+  const [W0, H0] = STREAM_SIZE[s.config.quality] || STREAM_SIZE.good;
+  const [W, H] = rec && rec > H0 ? (rec === 1080 ? [1920, 1080] : [1280, 720]) : [W0, H0];
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
