@@ -248,3 +248,61 @@ test('recording quality: a separate, better recording; the picture is built at 1
   const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', rec], { encoding: 'utf8' }).stdout.trim();
   assert.equal(probe, '1920,1080');
 });
+
+test('camera 2 stops: the stream carries on with camera 1, and camera 2 comes back by itself', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 90000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { Streamer } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-cam2down-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  const { Overlay } = require('../lib/overlay');
+  new Overlay(dir);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  // Camera 2 is a network camera that isn't there (nothing listens on port 9).
+  const c = cfg({ quality: 'low', audio: { source: 'none' }, video2: { type: 'rtsp', rtspUrl: 'rtsp://127.0.0.1:9/stream' } });
+  const st = new Streamer({ getConfig: () => c, runDir: dir, recordingsDir: dir, ffmpeg: { path: 'ffmpeg' }, getEncoder: async () => 'libx264' });
+  const logs = [];
+  st.on('log', (l) => logs.push(l));
+  st.camera = 2;
+  const until = async (fn, ms = 40000) => { const t = Date.now(); while (!fn()) { if (Date.now() - t > ms) throw new Error('timed out; logs: ' + logs.join(' | ')); await new Promise((r) => setTimeout(r, 200)); } };
+  await st.start('preview');
+  await until(() => st.status.camera2 === 'down' && st.status.state === 'running');
+  assert.equal(st.status.cameras, 1, 'running with camera 1 only');
+  assert.equal(st.status.camera, 1);
+  // Camera 2 "works again": two good checks in a row bring it back (with a short restart).
+  st.probeCamera = async () => true;
+  await st.checkCamera2();
+  assert.equal(st.status.camera2, 'down', 'one good check is not enough');
+  await st.checkCamera2();
+  assert.ok(logs.includes('camera 2 is back'));
+  // It's still not really there, so it is noticed again and the stream carries on.
+  st.probeCamera = async () => false;
+  await until(() => st.status.camera2 === 'down' && st.status.state === 'running');
+  assert.equal(st.camera, 1, 'camera 1 stays on air');
+  await st.stop();
+  assert.equal(st.status.camera2, null);
+});
+
+test('watchdog: a picture that stops moving is restarted', { skip: process.platform === 'win32', timeout: 30000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { Streamer } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-stall-'));
+  // A pretend FFmpeg that reports progress once, then keeps reporting the same time (a frozen camera).
+  const fake = path.join(dir, 'fake-ffmpeg');
+  fs.writeFileSync(fake, `#!${process.execPath}\nlet n = 0;\nsetInterval(() => { n++; process.stdout.write('out_time_us=' + (n < 3 ? n * 1000000 : 3000000) + '\\nfps=30\\nprogress=continue\\n'); }, 300);\nprocess.stdin.on('data', () => process.exit(0));\n`);
+  fs.chmodSync(fake, 0o755);
+  const st = new Streamer({ getConfig: () => cfg({ quality: 'low', audio: { source: 'none' } }), runDir: dir, recordingsDir: dir, ffmpeg: { path: fake }, getEncoder: async () => 'libx264' });
+  st.stallMs = 2000;
+  const logs = [];
+  st.on('log', (l) => logs.push(l));
+  await st.start('preview');
+  const t = Date.now();
+  while (!logs.includes('the picture stopped moving; restarting') && Date.now() - t < 15000) await new Promise((r) => setTimeout(r, 200));
+  assert.ok(logs.includes('the picture stopped moving; restarting'), logs.join(' | '));
+  await new Promise((r) => setTimeout(r, 500));
+  assert.match(st.status.problem, /camera picture stopped/);
+  await st.stop();
+});

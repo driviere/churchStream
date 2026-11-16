@@ -228,6 +228,8 @@ Changes apply the next time you go live.
 ### Two cameras
 In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, or a network camera. The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
 
+If camera 2 stops during the service (unplugged, a loose cable, a network camera that drops out), ChurchStream notices within a few seconds and carries on with **camera 1**, with a red note on the Live stream card. It keeps checking, and when camera 2 works again it is added back by itself (with a brief pause in the stream) and shows as ready. Camera 1 stays on air until you switch. If the picture ever freezes completely, ChurchStream restarts the stream on its own.
+
 ### What the stream shows
 In the **Live stream** card, choose:
 - **Camera:** the camera full screen. Turn on *Words along the bottom of the camera view* to add the lyrics or verse as captions.

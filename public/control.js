@@ -638,12 +638,16 @@ function StreamPhase({ s }) {
 function CameraSwitch({ s }) {
   const cfg = s.config;
   if (!hasCam2(cfg)) return null;
-  const cur = cfg.activeCamera === 2 ? 2 : 1;
+  const down = s.stream.camera2 === 'down';
+  const cur = down ? 1 : cfg.activeCamera === 2 ? 2 : 1;
   return html`<div>
     <div class="seg-label">Camera on air <span class="muted" style="font-weight:400">(keys 1 and 2)</span></div>
     <div class="seg" role="radiogroup" aria-label="Camera on air" style="grid-template-columns:1fr 1fr">
-      ${[1, 2].map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>Camera ${n}</button>`)}
-    </div></div>`;
+      ${[1, 2].map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} disabled=${n === 2 && down} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>Camera ${n}${n === 2 && down ? ' ⚠' : ''}</button>`)}
+    </div>
+    ${down && html`<div class="hint" style="margin-top:6px;color:var(--danger,#d92d20)">Camera 2 stopped, so the stream is showing camera 1. Check its cable; it comes back by itself within about 30 seconds of working again.</div>`}
+    ${s.stream.camera2 === 'back' && html`<div class="hint" style="margin-top:6px;color:var(--ok)">Camera 2 is back.</div>`}
+  </div>`;
 }
 
 // Recording on this computer: on/off, quality, and each camera on its own. Shown on the Live
