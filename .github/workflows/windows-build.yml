@@ -225,7 +225,7 @@ jobs:
           # Data from an older ChurchStream next to the app is copied to ~/ChurchStream-data.
           rm -rf "$HOME/ChurchStream-data"; mkdir -p "$T/ChurchStream/ChurchStream-data"; echo '{"setupComplete":true,"churchName":"Smoke Test Church"}' > "$T/ChurchStream/ChurchStream-data/config.json"
           open "$T/ChurchStream/ChurchStream.app"
-          trap 'echo "--- app log ---"; tail -30 "$HOME/ChurchStream-data/run/churchstream.log" 2>/dev/null || true; pkill -f "Resources/ChurchStream" || true' EXIT
+          trap 'echo "--- app steps ---"; cat "$HOME/ChurchStream-data/run/app.log" 2>/dev/null || echo "(none)"; echo "--- ChurchStream output ---"; tail -30 "$HOME/ChurchStream-data/run/churchstream.log" 2>/dev/null || echo "(none)"; ls -la "$HOME/ChurchStream-data" "$HOME/ChurchStream-data/run" 2>/dev/null || true; pgrep -fl applet || true; pkill -f "Resources/ChurchStream" || true' EXIT
           for i in $(seq 1 40); do [ -s "$HOME/ChurchStream-data/run/url.txt" ] && break; sleep 1; done
           URL=$(cat "$HOME/ChurchStream-data/run/url.txt"); echo "App started: $URL"
           curl -sf "$URL" > /dev/null && echo "Control panel answers"
