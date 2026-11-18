@@ -18,16 +18,19 @@ on run
 	set folderPath to do shell script "/usr/bin/dirname " & quoted form of appPath
 	set oldData to folderPath & "/ChurchStream-data"
 	-- Coming from an older ChurchStream (data next to the program): bring the data along once.
-	do shell script "if [ -d " & quoted form of oldData & " ] && [ ! -e " & quoted form of dataDir & " ]; then /usr/bin/ditto " & quoted form of oldData & " " & quoted form of dataDir & "; fi; /bin/mkdir -p " & quoted form of (dataDir & "/run") & "; /bin/rm -f " & quoted form of (dataDir & "/run/url.txt")
+	do shell script "if [ -d " & quoted form of oldData & " ] && [ ! -e " & quoted form of dataDir & " ]; then /usr/bin/ditto " & quoted form of oldData & " " & quoted form of dataDir & "; fi; /bin/mkdir -p " & quoted form of (dataDir & "/run")
 	-- Files downloaded from the internet are marked by macOS; clear that so FFmpeg may run.
 	do shell script "/usr/bin/xattr -dr com.apple.quarantine " & quoted form of appPath & " 2>/dev/null; true"
 	-- Already running (opened twice, or started from Terminal)? Just show the control panel.
-	set running to do shell script "/usr/bin/pgrep -f " & quoted form of (res & "/ChurchStream") & " || true"
+	-- The server writes its process number to run/server.pid when it starts.
+	set pidFile to dataDir & "/run/server.pid"
+	set running to do shell script "p=$(/bin/cat " & quoted form of pidFile & " 2>/dev/null); if [ -n \"$p\" ] && /bin/kill -0 \"$p\" 2>/dev/null && /bin/ps -p \"$p\" -o comm= | /usr/bin/grep -q ChurchStream; then echo \"$p\"; fi"
 	if running is not "" then
-		set serverPid to first paragraph of running
+		set serverPid to running
 		openControl()
 		return
 	end if
+	do shell script "/bin/rm -f " & quoted form of (dataDir & "/run/url.txt") & " " & quoted form of pidFile
 	set logFile to dataDir & "/run/churchstream.log"
 	set serverPid to do shell script "cd " & quoted form of res & " && CHURCHSTREAM_DATA=" & quoted form of dataDir & " ./ChurchStream > " & quoted form of logFile & " 2>&1 & echo $!"
 end run
