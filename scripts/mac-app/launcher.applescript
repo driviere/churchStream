@@ -19,7 +19,7 @@ end logStep
 
 on run
 	try
-		startUp()
+		launchChurchStream()
 	on error errMsg number errNum
 		logStep("error " & errNum & ": " & errMsg)
 		display dialog "ChurchStream couldn't start." & return & return & errMsg buttons {"OK"} default button 1 with title "ChurchStream" with icon stop
@@ -27,7 +27,7 @@ on run
 	end try
 end run
 
-on startUp()
+on launchChurchStream()
 	logStep("starting")
 	set appPath to POSIX path of (path to me)
 	if appPath ends with "/" then set appPath to text 1 thru -2 of appPath
@@ -54,7 +54,7 @@ on startUp()
 	logStep("app at " & appPath)
 	set serverPid to do shell script "cd " & quoted form of res & " && CHURCHSTREAM_DATA=" & quoted form of dataDir & " ./ChurchStream > " & quoted form of logFile & " 2>&1 & echo $!"
 	logStep("ChurchStream started, process " & serverPid)
-end startUp
+end launchChurchStream
 
 -- Clicking the Dock icon again opens the control panel.
 on reopen
