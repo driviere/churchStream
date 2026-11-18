@@ -11,24 +11,24 @@
 global serverPid, dataDir, appPath
 
 -- Each step goes to ~/ChurchStream-data/run/app.log, so a start that goes wrong can be seen.
-on note(msg)
+on logStep(msg)
 	try
 		do shell script "/bin/mkdir -p ~/ChurchStream-data/run; echo \"$(/bin/date '+%H:%M:%S') \"" & quoted form of msg & " >> ~/ChurchStream-data/run/app.log"
 	end try
-end note
+end logStep
 
 on run
 	try
 		startUp()
 	on error errMsg number errNum
-		note("error " & errNum & ": " & errMsg)
+		logStep("error " & errNum & ": " & errMsg)
 		display dialog "ChurchStream couldn't start." & return & return & errMsg buttons {"OK"} default button 1 with title "ChurchStream" with icon stop
 		quit
 	end try
 end run
 
 on startUp()
-	note("starting")
+	logStep("starting")
 	set appPath to POSIX path of (path to me)
 	if appPath ends with "/" then set appPath to text 1 thru -2 of appPath
 	set dataDir to (POSIX path of (path to home folder)) & "ChurchStream-data"
@@ -44,16 +44,16 @@ on startUp()
 	set pidFile to dataDir & "/run/server.pid"
 	set running to do shell script "p=$(/bin/cat " & quoted form of pidFile & " 2>/dev/null); if [ -n \"$p\" ] && /bin/kill -0 \"$p\" 2>/dev/null && /bin/ps -p \"$p\" -o comm= | /usr/bin/grep -q ChurchStream; then echo \"$p\"; fi"
 	if running is not "" then
-		note("already running, process " & running)
+		logStep("already running, process " & running)
 		set serverPid to running
 		openControl()
 		return
 	end if
 	do shell script "/bin/rm -f " & quoted form of (dataDir & "/run/url.txt") & " " & quoted form of pidFile
 	set logFile to dataDir & "/run/churchstream.log"
-	note("app at " & appPath)
+	logStep("app at " & appPath)
 	set serverPid to do shell script "cd " & quoted form of res & " && CHURCHSTREAM_DATA=" & quoted form of dataDir & " ./ChurchStream > " & quoted form of logFile & " 2>&1 & echo $!"
-	note("ChurchStream started, process " & serverPid)
+	logStep("ChurchStream started, process " & serverPid)
 end startUp
 
 -- Clicking the Dock icon again opens the control panel.
