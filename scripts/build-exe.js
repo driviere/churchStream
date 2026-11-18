@@ -228,7 +228,7 @@ cd "$(dirname "$0")" || exit 1
 xattr -dr com.apple.quarantine . 2>/dev/null
 DATA="$HOME/ChurchStream-data"
 # Data from an older ChurchStream (next to the program) is brought along once.
-if [ -d ./ChurchStream-data ] && [ ! -e "$DATA" ]; then ditto ./ChurchStream-data "$DATA"; fi
+if [ -f ./ChurchStream-data/config.json ] && [ ! -f "$DATA/config.json" ]; then ditto ./ChurchStream-data "$DATA"; fi
 echo ""
 echo "  ChurchStream is starting. Keep this window open during the service."
 echo "  Close it to stop ChurchStream. (You can also just open ChurchStream.app.)"

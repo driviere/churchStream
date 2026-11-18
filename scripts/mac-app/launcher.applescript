@@ -36,7 +36,9 @@ on launchChurchStream()
 	set folderPath to do shell script "/usr/bin/dirname " & quoted form of appPath
 	set oldData to folderPath & "/ChurchStream-data"
 	-- Coming from an older ChurchStream (data next to the program): bring the data along once.
-	do shell script "if [ -d " & quoted form of oldData & " ] && [ ! -e " & quoted form of dataDir & " ]; then /usr/bin/ditto " & quoted form of oldData & " " & quoted form of dataDir & "; fi; /bin/mkdir -p " & quoted form of (dataDir & "/run")
+	-- (Checked by the settings file, not the folder: the start-up log above creates the folder.)
+	do shell script "if [ -f " & quoted form of (oldData & "/config.json") & " ] && [ ! -f " & quoted form of (dataDir & "/config.json") & " ]; then /usr/bin/ditto " & quoted form of oldData & " " & quoted form of dataDir & "; fi; /bin/mkdir -p " & quoted form of (dataDir & "/run")
+	logStep("data in " & dataDir)
 	-- Files downloaded from the internet are marked by macOS; clear that so FFmpeg may run.
 	do shell script "/usr/bin/xattr -dr com.apple.quarantine " & quoted form of appPath & " 2>/dev/null; true"
 	-- Already running (opened twice, or started from Terminal)? Just show the control panel.
