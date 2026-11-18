@@ -56,7 +56,9 @@ on launchChurchStream()
 	logStep("app at " & appPath)
 	-- No input and all output to the log: otherwise 'do shell script' waits for ChurchStream to
 	-- finish, and the app can't answer Quit.
-	set serverPid to do shell script "cd " & quoted form of res & " && CHURCHSTREAM_DATA=" & quoted form of dataDir & " /usr/bin/nohup ./ChurchStream < /dev/null > " & quoted form of logFile & " 2>&1 & echo $!"
+	-- 'cd …; command &', not 'cd … && command &': the latter backgrounds a whole subshell that
+	-- keeps the app's output open (so the app hangs) and whose process number isn't ChurchStream's.
+	set serverPid to do shell script "cd " & quoted form of res & " || exit 1; CHURCHSTREAM_DATA=" & quoted form of dataDir & " /usr/bin/nohup ./ChurchStream < /dev/null > " & quoted form of logFile & " 2>&1 & echo $!"
 	logStep("ChurchStream started, process " & serverPid)
 end launchChurchStream
 
