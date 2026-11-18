@@ -179,20 +179,62 @@ async function buildMac() {
       `This ffmpeg is an unmodified static build of FFmpeg (GPL), from ${ffmpegUrl || path.basename(zipFile)}.\nFFmpeg is licensed under the GNU GPL; source code: https://ffmpeg.org/download.html\n`);
   }
 
-  step('Writing the start script and README');
+  step('Making ChurchStream.app');
+  // A Mac app (a small AppleScript "stay-open" app) that starts ChurchStream without a
+  // Terminal window. The program and FFmpeg go inside it, so it works even when macOS runs a
+  // freshly downloaded app from a read-only copy; settings and recordings live in
+  // ~/ChurchStream-data. See scripts/mac-app/launcher.applescript.
+  const appBundle = path.join(APP, 'ChurchStream.app');
+  fs.rmSync(appBundle, { recursive: true, force: true });
+  run('osacompile', ['-s', '-o', appBundle, path.join(ROOT, 'scripts', 'mac-app', 'launcher.applescript')]);
+  const res = path.join(appBundle, 'Contents', 'Resources');
+  fs.renameSync(bin, path.join(res, 'ChurchStream'));
+  if (fs.existsSync(path.join(APP, 'ffmpeg'))) fs.renameSync(path.join(APP, 'ffmpeg'), path.join(res, 'ffmpeg'));
+  const plist = path.join(appBundle, 'Contents', 'Info.plist');
+  const version = require(path.join(ROOT, 'package.json')).version;
+  const setKey = (key, value) => run('plutil', ['-replace', key, '-string', value, plist]);
+  setKey('CFBundleIdentifier', 'org.churchstream.ChurchStream');
+  setKey('CFBundleName', 'ChurchStream');
+  setKey('CFBundleDisplayName', 'ChurchStream');
+  setKey('CFBundleShortVersionString', version);
+  setKey('CFBundleVersion', version);
+  // Without these, macOS silently blocks the camera and microphone for the app.
+  setKey('NSCameraUsageDescription', 'ChurchStream shows and streams your church camera.');
+  setKey('NSMicrophoneUsageDescription', 'ChurchStream sends the sound of the service to the live stream and recording.');
+  setKey('NSLocalNetworkUsageDescription', 'ChurchStream connects to network cameras and lets phones and tablets on the church Wi-Fi control it.');
+  setKey('NSAppleEventsUsageDescription', 'ChurchStream asks PowerPoint or Keynote to open presentations you add to the service.');
+  // The icon: ChurchStream's logo, if this Mac can render it; otherwise the standard one.
+  try {
+    const tmp = path.join(BUILD, 'icon');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.mkdirSync(path.join(tmp, 'ChurchStream.iconset'), { recursive: true });
+    execFileSync('qlmanage', ['-t', '-s', '1024', '-o', tmp, path.join(ROOT, 'public', 'favicon.svg')], { stdio: 'ignore' });
+    const png = path.join(tmp, 'favicon.svg.png');
+    for (const sz of [16, 32, 128, 256, 512]) {
+      execFileSync('sips', ['-z', String(sz), String(sz), png, '--out', path.join(tmp, 'ChurchStream.iconset', `icon_${sz}x${sz}.png`)], { stdio: 'ignore' });
+      execFileSync('sips', ['-z', String(sz * 2), String(sz * 2), png, '--out', path.join(tmp, 'ChurchStream.iconset', `icon_${sz}x${sz}@2x.png`)], { stdio: 'ignore' });
+    }
+    execFileSync('iconutil', ['-c', 'icns', '-o', path.join(res, 'applet.icns'), path.join(tmp, 'ChurchStream.iconset')], { stdio: 'ignore' });
+  } catch (err) { console.log('  (standard app icon: ' + err.message.split('\n')[0] + ')'); }
+  run('codesign', ['--force', '--deep', '--sign', '-', appBundle]);
+  run('codesign', ['--verify', '--deep', appBundle]);
+
+  step('Writing the Terminal start script (a fallback) and README');
   const start = path.join(APP, 'Start ChurchStream.command');
   fs.writeFileSync(start, `#!/bin/bash
-# Double-click to start ChurchStream. Keep this window open during the service;
-# close it (or press Control-C) to stop everything.
+# Another way to start ChurchStream, in a Terminal window (useful if the app won't open).
+# Keep this window open during the service; close it (or press Control-C) to stop.
 cd "$(dirname "$0")" || exit 1
-# Files downloaded from the internet are marked by macOS; clear that so ChurchStream and
-# FFmpeg are allowed to run.
 xattr -dr com.apple.quarantine . 2>/dev/null
+DATA="$HOME/ChurchStream-data"
+# Data from an older ChurchStream (next to the program) is brought along once.
+if [ -d ./ChurchStream-data ] && [ ! -e "$DATA" ]; then ditto ./ChurchStream-data "$DATA"; fi
 echo ""
 echo "  ChurchStream is starting. Keep this window open during the service."
-echo "  Close it to stop ChurchStream."
+echo "  Close it to stop ChurchStream. (You can also just open ChurchStream.app.)"
 echo ""
-exec ./ChurchStream
+cd ChurchStream.app/Contents/Resources || exit 1
+CHURCHSTREAM_DATA="$DATA" exec ./ChurchStream
 `, { mode: 0o755 });
   fs.writeFileSync(path.join(APP, 'README.txt'), README_MAC);
 
@@ -214,37 +256,49 @@ Seventh-day Adventist churches. Everything runs on this one Mac.
 
 Getting started
 ---------------
-1. Move this ChurchStream folder somewhere permanent, e.g. your Documents folder.
-2. Double-click "Start ChurchStream.command".
+1. Drag ChurchStream.app into your Applications folder (or keep this folder in
+   Documents).
+2. Double-click ChurchStream.app.
    The first time, macOS may say it "cannot be opened" or "Apple could not verify" it,
    because ChurchStream isn't from the App Store. Then:
      - open System Settings → Privacy & Security, scroll down, and click "Open Anyway"
-       next to "Start ChurchStream.command"; or
-     - in Finder, Control-click the file, choose Open, then Open again.
-3. A Terminal window opens and keeps ChurchStream running. Your browser opens the
-   setup page. Follow the steps.
-4. When macOS asks whether Terminal may use the camera and microphone, click Allow.
-   When it asks whether ChurchStream may accept incoming network connections, click
-   Allow, so phones and tablets can connect.
+       next to ChurchStream; or
+     - in Finder, Control-click ChurchStream.app, choose Open, then Open again.
+3. Your browser opens the setup page. Follow the steps. ChurchStream appears in the
+   Dock while it runs; there's no Terminal window.
+4. When macOS asks whether ChurchStream may use the camera and microphone, click OK.
+   When it asks whether ChurchStream may accept incoming network connections (or find
+   devices on your local network), click Allow, so phones, tablets and network
+   cameras can connect.
 
 Every Sabbath
 -------------
-- Double-click "Start ChurchStream.command". Keep its window open.
-- Close that window to stop everything.
+- Double-click ChurchStream.app. The control panel opens in your browser.
+- Closed the browser tab? Click ChurchStream in the Dock to open it again.
+- To stop everything: ChurchStream → Quit in the menu bar, or Control-click its Dock
+  icon and choose Quit.
 - For the projector, Google Chrome (free) gives an automatic full-screen window on the
   projector. Without it the projector page opens in Safari: drag it to the projector
   and press Control-Command-F.
 - ChurchStream keeps the Mac awake while it's running. Plug the laptop in.
+- "Start ChurchStream.command" is another way to start it, in a Terminal window, if the
+  app ever won't open.
 
 User manual
 -----------
 Click the "?" button at the top of the control panel (or open
 http://localhost:8080/manual while ChurchStream is running).
 
+Your settings, songs and recordings
+-----------------------------------
+They're in the "ChurchStream-data" folder in your home folder (in Finder: Go → Home).
+Recordings are in ChurchStream-data/recordings. Updating ChurchStream (replacing
+ChurchStream.app) keeps them. If you used an older ChurchStream, whose data sat in
+this folder, it's copied there the first time you open the app.
+
 Moving to another computer
 --------------------------
-Copy the whole ChurchStream folder. Your settings, songs and services are in the
-"ChurchStream-data" folder next to the ChurchStream program.
+Copy ChurchStream.app and the ChurchStream-data folder from your home folder.
 `;
 
 const README = `ChurchStream

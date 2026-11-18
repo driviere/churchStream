@@ -149,10 +149,12 @@ ChurchStream also runs on Mac laptops and desktops (macOS 13 Ventura or later).
    - **`ChurchStream-mac-x64.zip`** for older Intel Macs.
 
    Not sure which you have? Apple menu → **About This Mac**: *Chip: Apple M…* means arm64; *Processor: Intel* means x64.
-2. Unzip it and move the **ChurchStream** folder somewhere permanent, e.g. **Documents**.
-3. Double-click **Start ChurchStream.command**. A Terminal window opens and keeps ChurchStream running; close it to stop.
-   - The first time, macOS may say the file *can't be opened* or *Apple could not verify it*, because the app isn't from the App Store. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**. Or Control-click the file in Finder, choose **Open**, then **Open** again.
-   - When macOS asks whether **Terminal** may use the camera and microphone, click **Allow**. When it asks whether ChurchStream may accept incoming network connections, click **Allow** too, so phones and tablets can connect.
+2. Unzip it and drag **ChurchStream.app** into **Applications** (or keep the folder in **Documents**).
+3. Double-click **ChurchStream.app**. It runs in the Dock, with no Terminal window. Click its Dock icon to open the control panel again; **Quit** stops everything.
+   - The first time, macOS may say the app *can't be opened* or *Apple could not verify it*, because it isn't from the App Store. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**. Or Control-click the app in Finder, choose **Open**, then **Open** again.
+   - When macOS asks whether ChurchStream may use the camera and microphone, click **OK**. When it asks about incoming network connections or the local network, click **Allow**, so phones, tablets and network cameras can connect.
+   - Settings, songs, services and recordings are kept in **ChurchStream-data** in your home folder, so a newer ChurchStream.app keeps them. Data from an older version is copied there the first time.
+   - *Start ChurchStream.command* is included as another way to start it in Terminal.
 4. Set it up in your browser, the same as on Windows.
 
 On a Mac:

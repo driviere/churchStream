@@ -180,15 +180,19 @@ jobs:
           T="$RUNNER_TEMP/mac-test"; rm -rf "$T"; mkdir -p "$T"
           ditto -x -k dist/ChurchStream-mac-arm64.zip "$T"
           cd "$T/ChurchStream"
-          ls -l . ffmpeg
-          test -x ./ChurchStream && test -x ./ffmpeg/ffmpeg && test -x "./Start ChurchStream.command"
-          codesign -v ./ChurchStream && echo "ChurchStream is signed"
+          ls -l . ChurchStream.app/Contents/Resources ChurchStream.app/Contents/Resources/ffmpeg
+          test -x ChurchStream.app/Contents/Resources/ChurchStream && test -x ChurchStream.app/Contents/Resources/ffmpeg/ffmpeg && test -x "./Start ChurchStream.command"
+          codesign --verify --deep ChurchStream.app && echo "ChurchStream.app is signed"
+          for k in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription; do plutil -extract "$k" raw ChurchStream.app/Contents/Info.plist >/dev/null || { echo "::error::Info.plist lacks $k"; exit 1; }; done
+          echo "Info.plist: $(plutil -extract CFBundleIdentifier raw ChurchStream.app/Contents/Info.plist) $(plutil -extract CFBundleShortVersionString raw ChurchStream.app/Contents/Info.plist)"
+          cd ChurchStream.app/Contents/Resources
           ./ffmpeg/ffmpeg -hide_banner -version | head -1
           ./ffmpeg/ffmpeg -hide_banner -encoders 2>/dev/null | grep -E " libx264 | h264_videotoolbox " || { echo "::error::FFmpeg lacks an H.264 encoder"; exit 1; }
           ./ffmpeg/ffmpeg -hide_banner -devices 2>/dev/null | grep -q avfoundation || { echo "::error::FFmpeg lacks AVFoundation (camera) support"; exit 1; }
+          export CHURCHSTREAM_DATA="$T/data"
           CHURCHSTREAM_NO_BROWSER=1 ./ChurchStream --port 8126 > "$T/log.txt" 2>&1 &
           PID=$!
-          trap 'kill $PID 2>/dev/null || true; pkill -f "ChurchStream/ffmpeg/ffmpeg" || true; echo "--- server output ---"; tail -30 "$T/log.txt"' EXIT
+          trap 'kill $PID 2>/dev/null || true; pkill -f "Resources/ffmpeg/ffmpeg" || true; echo "--- server output ---"; tail -30 "$T/log.txt"' EXIT
           for i in $(seq 1 30); do curl -sf localhost:8126/control >/dev/null && break; sleep 1; done
           curl -sf localhost:8126/control > /dev/null && echo "Control panel OK"
           curl -sf localhost:8126/manual > /dev/null && curl -sf localhost:8126/remote > /dev/null && echo "Manual and remote OK"
@@ -207,10 +211,30 @@ jobs:
           curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("Live:",s.state,"encoder:",s.encoder,"speed:",s.speed+"x",s.problem||"");if(s.state!=="running")process.exit(1)})'
           post /api/stream/stop '{}'
           sleep 3
-          ls -l ChurchStream-data/recordings
-          SIZE=$(find ChurchStream-data/recordings -name '*.mkv' -exec stat -f %z {} \; | sort -n | tail -1)
+          ls -l "$CHURCHSTREAM_DATA/recordings"
+          SIZE=$(find "$CHURCHSTREAM_DATA/recordings" -name '*.mkv' -exec stat -f %z {} \; | sort -n | tail -1)
           [ "${SIZE:-0}" -gt 50000 ] || { echo "::error::Recording was not created"; exit 1; }
           echo "Recording OK: $SIZE bytes"
+
+      - name: Open ChurchStream.app like a user would, then quit it
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="$RUNNER_TEMP/mac-app"; rm -rf "$T"; mkdir -p "$T"
+          ditto -x -k dist/ChurchStream-mac-arm64.zip "$T"
+          # Data from an older ChurchStream next to the app is copied to ~/ChurchStream-data.
+          rm -rf "$HOME/ChurchStream-data"; mkdir -p "$T/ChurchStream/ChurchStream-data"; echo '{"setupComplete":true,"churchName":"Smoke Test Church"}' > "$T/ChurchStream/ChurchStream-data/config.json"
+          open "$T/ChurchStream/ChurchStream.app"
+          trap 'echo "--- app log ---"; tail -30 "$HOME/ChurchStream-data/run/churchstream.log" 2>/dev/null || true; pkill -f "Resources/ChurchStream" || true' EXIT
+          for i in $(seq 1 40); do [ -s "$HOME/ChurchStream-data/run/url.txt" ] && break; sleep 1; done
+          URL=$(cat "$HOME/ChurchStream-data/run/url.txt"); echo "App started: $URL"
+          curl -sf "$URL" > /dev/null && echo "Control panel answers"
+          curl -sf "${URL%/control}/api/state" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d);console.log("Church:",s.config.churchName,"| FFmpeg:",s.ffmpeg.ok);if(s.config.churchName!=="Smoke Test Church"||!s.ffmpeg.ok)process.exit(1)})'
+          pgrep -f "Resources/ChurchStream" > /dev/null && echo "Server runs inside the app"
+          osascript -e 'tell application "ChurchStream" to quit'
+          for i in $(seq 1 20); do pgrep -f "Resources/ChurchStream" > /dev/null || break; sleep 1; done
+          if pgrep -f "Resources/ChurchStream" > /dev/null; then echo "::error::ChurchStream kept running after Quit"; exit 1; fi
+          echo "Quit stops ChurchStream"
 
       - name: Build for Intel Macs
         run: node scripts/build-exe.js --target mac-x64
@@ -223,10 +247,10 @@ jobs:
           softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
           T="$RUNNER_TEMP/mac-x64"; rm -rf "$T"; mkdir -p "$T"
           ditto -x -k dist/ChurchStream-mac-x64.zip "$T"
-          cd "$T/ChurchStream"
+          cd "$T/ChurchStream/ChurchStream.app/Contents/Resources"
           file ./ChurchStream ./ffmpeg/ffmpeg
           arch -x86_64 ./ffmpeg/ffmpeg -hide_banner -version | head -1
-          CHURCHSTREAM_NO_BROWSER=1 arch -x86_64 ./ChurchStream --port 8127 > "$T/log.txt" 2>&1 &
+          CHURCHSTREAM_DATA="$T/data" CHURCHSTREAM_NO_BROWSER=1 arch -x86_64 ./ChurchStream --port 8127 > "$T/log.txt" 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true; tail -20 "$T/log.txt"' EXIT
           for i in $(seq 1 40); do curl -sf localhost:8127/control >/dev/null && break; sleep 1; done
