@@ -42,10 +42,10 @@ on launchChurchStream()
 	-- Already running (opened twice, or started from Terminal)? Just show the control panel.
 	-- The server writes its process number to run/server.pid when it starts.
 	set pidFile to dataDir & "/run/server.pid"
-	set running to do shell script "p=$(/bin/cat " & quoted form of pidFile & " 2>/dev/null); if [ -n \"$p\" ] && /bin/kill -0 \"$p\" 2>/dev/null && /bin/ps -p \"$p\" -o comm= | /usr/bin/grep -q ChurchStream; then echo \"$p\"; fi"
-	if running is not "" then
-		logStep("already running, process " & running)
-		set serverPid to running
+	set existingPid to do shell script "p=$(/bin/cat " & quoted form of pidFile & " 2>/dev/null); if [ -n \"$p\" ] && /bin/kill -0 \"$p\" 2>/dev/null && /bin/ps -p \"$p\" -o comm= | /usr/bin/grep -q ChurchStream; then echo \"$p\"; fi"
+	if existingPid is not "" then
+		logStep("already running, process " & existingPid)
+		set serverPid to existingPid
 		openControl()
 		return
 	end if
