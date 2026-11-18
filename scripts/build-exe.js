@@ -244,7 +244,8 @@ CHURCHSTREAM_DATA="$DATA" exec ./ChurchStream
   // ditto keeps the executable permissions and signatures that a plain zip would lose.
   run('ditto', ['-c', '-k', '--keepParent', APP, zipOut]);
   const mb = (f) => (fs.statSync(f).size / 1048576).toFixed(1) + ' MB';
-  console.log(`\n✓ ${path.relative(ROOT, bin)} (${mb(bin)})`);
+  const appBin = path.join(APP, "ChurchStream.app", "Contents", "Resources", "ChurchStream");
+  console.log(`\n✓ ${path.relative(ROOT, path.join(APP, "ChurchStream.app"))} (program ${mb(appBin)})`);
   console.log(`✓ ${path.relative(ROOT, zipOut)} (${mb(zipOut)})\n`);
 }
 
