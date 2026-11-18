@@ -340,3 +340,38 @@ test('PowerPoint files: refusals and a LibreOffice conversion', { timeout: 20000
   assert.equal(r.pdf.slice(0, 5).toString(), '%PDF-');
   assert.equal((r.pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 3);
 });
+
+// Smallest text size: slides that don't fit continue on the next slide.
+test('slides that are too full at the smallest text size are split', () => {
+  const { fitSlides, capacity, wrappedLines, splitText } = require('../lib/fit');
+  assert.ok(capacity({ minText: 6.5 }).lines < capacity({ minText: 3.2 }).lines);
+  assert.equal(wrappedLines('one two three four five', 9), 3);
+  const verse = { label: 'Verse 1', text: 'Amazing grace! How sweet the sound\nThat saved a wretch like me!\nI once was lost, but now am found,\nWas blind, but now I see.\n’Twas grace that taught my heart to fear,\nAnd grace my fears relieved;\nHow precious did that grace appear\nThe hour I first believed.' };
+  // Fits at the usual size: unchanged.
+  assert.deepEqual(fitSlides([verse], { kind: 'song', theme: { minText: 3.2 } }).slides, [verse]);
+  // At a large minimum: two parts of whole lines, evenly, labelled, remembering their slide.
+  const big = fitSlides([verse, { label: 'Refrain', text: 'Short' }], { kind: 'song', theme: { minText: 7.5 } });
+  assert.deepEqual(big.slides.map((x) => x.label), ['Verse 1 (1/2)', 'Verse 1 (2/2)', 'Refrain']);
+  assert.deepEqual(big.orig, [0, 0, 1]);
+  assert.deepEqual(big.slides.map((x) => x.text.split('\n').length), [4, 4]
+    .concat([1]));
+  // Splitting again changes nothing (showing an item twice keeps its slides).
+  assert.deepEqual(fitSlides(big.slides, { kind: 'song', theme: { minText: 7.5 } }).slides, big.slides);
+  // Turned off: never split.
+  assert.equal(fitSlides([verse], { kind: 'song', theme: { minText: 7.5, overflow: false } }).slides.length, 1);
+  // Bible: whole verses together, references per part.
+  const b = new Bible(path.join(__dirname, '..', 'defaults', 'bible'));
+  const ps = b.lookup('Psalm 23', 'kjv');
+  assert.equal(fitSlides(ps.slides, { kind: 'bible', theme: { minText: 7.5 } }).slides.length, ps.slides.length, 'Psalm 23 fits as it is');
+  const parts = fitSlides(ps.slides, { kind: 'bible', theme: { minText: 9 } }).slides;
+  assert.ok(parts.length > ps.slides.length);
+  assert.equal(parts[0].ref, 'Psalm 23:1–2 KJV');
+  assert.ok(parts.every((p) => p.verses.length && p.text === p.verses.map((v) => v.text).join(' ')));
+  // A very long sentence breaks at punctuation, not mid-phrase, and every piece fits.
+  const long = 'And it came to pass, when the king heard the words of the book of the law, that he rent his clothes. And the king commanded Hilkiah the priest, and Ahikam the son of Shaphan, and Achbor the son of Michaiah, and Shaphan the scribe, saying, Go ye, enquire of the LORD for me.';
+  const pieces = splitText(long, { chars: 30 }, 4);
+  assert.ok(pieces.length >= 3 && pieces.every((p) => wrappedLines(p, 30) <= 4));
+  assert.match(pieces[0], /[.,;:]$/);
+  // Pictures, videos and countdowns are never split.
+  assert.equal(fitSlides([{ image: 'x.jpg', text: '' }], { kind: 'images', theme: { minText: 9 } }).slides.length, 1);
+});

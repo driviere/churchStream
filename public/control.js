@@ -1,5 +1,5 @@
 import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
-import { connect, fitText, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
+import { connect, fitText, textSizes, WRAP_GAIN, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
 
@@ -79,6 +79,18 @@ const icons = {
 
 // ---------------------------------------------------------------------------------------
 // the projected screen, used for thumbnails and the mini projector view
+// Slides split to fit the screens (lib/fit.js) → the slides as typed, for editing.
+function unsplit(item) {
+  if (!item || !item.slides || !item.slides.some((sl) => sl.src != null)) return item;
+  const out = [];
+  for (const sl of item.slides) {
+    const prev = out[out.length - 1];
+    if (prev && sl.src != null && prev.src === sl.src) prev.text += '\n' + sl.text;
+    else out.push({ ...sl, label: String(sl.label || '').replace(/\s*\(\d+\/\d+\)$/, '') });
+  }
+  return { ...item, slides: out };
+}
+
 function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, clear, logo, bg, lt, countdown, skew = 0 }) {
   const ref = useRef();
   const scale = theme.textScale || 1;
@@ -88,7 +100,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
   const text = !black && !clear && !logo && slide && !isCount && !slide.image && kind !== 'media' ? slide : null;
   const ltOn = !!(lt && !black && !logo);
   const tcls = themeClasses(theme);
-  useLayoutEffect(() => { if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }, [text && text.text, text && text.part, scale, ltOn, tcls]);
+  useLayoutEffect(() => { if (ref.current) fitText(ref.current, textSizes(theme)); }, [text && text.text, text && text.part, scale, theme.minText, ltOn, tcls]);
   // Re-fit when the screen changes size (e.g. a hidden tab becomes visible).
   useEffect(() => {
     const el = ref.current && ref.current.closest('.screen');
@@ -96,7 +108,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     let w = 0;
     const ro = new ResizeObserver(([e]) => {
       const nw = Math.round(e.contentRect.width);
-      if (nw && nw !== w) { w = nw; if (ref.current) fitText(ref.current, { max: 8.5 * scale }); }
+      if (nw && nw !== w) { w = nw; if (ref.current) fitText(ref.current, textSizes(theme)); }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -559,6 +571,8 @@ function Aside({ s, onGoLive, onStop, active }) {
             ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
             : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
+      <${StreamPhase} s=${s} />
+      <${CameraSwitch} s=${s} />
       <div>
         <div class="seg-label">Stream shows</div>
         <div class="seg" role="radiogroup" aria-label="What the stream shows">
@@ -575,6 +589,7 @@ function Aside({ s, onGoLive, onStop, active }) {
       </div>
       ${(cfg.streamScene || 'camera') !== 'slides' && (cfg.streamScene || 'camera') !== 'pip' && html`
         <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}
+      <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
         : st.mode === 'live'
@@ -611,6 +626,76 @@ function TitleHelper({ s }) {
   </div>`;
 }
 
+const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc'; };
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// "Starting soon" / "Thank you for watching" on the stream, with a way to skip ahead.
+function StreamPhase({ s }) {
+  const ph = s.stream.phase;
+  const [, tick] = useState(0);
+  useEffect(() => { if (!ph) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [ph && ph.until]);
+  if (!ph) return null;
+  const left = Math.max(0, Math.round((ph.until - Date.now()) / 1000));
+  return html`<div class="note row" style="margin:0;gap:8px">
+    <span class="grow">${ph.kind === 'start'
+      ? html`<b>Starting screen</b> on the stream until ${clock(ph.until)}`
+      : html`<b>Thank-you screen</b> · the stream ends in ${left} s`}</span>
+    ${ph.kind === 'start'
+      ? html`<button class="btn small" onClick=${() => api('/api/stream/begin', {}).catch(fail)}>Start service now</button>`
+      : html`<button class="btn small danger" onClick=${() => api('/api/stream/stop', { now: true }).catch(fail)}>End now</button>`}
+  </div>`;
+}
+
+// Camera 1 / Camera 2 on air.
+function CameraSwitch({ s }) {
+  const cfg = s.config;
+  if (!hasCam2(cfg)) return null;
+  const down = s.stream.camera2 === 'down';
+  const cur = down ? 1 : cfg.activeCamera === 2 ? 2 : 1;
+  return html`<div>
+    <div class="seg-label">Camera on air <span class="muted" style="font-weight:400">(keys 1 and 2)</span></div>
+    <div class="seg" role="radiogroup" aria-label="Camera on air" style="grid-template-columns:1fr 1fr">
+      ${[1, 2].map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} disabled=${n === 2 && down} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>Camera ${n}${n === 2 && down ? ' ⚠' : ''}</button>`)}
+    </div>
+    ${down && html`<div class="hint" style="margin-top:6px;color:var(--danger,#d92d20)">Camera 2 stopped, so the stream is showing camera 1. Check its cable; it comes back by itself within about 30 seconds of working again.</div>`}
+    ${s.stream.camera2 === 'back' && html`<div class="hint" style="margin-top:6px;color:var(--ok)">Camera 2 is back.</div>`}
+  </div>`;
+}
+
+// Recording on this computer: on/off, quality, and each camera on its own. Shown on the Live
+// stream card (easy to find) and in Settings.
+const STREAM_GB = { low: 0.6, good: 1.2, high: 2.1 };
+function RecordingOptions({ s, compact }) {
+  const cfg = s.config;
+  const live = s.stream.mode === 'live';
+  const size = { low: '480p', good: '720p', high: '1080p' }[cfg.quality] || '720p';
+  const opts = compact ? [
+    ['stream', `Same as stream (${size}) · ${STREAM_GB[cfg.quality] || 1.2} GB/h`],
+    ['hd', '720p high · 2.3 GB/h'],
+    ['fullhd', '1080p high · 3.6 GB/h'],
+    ['best', '1080p best · 5.5 GB/h'],
+  ] : [
+    ['stream', `Same as the stream (${size}) · about ${STREAM_GB[cfg.quality] || 1.2} GB per hour`],
+    ['hd', '720p, high quality · about 2.3 GB per hour'],
+    ['fullhd', '1080p, high quality · about 3.6 GB per hour'],
+    ['best', '1080p, best · about 5.5 GB per hour'],
+  ];
+  const q = cfg.recordQuality || 'stream';
+  const gpu = s.stream.encoder && !/libx264/.test(s.stream.encoder);
+  return html`<div class="stack" style="gap:6px">
+    <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!cfg.record} onChange=${(e) => save({ record: e.target.checked })} /><span>Record this service on this computer</span></label>
+    ${cfg.record && html`
+      <select class="select" aria-label="Recording quality" value=${q} onChange=${(e) => save({ recordQuality: e.target.value })}>
+        ${opts.map(([id, label]) => html`<option value=${id}>${label}</option>`)}</select>
+      ${!compact && html`<div class="hint" style="margin-top:0">${q === 'stream'
+        ? 'Saves exactly what viewers see, with no extra work for the computer.'
+        : html`Saved at higher quality than the stream, for editing or uploading later. It's encoded separately${gpu ? ' on the graphics card' : html`, which uses <b>more processor</b> without a graphics encoder`}.`}</div>`}
+      ${hasCam2(cfg) || !compact ? html`<label class="switch" style="min-height:32px"><input type="checkbox" checked=${!!cfg.recordCameras} onChange=${(e) => save({ recordCameras: e.target.checked })} /><span>Also record each camera on its own${compact ? '' : ' (no slides or names)'}</span></label>` : ''}
+      ${live && html`<div class="hint" style="margin-top:0">Changes apply the next time you go live.</div>`}
+      ${!compact && html`<div class="hint" style="margin-top:0">Recordings are saved in the <b>ChurchStream-data${s.platform === 'win32' ? '\\' : '/'}recordings</b> folder${cfg.recordCameras ? ', with each camera as its own file (“… - Camera 1.mkv”)' : ''}.</div>`}`}
+  </div>`;
+}
+
 function GoLiveDialog({ s, onClose }) {
   const st = s.stream;
   const cfg = s.config;
@@ -626,7 +711,7 @@ function GoLiveDialog({ s, onClose }) {
   const sound = loud !== null && loud > -50;
   const go = async () => {
     setBusy(true);
-    try { await api('/api/stream/start', { mode: 'live' }); onClose(); toast('You are live'); } catch (err) { fail(err); setBusy(false); }
+    try { await api('/api/stream/start', { mode: 'live', startScreen: !!(cfg.startScreen && cfg.startScreen.enabled) }); onClose(); toast('You are live'); } catch (err) { fail(err); setBusy(false); }
   };
   return html`<${Modal} title="Ready to go live?" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
@@ -638,17 +723,33 @@ function GoLiveDialog({ s, onClose }) {
       <li><span class=${sound ? 'ok' : 'bad'}>${sound ? icons.check() : icons.alert()}</span>${cfg.audio.source === 'none' ? 'No microphone selected — the stream will be silent' : sound ? 'Sound is coming through' : 'No sound yet — say something into the microphone'}</li>
       <li><span class=${dests.length ? 'ok' : 'bad'}>${dests.length ? icons.check() : icons.alert()}</span>${dests.length ? `Streaming to ${dests.join(' and ')}` : 'Recording only (no YouTube/Facebook key set)'}${cfg.record && dests.length ? ' + recording' : ''}</li>
     </ul>
+    <div class="row wrap" style="margin-top:12px;gap:8px">
+      <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!(cfg.startScreen && cfg.startScreen.enabled)} onChange=${(e) => save({ startScreen: { enabled: e.target.checked } })} /><span>Start with a countdown on the stream</span></label>
+      ${cfg.startScreen && cfg.startScreen.enabled && html`<select class="select" style="width:auto" aria-label="Countdown length" value=${cfg.startScreen.minutes || 5} onChange=${(e) => save({ startScreen: { minutes: +e.target.value } })}>
+        ${[2, 5, 10, 15, 20, 30].map((m) => html`<option value=${m}>${m} minutes</option>`)}</select>`}
+    </div>
+    ${cfg.startScreen && cfg.startScreen.enabled && html`<div class="hint" style="margin-top:0">Viewers (and the screens) see “${cfg.startScreen.message || 'Our service begins in'}” counting down; then the stream switches to “${{ camera: 'Camera', slides: 'Slides', pip: 'Slides + camera', auto: 'Auto' }[cfg.streamScene || 'camera']}”. You can start sooner.</div>`}
     <${TitleHelper} s=${s} />
     <p class="hint">On YouTube and Facebook, the broadcast may take 10–30 seconds to appear.</p>
   </${Modal}>`;
 }
 
-function StopDialog({ onClose }) {
+function StopDialog({ s, onClose }) {
   const [busy, setBusy] = useState(false);
+  const es = s.config.endScreen || {};
+  const end = async () => {
+    setBusy(true);
+    const r = await api('/api/stream/stop', { endScreen: !!es.enabled }).catch(fail);
+    onClose();
+    toast(r && r.ending ? `Showing the thank-you screen; the stream ends in ${r.ending} seconds` : 'Stream ended');
+  };
   return html`<${Modal} title="End the live stream?" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Keep streaming</button>
-      <button class="btn danger" disabled=${busy} onClick=${async () => { setBusy(true); await api('/api/stream/stop', {}).catch(fail); onClose(); toast('Stream ended'); }}>End stream</button>`}>
-    <p class="muted" style="margin:0">Viewers will see the broadcast end. Any recording is saved to the Recordings folder.</p>
+      <button class="btn danger" disabled=${busy} onClick=${end}>${es.enabled ? 'Thank viewers, then end' : 'End stream'}</button>`}>
+    <label class="switch" style="min-height:36px"><input type="checkbox" checked=${!!es.enabled} onChange=${(e) => save({ endScreen: { enabled: e.target.checked } })} /><span>First show “${es.text || 'Thank you for worshipping with us'}” for</span>
+      <select class="select" style="width:auto;margin-left:4px" aria-label="Seconds" value=${es.seconds || 30} onClick=${(e) => e.preventDefault()} onChange=${(e) => save({ endScreen: { seconds: +e.target.value } })}>
+        ${[10, 20, 30, 60].map((n) => html`<option value=${n}>${n} seconds</option>`)}</select></label>
+    <p class="muted" style="margin:8px 0 0">Viewers will see the broadcast end. Any recording is saved to the Recordings folder.</p>
   </${Modal}>`;
 }
 
@@ -1399,7 +1500,8 @@ function BackgroundGallery({ value, onPick, defaultTile }) {
 function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
   const plan = s.plan.items.find((x) => x.uid === item.key) || {};
   const [scope, setScope] = useState(slideIndex === null ? 'item' : 'slide');
-  const i = slideIndex === null ? 0 : slideIndex;
+  // A slide split to fit the screens saves its background on the slide it came from.
+  const i = slideIndex === null ? 0 : (item && item.slides && item.slides[slideIndex] && item.slides[slideIndex].src != null ? item.slides[slideIndex].src : slideIndex);
   const current = scope === 'slide' ? ((plan.slideBackgrounds || {})[i] || '') : (plan.background || '');
   const [pick, setPick] = useState(current);
   useEffect(() => setPick(current), [scope]);
@@ -1476,7 +1578,8 @@ function ControlView({ s }) {
   const item = selected || (s.live ? s.live.item : null);
   const inPlan = item && s.plan.items.some((x) => x.uid === item.key);
 
-  const show = (it, index = 0) => api('/api/live', { item: it, index }).then(() => { setSelected(it); }).catch(fail);
+  // The server may split slides that are too full for the screens; show its version.
+  const show = (it, index = 0) => api('/api/live', { item: it, index }).then((d) => { setSelected(d && d.item ? { ...it, ...d.item, songId: it.songId, ref: it.ref, translation: it.translation } : it); }).catch(fail);
   const addToPlan = (it) => {
     const entry = { kind: it.kind, title: it.title, subtitle: it.subtitle, songId: it.songId, ref: it.ref, translation: it.translation, count: it.slides.length,
       slides: it.kind === 'text' || it.kind === 'countdown' || it.kind === 'images' ? it.slides : undefined, autoAdvance: it.autoAdvance, countdown: it.countdown, media: it.media };
@@ -1511,6 +1614,7 @@ function ControlView({ s }) {
       else if (e.key === 'b' || e.key === 'B' || e.key === '.') toggle('black');
       else if (e.key === 'c' || e.key === 'C') toggle('clear');
       else if (e.key === 'l' || e.key === 'L') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
+      else if ((e.key === '1' || e.key === '2') && hasCam2(s.config)) api('/api/camera', { camera: +e.key }).catch(fail);
     };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
@@ -1588,7 +1692,7 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item: unsplit(item) }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
         onVerses=${(verses) => setVerses(item.key, verses)} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
@@ -1607,7 +1711,7 @@ function ControlView({ s }) {
       </div>
     </div>
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
-    ${dialog && dialog.type === 'stop' && html`<${StopDialog} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'bg' && html`<${BackgroundDialog} s=${s} item=${dialog.item} slideIndex=${dialog.slideIndex} onClose=${() => setDialog(null)} onSaved=${() => refreshItem(dialog.item.key)} />`}
     ${dialog && dialog.type === 'text' && html`<${TextEditor} preset=${dialog.preset} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
       initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveText(dialog.item.key, title, slides, auto) : null} />`}
@@ -1768,6 +1872,7 @@ function SectionCamera({ s, autoPreview }) {
       ${v.type === 'rtsp' && html`<div class="field"><label class="label">Camera address (RTSP)</label>
         <input class="input" value=${rtsp} placeholder="rtsp://user:password@192.168.1.50:554/stream1" onInput=${(e) => setRtsp(e.target.value)} onBlur=${() => save({ video: { rtspUrl: rtsp.trim() } })} />
         <div class="hint">Found in your camera's manual or app. Usually starts with rtsp://</div></div>`}
+      <${SecondCamera} s=${s} devs=${devs} />
       <div class="field"><label class="label">Sound</label>
         <select class="select" value=${a.source === 'device' ? 'device:' + a.device : a.source} onChange=${(e) => {
           const val = e.target.value;
@@ -1801,6 +1906,28 @@ function SectionCamera({ s, autoPreview }) {
       </div>
     </div>
   </div>`;
+}
+
+// Camera 2 (optional): switched on air with Camera 1 / Camera 2 on the control panel.
+function SecondCamera({ s, devs }) {
+  const v1 = s.config.video;
+  const v2 = s.config.video2 || { type: 'none' };
+  const [url, setUrl] = useState(v2.rtspUrl || '');
+  const cams = devs ? devs.video.filter((d) => !(v1.type === 'dshow' && d === v1.device)) : [];
+  return html`<div class="field"><label class="label">Second camera (optional)</label>
+    <select class="select" value=${v2.type || 'none'} onChange=${(e) => save({ video2: { type: e.target.value } })}>
+      <option value="none">None</option>
+      <option value="dshow">${s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card'}</option>
+      <option value="rtsp">Network (IP) camera</option>
+      <option value="testsrc">Test pattern (to try it out)</option>
+    </select>
+    ${v2.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Second camera" value=${v2.device} onChange=${(e) => save({ video2: { device: e.target.value } })}>
+      <option value="">${devs ? (cams.length ? 'Choose the second camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
+      ${cams.map((d) => html`<option value=${d}>${d}</option>`)}
+      ${v2.device && devs && !devs.video.includes(v2.device) && html`<option value=${v2.device}>${v2.device} (not connected)</option>`}
+    </select></div>`}
+    ${v2.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label="Second camera address" value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ video2: { rtspUrl: url.trim() } })} />`}
+    <div class="hint">${hasCam2(s.config) ? 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.' : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div></div>`;
 }
 
 function SectionProjector({ s }) {
@@ -1851,7 +1978,8 @@ function SectionStreaming({ s }) {
     <label class="label" style="margin-top:20px">Quality</label>
     <div class="choices">${qualities.map(([id, t, d]) => html`<button class=${'choice' + (cfg.quality === id ? ' on' : '')} onClick=${() => save({ quality: id })}><b>${t}</b><span>${d}</span></button>`)}</div>
     <div class="note" style="margin-bottom:16px">The video is encoded <b>once</b> and sent to every platform, so the computer works no harder for two platforms. Your internet upload needs to cover each platform. Check it at <a href="https://fast.com" target="_blank" rel="noopener">fast.com</a> (“Show more info”). If unsure, start with <b>Good</b>.</div>
-    <label class="switch"><input type="checkbox" checked=${cfg.record} onChange=${(e) => save({ record: e.target.checked })} /><span>Also record a copy on this computer</span></label>
+    <label class="label" style="margin-top:20px">Recording</label>
+    <${RecordingOptions} s=${s} />
   </div>`;
 }
 
@@ -2068,8 +2196,16 @@ function SectionAppearance({ s }) {
       <${LogoField} s=${s} />
       <div class="field"><label class="label">Control panel colours</label>
         <div class="choices">${[['light', 'Light', 'Bright and easy to read'], ['dark', 'Dark', 'Less glare in a dim room']].map(([v, t, d]) => html`<button class=${'choice' + ((s.config.uiTheme || 'light') === v ? ' on' : '')} onClick=${() => save({ uiTheme: v })}><b>${t}</b><span>${d}</span></button>`)}</div></div>
-      <div class="field"><label class="label">Projector text size</label>
-        <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div></div>
+      <div class="field"><label class="label">Largest text size</label>
+        <div class="choices">${[[0.85, 'Smaller'], [1, 'Normal'], [1.15, 'Larger'], [1.3, 'Largest']].map(([v, t]) => html`<button class=${'choice' + ((theme.textScale || 1) === v ? ' on' : '')} onClick=${() => save({ theme: { textScale: v } })}><b>${t}</b></button>`)}</div>
+        <div class="hint">Every slide uses this size whenever its words fit. A slide with more words shrinks only as much as it needs, down to the smallest size below.</div></div>
+      <div class="field"><label class="label">Smallest text size</label>
+        <div class="choices">${[[3.2, 'Small', 'Fits the most words'], [4.2, 'Medium', ''], [5.2, 'Large', 'Easier from the back'], [6.5, 'Extra large', 'Big rooms, older eyes']].map(([v, t, d]) => html`<button class=${'choice' + ((theme.minText || 3.2) === v ? ' on' : '')} onClick=${() => save({ theme: { minText: v } })}><b>${t}</b>${d && html`<span>${d}</span>`}</button>`)}</div>
+        ${(theme.minText || 3.2) >= 8.5 * (theme.textScale || 1) * 0.85 && html`<div class="hint" style="margin-top:4px">The smallest size is close to the largest, so most slides will be the same size.</div>`}
+        <label class="switch" style="margin-top:8px"><input type="checkbox" checked=${theme.overflow !== false} onChange=${(e) => save({ theme: { overflow: e.target.checked } })} /><span>When the words don't fit at this size, continue on the next slide</span></label>
+        <div class="hint">${theme.overflow !== false
+          ? 'Words never get smaller than this. A slide that would need smaller text is split in two (“Verse 1 (1/2)”, “(2/2)”), keeping whole lines and whole Bible verses together. Next steps through the parts as usual.'
+          : 'Words never get smaller than this, so a very full slide may not fit on the screen.'}</div></div>
       <div class="field"><label class="label" for="proj-font">Projector font</label>
         <select id="proj-font" class="select" value=${theme.font || 'inter'} onChange=${(e) => save({ theme: { font: e.target.value } })}>
           ${Object.entries(FONTS).map(([k, f]) => html`<option value=${k}>${f.label}</option>`)}</select></div>
@@ -2314,7 +2450,7 @@ function programKey(s) {
   const t = s.config.theme || {};
   const cd = live && live.item.kind === 'countdown' ? countdownParts(live.item.countdown, Date.now() + (s.now - (s.receivedAt || s.now))) : null;
   return JSON.stringify([cd && [cd.time, cd.message], slide && slide.image, effectiveBg(slide, live && live.item, t), slide && slide.text, slide && slide.ref, live && live.item.kind, live && live.item.subtitle,
-    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, themeClasses(t), slide && slide.part, s.config.quality]);
+    s.black, s.clear, s.logo, t.logo, t.logoName, t.logoSize, s.config.churchName, t.textScale || 1, t.minText, themeClasses(t), slide && slide.part, s.config.quality]);
 }
 
 function wrapLines(ctx, text, maxW) {
@@ -2336,7 +2472,10 @@ const STREAM_SIZE = { low: [854, 480], good: [1280, 720], high: [1920, 1080] };
 const PROGRAM_JPEG = 0.94;
 async function renderProgram(s) {
   // Drawn at the stream's own size, so slide text stays sharp at 1080p (no upscaling).
-  const [W, H] = STREAM_SIZE[s.config.quality] || STREAM_SIZE.good;
+  // The stream's size, or the recording's when that is larger (a 1080p recording of a 720p stream).
+  const rec = s.config.record && { hd: 720, fullhd: 1080, best: 1080 }[s.config.recordQuality];
+  const [W0, H0] = STREAM_SIZE[s.config.quality] || STREAM_SIZE.good;
+  const [W, H] = rec && rec > H0 ? (rec === 1080 ? [1920, 1080] : [1280, 720]) : [W0, H0];
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
@@ -2453,8 +2592,9 @@ async function renderProgram(s) {
     }
     const part = slide.part && PARTS[slide.part] ? slide.part : '';
     const labelH = part ? 0.62 : 0; // the Leader / Congregation label, in lines of text
-    const max = H * 0.085 * (t.textScale || 1);
-    const min = H * 0.032;
+    const sz = textSizes(t); // same sizes as the screens (percent of height)
+    const max = H * sz.max / 100;
+    const min = H * sz.min / 100;
     const layout = (size, wrap) => {
       ctx.font = `${WT} ${size}px ${FONT}`;
       const lines = wrap ? wrapLines(ctx, slide.text, box.w) : String(slide.text).split('\n');
@@ -2467,9 +2607,14 @@ async function renderProgram(s) {
       for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (layout(mid, wrap).fits) lo = mid; else hi = mid; }
       return lo;
     };
-    let wrap = live.item.kind === 'bible';
-    let size = search(wrap);
-    if (!wrap && size < Math.min(H * 0.054, max * 0.65)) { wrap = true; size = search(true); }
+    // Same rule as the screens (shared.js fitText): wrap long lines when that keeps the words
+    // noticeably bigger; otherwise keep each line whole.
+    let wrap = true;
+    let size = search(true);
+    if (live.item.kind !== 'bible') {
+      const whole = search(false);
+      if (layout(whole, false).fits && whole * WRAP_GAIN >= size) { wrap = false; size = whole; }
+    }
     const { lines } = layout(size, wrap);
     const lh = size * 1.28;
     const blockH = (lines.length + labelH) * lh;

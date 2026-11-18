@@ -214,7 +214,21 @@ You can stream to both at once. It doesn't use extra computer power, because the
 2. Click **Go live now**. The top bar shows **LIVE**, how long you've been live, and a ✓ for each platform.
 3. At the end, click **End live stream**, then **End stream**.
 
-Turn on *Also record a copy on this computer* (Settings → YouTube & Facebook) to keep a copy of each service in the **ChurchStream-data\recordings** folder.
+**Starting soon and thank-you screens**
+- In the Go live window, turn on **Start with a countdown on the stream** and choose how long (2–30 minutes). Viewers, and the screens in the church, see "Our service begins in" counting down. When it reaches zero, the stream switches to what you chose under *Stream shows*. **Start service now** on the Live stream card starts sooner.
+- In the End live stream window, turn on **First show "Thank you for worshipping with us"** and choose how long. The stream shows that message with your church's name, then ends by itself. **End now** ends it straight away.
+
+**Recording.** Turn on **Record this service on this computer** in the Live stream card (it's also in Settings → YouTube & Facebook). Recordings go in the **ChurchStream-data\recordings** folder. Choose the quality underneath:
+- **Same as the stream:** exactly what viewers see, with no extra work for the computer (about 1.2 GB per hour at 720p).
+- **720p high**, **1080p high** or **1080p best:** a better copy for editing or uploading later (about 2.3, 3.6 or 5.5 GB per hour). It's encoded separately from the stream. A 1080p recording works even when the stream is 720p. Without a graphics encoder this needs more processor, so try a short test first on a slower laptop.
+- **Also record each camera on its own:** each camera saved as its own file ("Service … - Camera 1.mkv"), without slides or names, ready for editing a sermon video.
+
+Changes apply the next time you go live.
+
+### Two cameras
+In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, or a network camera. The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
+
+If camera 2 stops during the service (unplugged, a loose cable, a network camera that drops out), ChurchStream notices within a few seconds and carries on with **camera 1**, with a red note on the Live stream card. It keeps checking, and when camera 2 works again it is added back by itself (with a brief pause in the stream) and shows as ready. Camera 1 stays on air until you switch. If the picture ever freezes completely, ChurchStream restarts the stream on its own.
 
 ### What the stream shows
 In the **Live stream** card, choose:
@@ -249,7 +263,9 @@ Click **Open on projector** in the Screens card. ChurchStream opens a full-scree
 ### Appearance (Settings → Appearance)
 - **Default background:** used everywhere unless an item or slide has its own.
 - **Church logo:** upload your logo (a PNG with a transparent background looks best). You can show the church name under it, and choose Small, Medium or Large. Also in Settings → General.
-- **Projector text size:** Smaller, Normal or Larger.
+- **Largest text size:** Smaller, Normal, Larger or Largest. Every slide uses this size whenever its words fit. A long line continues on the next line when that keeps the words bigger; short lines stay whole.
+- **Smallest text size:** Small, Medium, Large or Extra large. A slide with more words shrinks only as much as it needs, and never below this size.
+- **When the words don't fit at this size, continue on the next slide** (on by default): a slide that would need smaller text is split into parts, e.g. *Verse 1 (1/2)* and *Verse 1 (2/2)*. Whole lines and whole Bible verses stay together, each part of a reading shows its own verses (*John 3:16–17*), and **Next** steps through the parts. **Edit** still shows the slide as you typed it. With this off, a very full slide may not fit on the screen.
 - **Projector font:** Clean, Windows, Classic serif or Bold & plain.
 - **Where the words go:**
   - **Middle of the screen:** the usual layout.
@@ -323,6 +339,7 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
 | **B** (or **.**) | Black on/off |
 | **C** | Clear the words on/off |
 | **L** | Name (lower third) on/off |
+| **1**, **2** | Put camera 1 or camera 2 on the stream (with two cameras) |
 | **/** | Go to the search bar |
 | **Enter** in search | Show the result now |
 | **Shift + Enter** in search | Add the result to the order of service |

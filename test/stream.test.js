@@ -170,3 +170,144 @@ test('encoder settings: quality first (B-frames, no zero-latency), plainer fallb
   const args = buildFfmpegArgs({ cfg: cfg({ outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', encoder: 'h264_qsv:compat' });
   assert.match(args[args.indexOf('-filter_complex') + 1], /format=nv12\[venc\]/);
 });
+
+test('two cameras: switch on air without a restart, and record each camera on its own', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 60000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { spawn } = require('child_process');
+  const { cameraFiles, hasCamera2 } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-cam2-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  const { Overlay } = require('../lib/overlay');
+  new Overlay(dir);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  const c = cfg({ quality: 'low', record: true, recordCameras: true, video2: { type: 'testsrc' }, audio: { source: 'none' } });
+  assert.ok(hasCamera2(c));
+  assert.ok(!hasCamera2(cfg({ video2: { type: 'dshow', device: '' } })));
+  const rec = path.join(dir, 'Service.mkv');
+  const files = cameraFiles(rec, 2);
+  assert.deepEqual(files.map((f) => path.basename(f)), ['Service - Camera 1.mkv', 'Service - Camera 2.mkv']);
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, recordFile: rec, camera: 1, cameraRecordings: files });
+  const fc = args[args.indexOf('-filter_complex') + 1];
+  assert.match(fc, /streamselect@cams=inputs=2:map=0/);
+  assert.match(fc, /asplit=3\[aout\]\[aiso1\]\[aiso2\]/);
+  // Camera 2 on air from the start when it was chosen before going live.
+  assert.match(buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, recordFile: rec, camera: 2 })[args.indexOf('-filter_complex') + 1] || '', /map=1/);
+  // Run it: camera 1 for ~2 s, then switch to camera 2 with the live command, then stop.
+  const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
+  let err = ''; p.stderr.on('data', (d) => { err += d; });
+  await new Promise((r) => setTimeout(r, 2500));
+  p.stdin.write('cstreamselect@cams -1 map 1\n');
+  await new Promise((r) => setTimeout(r, 2500));
+  p.stdin.write('q');
+  const code = await new Promise((r) => p.on('close', r));
+  assert.equal(code, 0, err.split('\n').filter((l) => /error/i.test(l)).slice(-5).join('\n'));
+  for (const f of [rec, ...files]) assert.ok(fs.statSync(f).size > 1000, path.basename(f));
+  // The stream recording shows camera 1 (testsrc2: dark corner) early and camera 2 (SMPTE bars: grey corner) late.
+  const corner = (file, t) => spawnSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', 'crop=8:8:2:2,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer' }).stdout[0];
+  // Read the frames near the real end: on a slow machine the files are shorter than 5 s.
+  const duration = (file) => parseFloat(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).stdout);
+  const end = duration(rec);
+  assert.ok(end > 2, `recording is ${end} s`);
+  const early = corner(rec, 0.3);
+  const late = corner(rec, Math.max(0.5, end - 0.4));
+  assert.ok(Math.abs(early - late) > 20, `picture changed when switching cameras (${early} → ${late})`);
+  // The camera recordings never switch.
+  const end2 = duration(files[1]);
+  assert.ok(Math.abs(corner(files[1], 0.3) - corner(files[1], Math.max(0.5, end2 - 0.4))) < 10);
+});
+
+test('recording quality: a separate, better recording; the picture is built at 1080p and scaled for the stream', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 60000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { spawn } = require('child_process');
+  const { composeQuality } = require('../lib/stream');
+  // Same as the stream: the recording rides on the stream's encode (one encode, a tee slave).
+  const same = buildFfmpegArgs({ cfg: cfg({ quality: 'good', record: true, recordQuality: 'stream', outputs: { youtube: { enabled: true, key: 'k' } } }), mode: 'live', recordFile: 'r.mkv' });
+  assert.match(teeArg(same), /f=matroska/);
+  assert.equal(same.filter((x) => x === '-c:v').length, 1);
+  // 1080p recording of a 720p stream: built at 1080p, scaled down for the stream, encoded twice.
+  const c = cfg({ quality: 'good', record: true, recordQuality: 'fullhd', outputs: { youtube: { enabled: true, key: 'k' } } });
+  assert.deepEqual([composeQuality(c).width, composeQuality(c).height], [1920, 1080]);
+  const both = buildFfmpegArgs({ cfg: c, mode: 'live', recordFile: 'r.mkv' });
+  const fc = both[both.indexOf('-filter_complex') + 1];
+  assert.match(fc, /\[vs\]scale=1280:720/);
+  assert.ok(!/matroska/.test(teeArg(both)), 'the recording is not a copy of the stream');
+  assert.equal(both.filter((x) => x === '-c:v').length, 2);
+  assert.ok(both.includes('8000k'));
+  // Recording only (no YouTube/Facebook): just the recording, run for real.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-recq-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  const { Overlay } = require('../lib/overlay');
+  new Overlay(dir);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  const rec = path.join(dir, 'Service.mkv');
+  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, recordQuality: 'fullhd', audio: { source: 'none' } }), mode: 'live', runDir: dir, recordFile: rec });
+  const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
+  let err = ''; p.stderr.on('data', (d) => { err += d; });
+  await new Promise((r) => setTimeout(r, 3000));
+  p.stdin.write('q');
+  assert.equal(await new Promise((r) => p.on('close', r)), 0, err.split('\n').filter((l) => /error/i.test(l)).slice(-5).join('\n'));
+  const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', rec], { encoding: 'utf8' }).stdout.trim();
+  assert.equal(probe, '1920,1080');
+});
+
+test('camera 2 stops: the stream carries on with camera 1, and camera 2 comes back by itself', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 90000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { Streamer } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-cam2down-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  const { Overlay } = require('../lib/overlay');
+  new Overlay(dir);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  // Camera 2 is a network camera that isn't there (nothing listens on port 9).
+  const c = cfg({ quality: 'low', audio: { source: 'none' }, video2: { type: 'rtsp', rtspUrl: 'rtsp://127.0.0.1:9/stream' } });
+  const st = new Streamer({ getConfig: () => c, runDir: dir, recordingsDir: dir, ffmpeg: { path: 'ffmpeg' }, getEncoder: async () => 'libx264' });
+  const logs = [];
+  st.on('log', (l) => logs.push(l));
+  st.camera = 2;
+  const until = async (fn, ms = 40000) => { const t = Date.now(); while (!fn()) { if (Date.now() - t > ms) throw new Error('timed out; logs: ' + logs.join(' | ')); await new Promise((r) => setTimeout(r, 200)); } };
+  await st.start('preview');
+  await until(() => st.status.camera2 === 'down' && st.status.state === 'running');
+  assert.equal(st.status.cameras, 1, 'running with camera 1 only');
+  assert.equal(st.status.camera, 1);
+  // Camera 2 "works again": two good checks in a row bring it back (with a short restart).
+  st.probeCamera = async () => true;
+  await st.checkCamera2();
+  assert.equal(st.status.camera2, 'down', 'one good check is not enough');
+  await st.checkCamera2();
+  assert.ok(logs.includes('camera 2 is back'));
+  // It's still not really there, so it is noticed again and the stream carries on.
+  st.probeCamera = async () => false;
+  await until(() => st.status.camera2 === 'down' && st.status.state === 'running');
+  assert.equal(st.camera, 1, 'camera 1 stays on air');
+  await st.stop();
+  assert.equal(st.status.camera2, null);
+});
+
+test('watchdog: a picture that stops moving is restarted', { skip: process.platform === 'win32', timeout: 30000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { Streamer } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-stall-'));
+  // A pretend FFmpeg that reports progress once, then keeps reporting the same time (a frozen camera).
+  const fake = path.join(dir, 'fake-ffmpeg');
+  fs.writeFileSync(fake, `#!${process.execPath}\nlet n = 0;\nsetInterval(() => { n++; process.stdout.write('out_time_us=' + (n < 3 ? n * 1000000 : 3000000) + '\\nfps=30\\nprogress=continue\\n'); }, 300);\nprocess.stdin.on('data', () => process.exit(0));\n`);
+  fs.chmodSync(fake, 0o755);
+  const st = new Streamer({ getConfig: () => cfg({ quality: 'low', audio: { source: 'none' } }), runDir: dir, recordingsDir: dir, ffmpeg: { path: fake }, getEncoder: async () => 'libx264' });
+  st.stallMs = 2000;
+  const logs = [];
+  st.on('log', (l) => logs.push(l));
+  await st.start('preview');
+  const t = Date.now();
+  while (!logs.includes('the picture stopped moving; restarting') && Date.now() - t < 15000) await new Promise((r) => setTimeout(r, 200));
+  assert.ok(logs.includes('the picture stopped moving; restarting'), logs.join(' | '));
+  await new Promise((r) => setTimeout(r, 500));
+  assert.match(st.status.problem, /camera picture stopped/);
+  await st.stop();
+});
