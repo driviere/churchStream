@@ -36,11 +36,15 @@ A small black window opens and keeps ChurchStream running. **Leave it open** dur
 
 ### Installing on a Mac
 1. Download **ChurchStream-mac-arm64.zip** (Macs with Apple chips, M1 and later) or **ChurchStream-mac-x64.zip** (older Intel Macs). Not sure? Apple menu → **About This Mac** shows *Chip: Apple M…* or *Processor: Intel*.
-2. Unzip it and move the **ChurchStream** folder somewhere permanent, e.g. **Documents**.
-3. Double-click **Start ChurchStream.command**.
-   - If macOS says it *can't be opened*, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or Control-click the file, choose **Open**, then **Open** again.
-   - Allow **Terminal** to use the **camera and microphone** when asked, and allow ChurchStream to **accept incoming network connections** (for phones and tablets).
-4. The Terminal window keeps ChurchStream running. Leave it open during the service, and close it to stop.
+2. Unzip it. Drag **ChurchStream.app** into your **Applications** folder (or keep the folder in **Documents**).
+3. Double-click **ChurchStream.app**.
+   - If macOS says it *can't be opened* or *Apple could not verify* it, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or Control-click the app, choose **Open**, then **Open** again. This is only needed the first time.
+   - Allow ChurchStream to use the **camera and microphone** when asked, and to **accept incoming network connections** and find devices on your **local network** (for phones, tablets and network cameras).
+4. Your browser opens the setup page. ChurchStream shows in the **Dock** while it runs; there's no Terminal window.
+   - Closed the browser tab? Click ChurchStream in the Dock to open the control panel again.
+   - To stop everything, choose **ChurchStream → Quit** in the menu bar, or Control-click its Dock icon and choose **Quit**.
+
+On a Mac, your settings, songs, services and recordings are in the **ChurchStream-data** folder in your home folder (in Finder: **Go → Home**). Installing a newer ChurchStream.app keeps them. If you used an older version, whose data sat in the ChurchStream folder, it's copied there the first time you open the app. *Start ChurchStream.command* is still included as another way to start it in a Terminal window.
 
 On a Mac:
 - **Cameras:** the built-in camera, USB webcams, HDMI capture devices and an iPhone (Continuity Camera) all work.
@@ -58,7 +62,7 @@ A short setup guide walks you through:
 You can change all of this later in **Settings** (the ⚙ button).
 
 ### Moving to another computer
-Everything ChurchStream keeps (settings, songs, services, pictures, videos) lives in the **ChurchStream-data** folder next to ChurchStream.exe. Copy the whole ChurchStream folder to the new computer and everything comes with it.
+Everything ChurchStream keeps (settings, songs, services, pictures, videos) lives in the **ChurchStream-data** folder next to ChurchStream.exe. Copy the whole ChurchStream folder to the new computer and everything comes with it. On a Mac, copy **ChurchStream.app** and the **ChurchStream-data** folder from your home folder.
 
 ---
 

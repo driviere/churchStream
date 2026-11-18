@@ -283,6 +283,8 @@ function listen(port, attempts = 10) {
     console.log('');
     console.log(paths.isSea ? '  Close this window to stop ChurchStream.' : '  Press Ctrl+C to stop.');
     console.log('');
+    // Where to find the control panel (the Mac app opens it when its Dock icon is clicked).
+    try { fs.writeFileSync(path.join(paths.runDir, 'url.txt'), `${local}/control`); fs.writeFileSync(path.join(paths.runDir, 'server.pid'), String(process.pid)); } catch { /* not needed */ }
     if (paths.isSea && !process.env.CHURCHSTREAM_NO_BROWSER) openBrowser(`${local}${app.cfg.setupComplete ? '/control' : '/setup'}`);
     if (app.cfg.setupComplete && app.cfg.projector.autoLaunch) {
       try { app.projector.launch(`http://127.0.0.1:${p}/display`, app.cfg.projector.x != null ? app.cfg.projector : null); app.state.projectorOpen = true; } catch { /* manual */ }
