@@ -675,3 +675,11 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .media-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 4px 18px 12px; }
 .media-settings .switch { min-height: 36px; }
 .media-settings input[type=range] { width: 140px; }
+
+/* Phone camera setup (Settings → Camera & sound) */
+.phonecam { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.phonecam-status { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; }
+.phonecam-status i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); flex: none; }
+.phonecam-status.on i { background: #30a46c; box-shadow: 0 0 0 3px rgba(48,164,108,.2); }
+.phonecam-body { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.phonecam-steps { margin: 0; padding-left: 20px; flex: 1 1 220px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.4; }

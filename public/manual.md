@@ -230,9 +230,23 @@ You can stream to both at once. It doesn't use extra computer power, because the
 Changes apply the next time you go live.
 
 ### Two cameras
-In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, or a network camera. The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
+In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, a network camera, or a phone (see below). The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
 
 If camera 2 stops during the service (unplugged, a loose cable, a network camera that drops out), ChurchStream notices within a few seconds and carries on with **camera 1**, with a red note on the Live stream card. It keeps checking, and when camera 2 works again it is added back by itself (with a brief pause in the stream) and shows as ready. Camera 1 stays on air until you switch. If the picture ever freezes completely, ChurchStream restarts the stream on its own.
+
+### A phone as a camera
+Any recent iPhone or Android phone can be a camera, with nothing to install. In **Settings → Camera & sound**, choose **Phone (scan a QR code)** as the camera type, or as the **Second camera**. A QR code appears.
+1. Connect the phone to the **same Wi-Fi** as the ChurchStream computer, open its camera app and scan the code.
+2. The phone warns that the connection is not private. That is expected: the page comes from your own computer, not from the internet. Tap **Advanced → Proceed** (Android) or **Show Details → visit this website** (iPhone). This is only needed the first time.
+3. Tap **Start camera** and allow the camera. The settings page shows a green dot when the phone is sending.
+
+Tips:
+- Hold the phone **sideways**, on a small tripod or stand, and keep it **plugged in**. Keep the camera page open; the phone's screen stays on by itself.
+- **Switch camera** chooses the front or back camera, and **Light** turns on the torch (where the phone has one).
+- If the phone leaves the Wi-Fi or the page is closed, the stream shows "Waiting for the phone camera" instead of freezing, and the picture comes back by itself when the phone reconnects.
+- The phone sends pictures only; the sound still comes from your microphone or sound desk.
+- **New address** makes a new QR code, so phones using the old one stop sending.
+- On Windows, allow ChurchStream through the firewall when asked, so phones can connect. The camera page uses port 8443.
 
 ### What the stream shows
 In the **Live stream** card, choose:

@@ -3,6 +3,7 @@
 // ChurchStream — streaming + projection for small churches.
 // One small Node process (no dependencies) + one FFmpeg process.
 const http = require('http');
+const https = require('https');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +21,7 @@ const paths = require('./lib/paths');
 const office = require('./lib/office');
 const assets = require('./lib/assets');
 const { App } = require('./lib/app');
+const { loadCertificate } = require('./lib/cert');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -199,7 +201,54 @@ const routes = {
   'GET /api/backgrounds': () => app.backgrounds(),
   'POST /api/program-image': async (req, url) => ({ ok: true, updated: app.saveProgramImage(await readBody(req, 4 * 1024 * 1024), url.searchParams.get('key') || '') }),
   'POST /api/backgrounds/delete': async (req) => { app.deleteBackground((await json(req)).id); return { ok: true }; },
+  // The phone camera addresses (for the QR codes), behind the password.
+  'GET /api/phone-camera/info': () => phoneInfo(),
+  'POST /api/phone-camera/renew': () => { app.renewPhoneToken(); return phoneInfo(); },
 };
+
+// --- Phone camera page, on https (phones only allow the camera on secure pages) ---
+let httpsServer = null;
+let httpsError = '';
+function phoneInfo() {
+  const port = httpsServer && httpsServer.listening ? httpsServer.address().port : null;
+  const ips = lanInfo(0).map((x) => x.ip);
+  const link = (ip, cam) => `https://${ip}:${port}/phone-camera?cam=${cam}&k=${app.cfg.phoneToken}`;
+  return { port, error: port ? '' : httpsError || 'The phone camera page isn’t running.', ips, cam1: ips.map((ip) => link(ip, 1)), cam2: ips.map((ip) => link(ip, 2)) };
+}
+
+async function phoneRequest(req, res) {
+  const url = new URL(req.url, 'https://localhost');
+  const p = url.pathname;
+  try {
+    if (req.method === 'GET' && (p === '/phone-camera' || p === '/phone-camera/')) return serveAsset(res, 'public/phonecam.html');
+    if (req.method === 'GET' && /^\/(phonecam\.js|favicon\.svg)$/.test(p)) return serveAsset(res, 'public' + p);
+    if (req.method === 'POST' && p === '/api/phone-camera/frame') {
+      const body = await readBody(req, 3 * 1024 * 1024);
+      return send(res, 200, app.phoneFrame(url.searchParams.get('cam'), url.searchParams.get('k'), body));
+    }
+    return send(res, 404, 'Not found', 'text/plain');
+  } catch (err) {
+    return send(res, err.status || 400, { error: err.message || String(err) });
+  }
+}
+
+function startHttps(port, attempts = 10) {
+  let cert;
+  try {
+    cert = loadCertificate(path.join(paths.dataDir, 'https'), lanInfo(0).map((x) => x.ip));
+  } catch (err) {
+    httpsError = 'Couldn’t make the certificate for the phone camera page: ' + err.message;
+    console.error('  ' + httpsError);
+    return;
+  }
+  httpsServer = https.createServer({ key: cert.key, cert: cert.cert }, phoneRequest);
+  httpsServer.keepAliveTimeout = 30000;
+  httpsServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && attempts > 0) { httpsServer = null; return startHttps(port + 1, attempts - 1); }
+    httpsError = 'The phone camera page couldn’t start: ' + err.message;
+  });
+  httpsServer.listen(port, '0.0.0.0');
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -280,6 +329,7 @@ function listen(port, attempts = 10) {
     console.log(`  Control panel:   ${local}/control`);
     for (const a of lanAddresses(p)) console.log(`  From a tablet:   ${a}/control      Stage screen: ${a}/stage`);
     console.log(`  Projector page:  ${local}/display`);
+    startHttps(app.cfg.httpsPort || 8443);
     console.log(app.ffmpeg ? `  FFmpeg:          ${app.ffmpeg.version}` : '  FFmpeg:          NOT FOUND - streaming is disabled until it is installed.');
     console.log('');
     console.log(paths.isSea ? '  Close this window to stop ChurchStream.' : '  Press Ctrl+C to stop.');

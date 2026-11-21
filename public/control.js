@@ -626,7 +626,7 @@ function TitleHelper({ s }) {
   </div>`;
 }
 
-const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc'; };
+const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc' || v.type === 'phone'; };
 const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // "Starting soon" / "Thank you for watching" on the stream, with a way to skip ahead.
@@ -1890,6 +1890,7 @@ function SectionCamera({ s, autoPreview }) {
   const types = [
     ['dshow', s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card', s.platform === 'darwin' ? 'The built-in camera, USB webcams, HDMI capture devices or an iPhone (Continuity Camera)' : 'Webcams and HDMI-to-USB capture devices'],
     ['rtsp', 'Network (IP) camera', 'PTZ and IP cameras on your network'],
+    ['phone', 'Phone (scan a QR code)', 'A phone’s camera over the church Wi-Fi — nothing to install'],
     ['testsrc', 'Test pattern', 'Try everything without a camera'],
   ];
   return html`<div class="two">
@@ -1907,6 +1908,7 @@ function SectionCamera({ s, autoPreview }) {
       ${v.type === 'rtsp' && html`<div class="field"><label class="label">Camera address (RTSP)</label>
         <input class="input" value=${rtsp} placeholder="rtsp://user:password@192.168.1.50:554/stream1" onInput=${(e) => setRtsp(e.target.value)} onBlur=${() => save({ video: { rtspUrl: rtsp.trim() } })} />
         <div class="hint">Found in your camera's manual or app. Usually starts with rtsp://</div></div>`}
+      ${v.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${1} />`}
       <${SecondCamera} s=${s} devs=${devs} />
       <div class="field"><label class="label">Sound</label>
         <select class="select" value=${a.source === 'device' ? 'device:' + a.device : a.source} onChange=${(e) => {
@@ -1954,8 +1956,10 @@ function SecondCamera({ s, devs }) {
       <option value="none">None</option>
       <option value="dshow">${s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card'}</option>
       <option value="rtsp">Network (IP) camera</option>
+      <option value="phone">Phone (scan a QR code)</option>
       <option value="testsrc">Test pattern (to try it out)</option>
     </select>
+    ${v2.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${2} />`}
     ${v2.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Second camera" value=${v2.device} onChange=${(e) => save({ video2: { device: e.target.value } })}>
       <option value="">${devs ? (cams.length ? 'Choose the second camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
       ${cams.map((d) => html`<option value=${d}>${d}</option>`)}
@@ -1963,6 +1967,36 @@ function SecondCamera({ s, devs }) {
     </select></div>`}
     ${v2.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label="Second camera address" value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ video2: { rtspUrl: url.trim() } })} />`}
     <div class="hint">${hasCam2(s.config) ? 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.' : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div></div>`;
+}
+
+// A phone as a camera: scan the QR code with the phone, allow the camera, done.
+function PhoneCamSetup({ s, cam }) {
+  const [info, setInfo] = useState(null);
+  const [pick, setPick] = useState(0);
+  const load = () => get('/api/phone-camera/info').then(setInfo).catch(fail);
+  useEffect(() => { load(); }, []);
+  const links = (info && info['cam' + cam]) || [];
+  const link = links[pick] || links[0];
+  const on = !!(s.phoneCams && s.phoneCams[cam]);
+  const renew = () => { if (confirm('Make a new camera address? Phones using the old QR code stop sending until they scan the new one.')) api('/api/phone-camera/renew', {}).then(setInfo).catch(fail); };
+  const iphone = 'Show Details → visit this website';
+  return html`<div class="phonecam">
+    <div class=${'phonecam-status' + (on ? ' on' : '')}><i></i>${on ? `Phone connected — camera ${cam} is sending` : 'Waiting for the phone…'}</div>
+    ${!info ? html`<div class="hint">Loading…</div>` : !link ? html`<div class="note">${info.error || 'This computer isn’t on a network. Connect it to the church Wi-Fi first.'}</div>` : html`<div class="phonecam-body">
+      <${QrCode} text=${link} size=${168} />
+      <ol class="phonecam-steps">
+        <li>On the phone (on the <b>same Wi-Fi</b>), open the camera app and scan this code.</li>
+        <li>The phone warns that the connection isn’t private — that’s expected for a page on your own network. Tap <b>Advanced → Proceed</b> (Android) or <b>${iphone}</b> (iPhone). Only the first time.</li>
+        <li>Tap <b>Start camera</b> and allow the camera. Hold the phone sideways; keep it plugged in.</li>
+      </ol>
+    </div>
+    ${links.length > 1 && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Network address" value=${pick} onChange=${(e) => setPick(+e.target.value)}>${info.ips.map((ip, i) => html`<option value=${i}>${ip}</option>`)}</select></div>`}
+    <div class="row wrap" style="margin-top:8px">
+      <button class="btn small ghost" onClick=${() => (navigator.clipboard ? navigator.clipboard.writeText(link).then(() => toast('Link copied')) : Promise.reject(new Error('Copy is not available here'))).catch(fail)}>Copy link</button>
+      <button class="btn small ghost" onClick=${renew}>New address</button>
+    </div>
+    <div class="hint">If the phone drops off the Wi-Fi, the stream shows “Waiting for the phone camera” and the picture comes back by itself.</div>`}
+  </div>`;
 }
 
 function SectionProjector({ s }) {
