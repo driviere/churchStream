@@ -132,7 +132,7 @@ const routes = {
     return s;
   },
   'POST /api/song/delete': async (req) => { const { id } = await json(req); app.songs.remove(id); app.changed(); return { ok: true }; },
-  'GET /api/bible': (req, url) => { const r = app.bible.lookup(url.searchParams.get('ref') || '', url.searchParams.get('t') || app.cfg.bible.translation); return r.slides ? { ...r, slides: app.fit(r.slides, 'bible').slides } : r; },
+  'GET /api/bible': (req, url) => { const r = app.bible.lookup(url.searchParams.get('ref') || '', url.searchParams.get('t') || app.cfg.bible.translation, app.bibleOpts()); return r.slides ? { ...r, slides: app.fit(r.slides, 'bible').slides } : r; },
   'POST /api/live': async (req) => { const { item, index } = await json(req); const live = app.showItem(item, index || 0); return { ok: true, item: live.item, index: live.index }; },
   'POST /api/goto': async (req) => { const b = await json(req); if (b.delta) app.step(b.delta); else app.goTo(b.index | 0); return { ok: true }; },
   'POST /api/toggle': async (req) => { const { name, value } = await json(req); app.setToggle(name, value); return { ok: true }; },

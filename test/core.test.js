@@ -375,3 +375,16 @@ test('slides that are too full at the smallest text size are split', () => {
   // Pictures, videos and countdowns are never split.
   assert.equal(fitSlides([{ image: 'x.jpg', text: '' }], { kind: 'images', theme: { minText: 9 } }).slides.length, 1);
 });
+
+test('Bible: one verse per screen', () => {
+  const b = new Bible(path.join(__dirname, '..', 'defaults', 'bible'));
+  const ps = b.lookup('Psalm 23', 'kjv', { versesPerSlide: 1 });
+  assert.equal(ps.slides.length, 6);
+  assert.deepEqual(ps.slides.map((s) => s.ref), [1, 2, 3, 4, 5, 6].map((n) => `Psalm 23:${n} KJV`));
+  assert.ok(ps.slides.every((s) => s.verses.length === 1 && s.text === s.verses[0].text));
+  assert.equal(b.lookup('John 3:16-18', 'kjv', { versesPerSlide: 1 }).slides.length, 3);
+  const cross = b.lookup('Rom 8:38-9:2', 'kjv', { versesPerSlide: 1 }).slides.map((s) => s.ref);
+  assert.deepEqual(cross, ['Romans 8:38 KJV', 'Romans 8:39 KJV', 'Romans 9:1 KJV', 'Romans 9:2 KJV']);
+  // Without the option, short verses are still grouped.
+  assert.ok(b.lookup('Psalm 23', 'kjv').slides.length < 6);
+});

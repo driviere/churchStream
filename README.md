@@ -60,7 +60,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Sung in order | Refrains are placed after every verse, so the operator just presses Next. Your edits to a hymn are kept when the hymnal is updated. |
 | Choose the verses | Sing only some verses, e.g. 1, 2 and 4. Refrains come and go with their verse. |
 | Your own songs | Paste the words of any song or chorus, or **Import songs…** in bulk (text, Word, SongSelect, OpenLyrics, ChordPro, CSV). Import your own copy of **AY Sing**. Carry songs between laptops as a `.churchsongs` file. |
-| Bible | KJV and BSB built in, all 66 books offline; ASV, YLT and Darby downloadable. **Import a Bible file** your church is licensed to use (NRSV, NIV…: JSON, Zefania, OSIS or USFX), kept on that computer only. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
+| Bible | One verse per screen (or as many as fit). KJV and BSB built in, all 66 books offline; ASV, YLT and Darby downloadable. **Import a Bible file** your church is licensed to use (NRSV, NIV…: JSON, Zefania, OSIS or USFX), kept on that computer only. Type references naturally: `John 3:16`, `jn 3:16-18`, `Ps 23`, `1 Cor 13:4-7`, `Rom 8:28-9:2`. |
 | Responsive readings | Built from any Bible passage: Leader and Congregation take turns, and All read the last verse. The congregation's words show in gold. |
 | PowerPoint slides | Add the pastor's PowerPoint file directly (PowerPoint on the computer opens it, so it looks the same), or a PDF or pictures. Step through the slides like any other item. |
 | Announcements | Text slides that can change by themselves every few seconds, on a loop. |
