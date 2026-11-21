@@ -670,3 +670,8 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .vol-chip i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(15, 118, 110, .22); }
 .vol-chip.holding i { width: 100%; transition: width 2s linear; }
 @media (max-width: 720px) { .vol-chip span { display: none; } }
+
+/* Video/music settings under the player (repeat, room, volume, start). */
+.media-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 4px 18px 12px; }
+.media-settings .switch { min-height: 36px; }
+.media-settings input[type=range] { width: 140px; }

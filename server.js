@@ -189,6 +189,7 @@ const routes = {
   'POST /api/import/songs': async (req, url) => (url.searchParams.get('check') === '1'
     ? app.checkSongFile(url.searchParams.get('name') || '', await readBody(req, 20 * 1024 * 1024))
     : app.importSongFile(url.searchParams.get('name') || '', await readBody(req, 20 * 1024 * 1024), { book: url.searchParams.get('book') || '' })),
+  'POST /api/media/settings': async (req) => { const b = await json(req); return app.mediaSettings(b.key, b.patch || {}); },
   'POST /api/bible/remove': async (req) => app.removeBible((await json(req)).id),
   'POST /api/media': async (req, url) => {
     const name = app.saveMedia(url.searchParams.get('kind'), await readBody(req), (req.headers['content-type'] || '').split(';')[0]);

@@ -936,6 +936,30 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
 const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
 // Video / music item: big transport controls instead of a slide grid.
+// A video/music item's current settings: from the item on screen, else the order of service.
+function currentMedia(s, item) {
+  if (s.live && s.live.item.key === item.key && s.live.item.media) return s.live.item.media;
+  const p = s.plan.items.find((x) => x.uid === item.key);
+  return (p && p.media) || item.media || {};
+}
+
+// Settings that can be changed after a video, music or YouTube item was added.
+function MediaSettings({ s, item }) {
+  const m = currentMedia(s, item);
+  const yt = m.type === 'youtube';
+  const set = (patch) => api('/api/media/settings', { key: item.key, patch }).catch(fail);
+  const [start, setStart] = useState(fmtDur((m.youtube && m.youtube.start) || 0));
+  return html`<div class="media-settings">
+    <label class="switch"><input type="checkbox" checked=${!!m.loop} onChange=${(e) => set({ loop: e.target.checked })} /><span>Repeat until stopped</span></label>
+    ${!yt && html`<label class="switch"><input type="checkbox" checked=${m.room !== false} onChange=${(e) => set({ room: e.target.checked })} /><span>${m.type === 'audio' ? 'Also play through this computer (for the room)' : 'Play the sound in the room too'}</span></label>`}
+    <label class="row" style="gap:8px">${icons.music()}<span class="muted" style="font-size:13px">Volume</span>
+      <input type="range" min="0" max=${yt ? 1 : 1.5} step="0.05" value=${m.volume ?? 1} onChange=${(e) => set({ volume: +e.target.value })} aria-label="Volume" /></label>
+    ${yt && html`<label class="row" style="gap:8px"><span class="muted" style="font-size:13px">Start at</span>
+      <input class="input" style="width:80px" value=${start} onInput=${(e) => setStart(e.target.value)} placeholder="0:00"
+        onBlur=${() => { const [a, b] = start.split(':').map(Number); const secs = b === undefined ? a : a * 60 + b; if (Number.isFinite(secs)) set({ start: secs }); }} aria-label="Start at" /></label>`}
+  </div>`;
+}
+
 function MediaPanel(props) {
   return props.item.media && props.item.media.type === 'youtube' ? html`<${YouTubePanel} ...${props} />` : html`<${FilePanel} ...${props} />`;
 }
@@ -944,7 +968,7 @@ const ytThumb = (y) => (y && y.id ? `https://i.ytimg.com/vi/${y.id}/hqdefault.jp
 
 // A YouTube item: plays in YouTube's player on the projector (needs internet).
 function YouTubePanel({ s, item, isLive, onShow }) {
-  const m = item.media || {};
+  const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
   useEffect(() => { if (!playing || playing.paused) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt, playing && playing.paused]);
@@ -968,16 +992,15 @@ function YouTubePanel({ s, item, isLive, onShow }) {
         : html`<button class="btn big primary" onClick=${() => (isLive ? ctl({ action: 'play' }) : onShow())}>${icons.play()} Play</button>`}
       <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
         <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
-      <label class="media-vol" title="Volume in the room">${icons.music()}<input type="range" min="0" max="1" step="0.05" value=${playing ? playing.volume : (m.volume ?? 1)}
-        onChange=${(e) => (playing ? ctl({ volume: +e.target.value }) : Promise.resolve())} /></label>
     </div>
+    <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">Plays from YouTube on the projector, so it needs internet. The live stream shows a “now playing” card (or the camera), and online viewers hear it only through your microphones. To put the video itself into the stream, download it instead (+ Add → Video, music or YouTube).</div>
   </div>`;
 }
 
 // A video / music file from the media library.
 function FilePanel({ s, item, isLive, onShow }) {
-  const m = item.media || {};
+  const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
   useEffect(() => { if (!playing) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt]);
@@ -985,7 +1008,6 @@ function FilePanel({ s, item, isLive, onShow }) {
   const elapsed = playing ? (Date.now() + skew - playing.startedAt) / 1000 : 0;
   const dur = m.duration || 0;
   const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
-  const vol = playing ? playing.volume : (m.volume ?? 1);
   const src = '/media/' + encodeURIComponent((m.file || '').replace(/^media:/, ''));
   return html`<div class="media-panel">
     <div class="media-view">
@@ -1001,9 +1023,8 @@ function FilePanel({ s, item, isLive, onShow }) {
         : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
       <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
         <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
-      <label class="media-vol" title="Volume on the stream">${icons.music()}<input type="range" min="0" max="1.5" step="0.05" value=${vol}
-        onChange=${(e) => (playing ? api('/api/media/control', { volume: +e.target.value }) : Promise.resolve()).catch(fail)} /></label>
     </div>
+    <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
       ? 'The video fills the projector and the stream while it plays (names and the ticker stay on top). Background music pauses during the video.'
       : 'The music plays on the stream' + (m.room ? ' and through this computer’s speakers.' : '.')}</div>

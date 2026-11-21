@@ -319,7 +319,9 @@ Click **Save / open** above the order of service.
 ### Videos and music files
 **+ Add → Video, music or YouTube → Add video or music…** and choose MP4, MOV or WebM videos (e.g. Mission Spotlight) or MP3/M4A music. The files stay on this computer.
 - A video fills the projector **and** the stream, with sound, while names and the ticker stay on top.
-- Use **Play**, **Stop** and **From the start**, the volume slider, and *Repeat until stopped*.
+- Use **Play**, **Stop** and **From the start**.
+- Under the player you can change the item's settings at any time, even after it was added or while it plays: **Repeat until stopped**, **Play the sound in the room too**, **Volume**, and for YouTube links **Start at**. They're saved in the order of service; turning Repeat on while a video plays takes effect straight away.
+- Videos without sound (for example a silent announcement loop) play too.
 - Background music steps aside automatically while a video plays.
 
 ### Background music
