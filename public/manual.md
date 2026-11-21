@@ -141,7 +141,7 @@ On the screens, each slide is labelled, and the congregation's words are shown i
 *The numbered responsive readings at the back of the SDA Hymnal aren't freely available, so ChurchStream builds readings from the Bible translations you have installed.*
 
 ### Bible translations
-**KJV** and the modern-English **BSB** are built in. In **Settings → Bible** you can choose the default translation and download **ASV**, **YLT** or **Darby** (all public domain). To use another translation for one reading, add its short name: `John 3:16 ASV`.
+**KJV** and the modern-English **BSB** are built in. In **Settings → Bible** you can choose the default translation and download **ASV**, **YLT** or **Darby** (all public domain). To use another translation for one reading, add its short name: `John 3:16 ASV`. **Verses on each screen** chooses **One verse** (the default: each verse gets its own screen, with its reference underneath) or **As many as fit** (short verses share a screen).
 
 **A translation your church is licensed to use** (NRSV, NIV, NKJV, ESV…) can be imported if you have its text as a file:
 1. Open **Settings → Bible** and click **Import a Bible file…**. ChurchStream reads JSON files and Zefania, OSIS and USFX XML files, the formats most Bible software and publishers export.

@@ -6,6 +6,8 @@ const { buildFfmpegArgs, destinationsFor, teeEscape, redact, overlayGeometry, QU
 const config = require('../lib/config');
 
 const cfg = (patch) => config.merge(config.DEFAULTS, patch);
+// What the local FFmpeg accepts (newer ones refuse -thread_queue_size on inputs), as the app checks.
+const FFINFO = spawnSync('ffmpeg', ['-version']).status === 0 ? { inputQueue: require('../lib/ffmpeg').acceptsInputQueue('ffmpeg') } : {};
 const teeArg = (args) => args.find((a) => a.includes('[f=flv') || a.includes('[f=matroska'));
 
 test('YouTube + Facebook from one encode via tee', () => {
@@ -85,7 +87,7 @@ test('generated filter graph is accepted by the local FFmpeg', { skip: spawnSync
   ov.setTicker('Potluck lunch after the service today');
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
   // With sound clean-up, mic level and lip-sync on, so the whole audio chain is checked too.
-  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, audio: { source: 'device', cleanup: 'strong', gainDb: 3, delayMs: 120 } }), mode: 'live', runDir: dir, recordFile: path.join(dir, 'out.mkv') });
+  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, audio: { source: 'device', cleanup: 'strong', gainDb: 3, delayMs: 120 } }), mode: 'live', runDir: dir, ffmpegInfo: FFINFO, recordFile: path.join(dir, 'out.mkv') });
   // Limit both outputs to one second.
   const tee = args.indexOf(teeArg(args));
   args.splice(tee, 0, '-t', '1');
@@ -188,12 +190,12 @@ test('two cameras: switch on air without a restart, and record each camera on it
   const rec = path.join(dir, 'Service.mkv');
   const files = cameraFiles(rec, 2);
   assert.deepEqual(files.map((f) => path.basename(f)), ['Service - Camera 1.mkv', 'Service - Camera 2.mkv']);
-  const args = buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, recordFile: rec, camera: 1, cameraRecordings: files });
+  const args = buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, ffmpegInfo: FFINFO, recordFile: rec, camera: 1, cameraRecordings: files });
   const fc = args[args.indexOf('-filter_complex') + 1];
   assert.match(fc, /streamselect@cams=inputs=2:map=0/);
   assert.match(fc, /asplit=3\[aout\]\[aiso1\]\[aiso2\]/);
   // Camera 2 on air from the start when it was chosen before going live.
-  assert.match(buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, recordFile: rec, camera: 2 })[args.indexOf('-filter_complex') + 1] || '', /map=1/);
+  assert.match(buildFfmpegArgs({ cfg: c, mode: 'live', runDir: dir, ffmpegInfo: FFINFO, recordFile: rec, camera: 2 })[args.indexOf('-filter_complex') + 1] || '', /map=1/);
   // Run it: camera 1 for ~2 s, then switch to camera 2 with the live command, then stop.
   const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
   let err = ''; p.stderr.on('data', (d) => { err += d; });
@@ -244,7 +246,7 @@ test('recording quality: a separate, better recording; the picture is built at 1
   new Overlay(dir);
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
   const rec = path.join(dir, 'Service.mkv');
-  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, recordQuality: 'fullhd', audio: { source: 'none' } }), mode: 'live', runDir: dir, recordFile: rec });
+  const args = buildFfmpegArgs({ cfg: cfg({ quality: 'low', record: true, recordQuality: 'fullhd', audio: { source: 'none' } }), mode: 'live', runDir: dir, ffmpegInfo: FFINFO, recordFile: rec });
   const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
   let err = ''; p.stderr.on('data', (d) => { err += d; });
   await new Promise((r) => setTimeout(r, 3000));
@@ -266,7 +268,7 @@ test('camera 2 stops: the stream carries on with camera 1, and camera 2 comes ba
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=blue:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
   // Camera 2 is a network camera that isn't there (nothing listens on port 9).
   const c = cfg({ quality: 'low', audio: { source: 'none' }, video2: { type: 'rtsp', rtspUrl: 'rtsp://127.0.0.1:9/stream' } });
-  const st = new Streamer({ getConfig: () => c, runDir: dir, recordingsDir: dir, ffmpeg: { path: 'ffmpeg' }, getEncoder: async () => 'libx264' });
+  const st = new Streamer({ getConfig: () => c, runDir: dir, ffmpegInfo: FFINFO, recordingsDir: dir, ffmpeg: { path: 'ffmpeg', ...FFINFO }, getEncoder: async () => 'libx264' });
   const logs = [];
   st.on('log', (l) => logs.push(l));
   st.camera = 2;
@@ -299,7 +301,7 @@ test('watchdog: a picture that stops moving is restarted', { skip: process.platf
   const fake = path.join(dir, 'fake-ffmpeg');
   fs.writeFileSync(fake, `#!${process.execPath}\nlet n = 0;\nsetInterval(() => { n++; process.stdout.write('out_time_us=' + (n < 3 ? n * 1000000 : 3000000) + '\\nfps=30\\nprogress=continue\\n'); }, 300);\nprocess.stdin.on('data', () => process.exit(0));\n`);
   fs.chmodSync(fake, 0o755);
-  const st = new Streamer({ getConfig: () => cfg({ quality: 'low', audio: { source: 'none' } }), runDir: dir, recordingsDir: dir, ffmpeg: { path: fake }, getEncoder: async () => 'libx264' });
+  const st = new Streamer({ getConfig: () => cfg({ quality: 'low', audio: { source: 'none' } }), runDir: dir, ffmpegInfo: FFINFO, recordingsDir: dir, ffmpeg: { path: fake }, getEncoder: async () => 'libx264' });
   st.stallMs = 2000;
   const logs = [];
   st.on('log', (l) => logs.push(l));
@@ -310,4 +312,11 @@ test('watchdog: a picture that stops moving is restarted', { skip: process.platf
   await new Promise((r) => setTimeout(r, 500));
   assert.match(st.status.problem, /camera picture stopped/);
   await st.stop();
+});
+
+test('newer FFmpeg: no input queue option when FFmpeg refuses it', () => {
+  const c = cfg({ quality: 'low', video: { type: 'rtsp', rtspUrl: 'rtsp://cam/1' }, audio: { source: 'none' }, outputs: { youtube: { enabled: true, key: 'k' } } });
+  assert.ok(buildFfmpegArgs({ cfg: c, mode: 'live' }).includes('-thread_queue_size'));
+  assert.ok(buildFfmpegArgs({ cfg: c, mode: 'live', ffmpegInfo: { inputQueue: true } }).includes('-thread_queue_size'));
+  assert.ok(!buildFfmpegArgs({ cfg: c, mode: 'live', ffmpegInfo: { inputQueue: false } }).includes('-thread_queue_size'));
 });

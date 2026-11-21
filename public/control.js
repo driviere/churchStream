@@ -2112,6 +2112,9 @@ function SectionBible({ s }) {
       <select class="select" value=${cfg.bible.translation} onChange=${(e) => save({ bible: { translation: e.target.value } })}>
         ${have.map((t) => html`<option value=${t.id}>${t.name} (${t.abbrev})</option>`)}
       </select></div>
+    <div class="field"><label class="label">Verses on each screen</label>
+      <div class="choices">${[[1, 'One verse', 'Easiest to follow'], [0, 'As many as fit', 'Fewer screens to step through']].map(([v, t, d]) => html`<button class=${'choice' + ((cfg.bible.versesPerSlide === 0 ? 0 : 1) === v ? ' on' : '')} onClick=${() => save({ bible: { versesPerSlide: v } })}><b>${t}</b><span>${d}</span></button>`)}</div>
+      <div class="hint">A very long verse that doesn't fit at the smallest text size (Settings → Appearance) continues on the next screen.</div></div>
     <label class="label">Free (public domain) translations</label>
     <div style="display:grid;gap:8px;margin-bottom:16px">
       ${catalog.map(([id, name]) => html`<div class="row"><span class="grow">${name}</span>${have.some((t) => t.id === id)
