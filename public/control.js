@@ -123,7 +123,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${!black && !logo && kind === 'media' && html`<div class="screen-logo"><div class="name" style="font-size:6cqh">${slide ? '▶ ' + slide.label : ''}</div></div>`}
     ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
-    ${logo && (() => { const lp = logoParts(theme, churchName); return html`<div class=${lp.cls}>${lp.img && html`<img src=${lp.img} alt="" />`}${lp.name && html`<div class=${'name' + (lp.img ? ' under' : '')}>${lp.name}</div>`}</div>`; })()}
+    ${logo && (() => { const lp = logoParts(theme, churchName); return html`<div class=${lp.cls}>${lp.img && (lp.video ? html`<video src=${lp.img} muted loop autoplay playsinline></video>` : html`<img src=${lp.img} alt="" />`)}${lp.name && html`<div class=${'name' + (lp.img ? ' under' : '')}>${lp.name}</div>`}</div>`; })()}
     ${black && html`<div class="screen-black"></div>`}
   </div>`;
 }
@@ -1763,8 +1763,22 @@ function SectionGeneral({ s }) {
 function LogoField({ s }) {
   const theme = s.config.theme || {};
   const [busy, setBusy] = useState(false);
-  const pick = () => pickFiles('image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg', false, async ([f]) => {
+  const pick = () => pickFiles('image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm', false, async ([f]) => {
     if (!f) return;
+    if (/^video\//.test(f.type) || /\.(mp4|m4v|mov|webm)$/i.test(f.name)) {
+      // A video logo: stored with the other videos, played muted and repeating.
+      if (f.size > 500 * 1024 * 1024) { fail(new Error('That video is over 500 MB. Please choose a shorter one.')); return; }
+      setBusy(true);
+      try {
+        const res = await fetch('/api/upload?name=' + encodeURIComponent(f.name), { method: 'POST', body: f });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.error || 'Upload failed');
+        await api('/api/config', { theme: { logo: d.file, logoSize: 'full' } }); // a video logo starts full screen
+        toast('Video logo saved');
+      } catch (err) { fail(err); }
+      setBusy(false);
+      return;
+    }
     const type = f.type || { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml' }[(f.name.split('.').pop() || '').toLowerCase()] || '';
     if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(type)) { fail(new Error('Please choose a PNG, JPG, WebP or SVG image. (iPhone photos: share them as JPG first.)')); return; }
     if (f.size > 12 * 1024 * 1024) { fail(new Error('That image is over 12 MB. Please choose a smaller one.')); return; }
@@ -1777,18 +1791,18 @@ function LogoField({ s }) {
     } catch (err) { fail(err); }
     setBusy(false);
   });
-  const sizes = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
+  const sizes = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['full', 'Full screen']];
   return html`<div class="field"><label class="label">Church logo</label>
     <div class="logo-field">
       <div class="logo-preview"><${Screen} slide=${null} theme=${theme} bg=${effectiveBg(null, null, theme)} churchName=${s.config.churchName} logo=${true} /></div>
       <div class="grow">
         <div class="row wrap">
-          <button class="btn primary" disabled=${busy} onClick=${pick}>${busy ? 'Uploading…' : theme.logo ? 'Change logo…' : 'Upload logo…'}</button>
+          <button class="btn primary" disabled=${busy} onClick=${pick}>${busy ? 'Uploading…' : theme.logo ? 'Change logo…' : 'Upload a picture or video…'}</button>
           ${theme.logo && html`<button class="btn ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' }).then(() => toast('Logo removed')).catch(fail)}>Remove</button>`}
         </div>
-        ${theme.logo && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${!!theme.logoName} onChange=${(e) => save({ theme: { logoName: e.target.checked } })} /><span>Show the church name under the logo</span></label>`}
+        ${theme.logo && theme.logoSize !== 'full' && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${!!theme.logoName} onChange=${(e) => save({ theme: { logoName: e.target.checked } })} /><span>Show the church name under the logo</span></label>`}
         ${theme.logo && html`<div class="choices" style="margin-top:8px">${sizes.map(([v, t]) => html`<button class=${'choice' + ((theme.logoSize || 'medium') === v ? ' on' : '')} onClick=${() => save({ theme: { logoSize: v } })}><b>${t}</b></button>`)}</div>`}
-        <div class="hint">Shown full screen on the projector and the stream when you press <b>Logo</b>. A PNG with a transparent background looks best. ${theme.logo ? '' : 'Until you upload one, the church name is shown.'}</div>
+        <div class="hint">Shown on the projector and the stream when you press <b>Logo</b>. A picture (a PNG with a transparent background looks best) or a short video (MP4, MOV or WebM), which plays silently and repeats. <b>Full screen</b> fills the whole screen. ${theme.logo ? '' : 'Until you upload one, the church name is shown.'}</div>
       </div>
     </div></div>`;
 }
@@ -2514,7 +2528,15 @@ async function renderProgram(s) {
   if (s.logo) {
     // Same layout as the projector (shared.css .screen-logo): image, name, or image with the name under it.
     const lp = logoParts(t, s.config.churchName);
-    const logo = lp.img && await loadImg(lp.img);
+    // A video logo plays on the stream's own video layer (see App.syncLogoVideo); draw nothing here.
+    const logo = lp.img && !lp.video && await loadImg(lp.img);
+    if (logo && lp.size === 'full') {
+      // Full screen: fill the picture (cover), like the projector.
+      const k = Math.max(W / logo.naturalWidth, H / logo.naturalHeight);
+      const sh = ctx.shadowColor; ctx.shadowColor = 'transparent';
+      ctx.drawImage(logo, (W - logo.naturalWidth * k) / 2, (H - logo.naturalHeight * k) / 2, logo.naturalWidth * k, logo.naturalHeight * k);
+      ctx.shadowColor = sh;
+    } else {
     const box = { small: [0.34, 0.34, 0.30], medium: [0.5, 0.5, 0.42], large: [0.8, 0.7, 0.56] }[lp.size];
     const nameSize = H * (logo ? 0.055 : 0.07);
     let ih = 0;
@@ -2537,6 +2559,7 @@ async function renderProgram(s) {
       let size = nameSize;
       for (; size > H * 0.03; size -= H * 0.003) { ctx.font = `600 ${size}px ${FONT}`; if (ctx.measureText(lp.name).width <= W * 0.84) break; }
       ctx.fillText(lp.name, W / 2, y + nameSize * 0.6);
+    }
     }
   } else if (slide && slide.image && !s.clear) {
     const pic = await loadImg(bgInfo(slide.image).url);

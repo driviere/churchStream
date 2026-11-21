@@ -320,3 +320,23 @@ test('newer FFmpeg: no input queue option when FFmpeg refuses it', () => {
   assert.ok(buildFfmpegArgs({ cfg: c, mode: 'live', ffmpegInfo: { inputQueue: true } }).includes('-thread_queue_size'));
   assert.ok(!buildFfmpegArgs({ cfg: c, mode: 'live', ffmpegInfo: { inputQueue: false } }).includes('-thread_queue_size'));
 });
+
+test('media player: a video with no sound track plays to the end (silence is sent instead)', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 30000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { MediaRelay } = require('../lib/media');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-silent-'));
+  const clip = path.join(dir, 'silent.mp4');
+  spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-pix_fmt', 'yuv420p', clip]);
+  const relay = new MediaRelay({ ffmpegPath: 'ffmpeg' });
+  await relay.ready;
+  relay.configure({ width: 320, height: 180, fps: 25 });
+  assert.equal(relay.fileInfo(clip).audio, false);
+  assert.ok(Math.abs(relay.fileInfo(clip).duration - 2) < 0.2);
+  const ended = new Promise((resolve) => relay.once('ended', resolve));
+  relay.play({ id: 'x', kind: 'video', path: clip, title: 'Silent', loop: false });
+  const { error } = await ended;
+  assert.equal(error, '', 'played without an error');
+  relay.close();
+});

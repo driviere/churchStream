@@ -45,7 +45,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Projector window | Opens full screen on the projector output. It also works with an HDMI splitter feeding two screens. |
 | Exact preview | The slide thumbnails and the small screen in the control panel look exactly like the projector. |
 | Backgrounds | 15 built-in backgrounds made for projection, plus your own photos. Set one for everything, one item, or a single slide. |
-| Church logo | Your logo full screen with one tap, optionally with the church name under it, in three sizes. |
+| Church logo | A picture or a short video (plays silently and repeats), shown with one tap: small, medium, large or full screen, optionally with the church name under it. |
 | Black, Clear, Logo | Blank the screens, hide just the words, or show the logo. Each is one tap or one key. |
 | Text options | Choose the font; put the words in the middle or along the bottom; centred or left; with an outline for busy photos. |
 | Stage screen | Current slide, next slide and a clock for musicians and the speaker, on any phone or tablet. |

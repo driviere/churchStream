@@ -59,7 +59,11 @@
 .screen-logo {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqh;
 }
-.screen-logo img { max-width: 50cqw; max-height: 50cqh; object-fit: contain; }
+.screen-logo img, .screen-logo video { max-width: 50cqw; max-height: 50cqh; object-fit: contain; }
+.screen-logo.small video { max-width: 34cqw; max-height: 34cqh; }
+.screen-logo.large video { max-width: 80cqw; max-height: 70cqh; }
+/* Full screen: the picture or video fills the whole screen. */
+.screen-logo.full img, .screen-logo.full video { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
 .screen-logo.small img { max-width: 34cqw; max-height: 34cqh; }
 .screen-logo.large img { max-width: 80cqw; max-height: 70cqh; }
 .screen-logo.with-name img { max-height: 42cqh; }

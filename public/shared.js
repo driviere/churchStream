@@ -127,11 +127,19 @@ export function fillSabbath(text, sab) {
 }
 
 // What the "Logo" button shows: the uploaded image, the church name, or both.
+// The logo: a picture or a video (MP4/MOV/WebM, played muted and repeating), small to full screen.
+export const isVideoFile = (f) => /\.(mp4|m4v|mov|webm)$/i.test(String(f || ''));
 export function logoParts(theme = {}, churchName = '') {
   const img = theme.logo ? '/media/' + encodeURIComponent(theme.logo) : '';
-  const name = churchName && (!img || theme.logoName) ? churchName : '';
-  const size = ['small', 'large'].includes(theme.logoSize) ? theme.logoSize : 'medium';
-  return { img, name, size, cls: `screen-logo ${size}${img && name ? ' with-name' : ''}` };
+  const video = !!img && isVideoFile(theme.logo);
+  const size = ['small', 'large', 'full'].includes(theme.logoSize) ? theme.logoSize : 'medium';
+  const name = churchName && (!img || (theme.logoName && size !== 'full')) ? churchName : '';
+  return { img, video, name, size, cls: `screen-logo ${size}${img && name ? ' with-name' : ''}` };
+}
+// HTML for the logo (projector and phone remote).
+export function logoHtml(lp) {
+  const media = !lp.img ? '' : lp.video ? `<video src="${lp.img}" muted loop autoplay playsinline></video>` : `<img src="${lp.img}" alt="">`;
+  return media + (lp.name ? `<div class="name${lp.img ? ' under' : ''}">${escapeHtml(lp.name)}</div>` : '');
 }
 
 // Projector text options from Settings → Appearance, as classes on the .screen element.

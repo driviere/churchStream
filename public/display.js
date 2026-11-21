@@ -1,4 +1,4 @@
-import { connect, fitText, textSizes, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts, themeClasses } from '/shared.js';
+import { connect, fitText, textSizes, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts, logoHtml, themeClasses } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -207,7 +207,7 @@ function render(state) {
   if (logoKey !== lastLogo) {
     lastLogo = logoKey;
     $('logo').className = lp.cls + (state.logo ? '' : ' hidden');
-    $('logo').innerHTML = (lp.img ? `<img src="${lp.img}" alt="">` : '') + (lp.name ? `<div class="name${lp.img ? ' under' : ''}">${escapeHtml(lp.name)}</div>` : '');
+    $('logo').innerHTML = logoHtml(lp);
   }
 
   // Lower third on the projector (optional; always on the stream).
