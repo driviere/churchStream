@@ -183,6 +183,9 @@ Build your usual service once: welcome, opening hymn, scripture reading, prayer,
 
 These buttons stay lit while they're on. Press again to turn them off.
 
+### The live stream on the screens
+Turn on **Show the live stream on the screens** (under the screen picture on the right) and the projector shows exactly what online viewers see: the camera, the slides, names and the ticker. Useful for an overflow room, or to show the preacher on a big screen. If the stream isn't running, the camera preview starts by itself. Turn it off to go back to the slides. (Black still works on top of it.) The picture is about a second behind the room.
+
 ### Names on the stream (lower thirds)
 In the **Names** card, tap a name to show it at the bottom of the stream, e.g. *Pastor John Smith · Sermon*. Tap it again to hide it. **+ New name** adds one: **Show now** shows it once, **Show & save** also keeps it for next time. **Also show on the projector screens** shows names in the room too.
 
@@ -256,6 +259,17 @@ In the **Live stream** card, choose:
 - **Auto:** the camera, switching to slides + camera whenever words are on the screen.
 
 You can switch at any time without interrupting the stream.
+
+### The stream page (a second laptop)
+A second person can run the live stream from another laptop or tablet while the main computer runs the slides. On that laptop, open the **stream page**: the main computer's address followed by **/stream**, for example *http://192.168.1.20:8080/stream* (the address and a QR code are in **Settings → Phones & tablets**, under *Stream page*). It has:
+- the **live picture**, exactly as viewers see it, with the sound meter and whether YouTube and Facebook are connected;
+- **Go live** and **End live stream** (with the start and end screens);
+- **Camera 1 / Camera 2** (or the **1** and **2** keys), **Stream shows**, and words on the camera view;
+- **recording**, **names** (lower thirds) and the **ticker**;
+- **Show the live stream on the screens**, and a small picture of what the projector shows now;
+- the ⚙ button for the stream settings: cameras (including phone cameras) and sound, stream keys and quality, and names.
+
+Both laptops change the same settings, so everything stays in step. If a password is set (Settings → Advanced), the stream page asks for it.
 
 ### Sound for online viewers
 In **Settings → Camera & sound**:

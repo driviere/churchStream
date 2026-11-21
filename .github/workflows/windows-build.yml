@@ -77,6 +77,24 @@ jobs:
                 throw "Preview failed for scene $scene"
               }
             }
+            # The stream page, the live picture for browsers, and the phone camera page (https).
+            $r = Invoke-WebRequest http://localhost:8123/stream -UseBasicParsing
+            if ($r.StatusCode -ne 200) { throw "stream page returned $($r.StatusCode)" }
+            $hc = New-Object System.Net.Http.HttpClient
+            $hc.Timeout = [TimeSpan]::FromSeconds(10)
+            $resp = $hc.GetAsync('http://localhost:8123/stream.mjpeg', [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
+            $body = $resp.Content.ReadAsStreamAsync().Result
+            $buf = New-Object byte[] 65536; $n = 0; $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($n -lt 4000 -and $sw.ElapsedMilliseconds -lt 8000) { $n += $body.Read($buf, $n, $buf.Length - $n) }
+            $head = [Text.Encoding]::ASCII.GetString($buf, 0, [Math]::Min($n, 40))
+            $hc.Dispose()
+            Write-Host "Stream picture: $n bytes, starts '$head'"
+            if ($head -notmatch 'churchstreamframe') { throw "No live stream picture at /stream.mjpeg" }
+            $pi = Invoke-RestMethod http://localhost:8123/api/phone-camera/info
+            Write-Host "Phone camera page: port=$($pi.port) $($pi.error)"
+            if (-not $pi.port) { throw "The phone camera page did not start" }
+            $r = Invoke-WebRequest "https://localhost:$($pi.port)/phone-camera" -SkipCertificateCheck -UseBasicParsing
+            if ($r.Content -notmatch 'ChurchStream camera') { throw "Phone camera page not served" }
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
             Start-Sleep -Seconds 2
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8123/api/stream/start | Out-Null
@@ -204,6 +222,12 @@ jobs:
           post /api/stream/start '{"mode":"preview"}'
           sleep 8
           curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("Preview:",s.state,s.problem||"");if(s.state!=="running")process.exit(1)})'
+          # The stream page, the live picture for browsers, and the phone camera page (https).
+          curl -sf localhost:8126/stream > /dev/null && echo "Stream page OK"
+          HEAD=$(curl -s --max-time 4 localhost:8126/stream.mjpeg | head -c 40 | tr -d '\r\n' || true)
+          echo "Stream picture starts: $HEAD"; echo "$HEAD" | grep -q churchstreamframe
+          PORT=$(curl -sf localhost:8126/api/phone-camera/info | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).port||""))')
+          echo "Phone camera page on port $PORT"; curl -skf "https://127.0.0.1:$PORT/phone-camera" | grep -q 'ChurchStream camera'
           post /api/stream/stop '{}'
           sleep 2
           post /api/stream/start '{"mode":"live"}'

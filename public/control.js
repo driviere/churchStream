@@ -546,33 +546,10 @@ function TickerCard({ s }) {
   </div>`;
 }
 
-function Aside({ s, onGoLive, onStop, active }) {
-  const st = s.stream;
+// What the stream shows (camera, slides, both, auto), and words on the camera view.
+function StreamScene({ s }) {
   const cfg = s.config;
-  const slide = s.live && s.live.item.slides[s.live.index];
-  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
-  const dests = Object.entries(st.destinations || {});
-  return html`<aside class=${'aside' + (active ? ' active' : '')}>
-    <div class="card mini">
-      <div class="card-head"><b>Screens</b>
-        <span class="note-r">${s.projectorOpen
-          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
-          : html`<button class="btn small" onClick=${openProjector}>Open on projector</button>`}</span></div>
-      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
-        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
-        countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
-    </div>
-
-    <div class="card stack vol-hide">
-      <div class="card-head" style="margin:0"><b>Live stream</b>
-        <span class="note-r">${st.mode === 'live'
-          ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
-          : st.mode === 'preview'
-            ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
-            : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
-      ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
-      <${StreamPhase} s=${s} />
-      <${CameraSwitch} s=${s} />
+  return html`
       <div>
         <div class="seg-label">Stream shows</div>
         <div class="seg" role="radiogroup" aria-label="What the stream shows">
@@ -588,7 +565,47 @@ function Aside({ s, onGoLive, onStop, active }) {
         }[cfg.streamScene || 'camera']}</div>
       </div>
       ${(cfg.streamScene || 'camera') !== 'slides' && (cfg.streamScene || 'camera') !== 'pip' && html`
-        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}
+        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}`;
+}
+
+// The projector shows the live stream picture (exactly what online viewers see) instead of the slides.
+function StreamOnScreens({ s }) {
+  const on = !!s.streamOnScreens;
+  return html`<label class="switch" style="min-height:36px;margin-top:8px" title="The projector shows the stream: camera, slides, names and ticker"><input type="checkbox" checked=${on}
+    onChange=${(e) => api('/api/toggle', { name: 'streamOnScreens', value: e.target.checked }).catch(fail)} /><span>Show the live stream on the screens${on && s.stream.mode === 'preview' ? ' (camera preview)' : ''}</span></label>`;
+}
+
+function Aside({ s, onGoLive, onStop, active }) {
+  const st = s.stream;
+  const cfg = s.config;
+  const slide = s.live && s.live.item.slides[s.live.index];
+  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
+  const dests = Object.entries(st.destinations || {});
+  return html`<aside class=${'aside' + (active ? ' active' : '')}>
+    <div class="card mini">
+      <div class="card-head"><b>Screens</b>
+        <span class="note-r">${s.projectorOpen
+          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
+          : html`<button class="btn small" onClick=${openProjector}>Open on projector</button>`}</span></div>
+      ${s.streamOnScreens && !s.black
+        ? html`<div class="screen-thumb feed"><img src="/stream.mjpeg" alt="The live stream on the screens" /></div>`
+        : html`<${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
+        countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />`}
+      <${StreamOnScreens} s=${s} />
+    </div>
+
+    <div class="card stack vol-hide">
+      <div class="card-head" style="margin:0"><b>Live stream</b>
+        <span class="note-r">${st.mode === 'live'
+          ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
+          : st.mode === 'preview'
+            ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
+            : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
+      ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
+      <${StreamPhase} s=${s} />
+      <${CameraSwitch} s=${s} />
+      <${StreamScene} s=${s} />
       <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
@@ -2390,6 +2407,7 @@ function SectionDevices({ s }) {
   const pages = best ? [
     ['Phone remote', best.url + '/remote', 'Big Next and Back buttons and the order of service — turns any phone into the clicker.'],
     ['Control panel', best.url + '/control', 'Run the service from a phone or tablet (same as this screen).'],
+    ['Stream page', best.url + '/stream', 'For a second person on another laptop: go live, cameras, names, ticker and recording, with the live picture.'],
     ['Stage screen', best.url + '/stage', 'For musicians and the speaker: current and next slide, and a clock.'],
     ['Projector', best.url + '/display', 'Only if the projector is connected to a different computer.'],
   ] : [];
@@ -2438,15 +2456,15 @@ const SECTIONS = [
   ['advanced', 'Advanced', SectionAdvanced],
 ];
 
-function SettingsView({ s }) {
-  const [sec, setSec] = useState((location.hash || '#general').slice(1));
-  const cur = SECTIONS.find((x) => x[0] === sec) || SECTIONS[0];
+function SettingsView({ s, sections = SECTIONS, onBack = null, backLabel = 'Back to control panel' }) {
+  const [sec, setSec] = useState((location.hash || '#' + sections[0][0]).slice(1));
+  const cur = sections.find((x) => x[0] === sec) || sections[0];
   const C = cur[2];
   return html`<div class="settings-shell">
-    <div class="settings-top"><button class="btn ghost" onClick=${() => navigate('/control')}>${icons.back()} Back to control panel</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
+    <div class="settings-top"><button class="btn ghost" onClick=${onBack || (() => navigate('/control'))}>${icons.back()} ${backLabel}</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
     <div class="settings">
-      <nav>${SECTIONS.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
-        <span class="spacer"></span><button onClick=${() => window.open('/manual', '_blank')}>User manual</button><button onClick=${() => navigate('/setup')}>Run setup again</button></nav>
+      <nav>${sections.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
+        <span class="spacer"></span><button onClick=${() => window.open('/manual', '_blank')}>User manual</button>${!onBack && html`<button onClick=${() => navigate('/setup')}>Run setup again</button>`}</nav>
       <div class="content"><div><h1>${cur[1]}</h1><div style="height:14px"></div><${C} s=${s} key=${cur[0]} /></div></div>
     </div>
   </div>`;
@@ -2747,6 +2765,102 @@ function updateProgram(s) {
 }
 
 // ---------------------------------------------------------------------------------------
+// The stream page (/stream): for a second person, on another laptop, who runs the live stream
+// while the main control panel runs the slides. Same settings and state as the control panel.
+const STREAM_SECTIONS = [['camera', 'Camera & sound', SectionCamera], ['streaming', 'YouTube & Facebook', SectionStreaming], ['lowerthirds', 'Names (lower thirds)', SectionLowerThirds]];
+
+// The finished stream picture, as viewers see it (MJPEG; reconnects after a restart).
+function LiveFeed({ s }) {
+  const st = s.stream;
+  const [n, setN] = useState(0);
+  const [ok, setOk] = useState(false);
+  const run = st.mode !== 'off' ? `${st.mode}-${st.since || ''}` : '';
+  useEffect(() => { setOk(false); }, [run]);
+  if (!run) {
+    return html`<div class="live-feed off"><div><b>The camera is off</b><span>Start the preview to see the stream picture, or go live.</span>
+      <button class="btn" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button></div></div>`;
+  }
+  return html`<div class="live-feed">
+    ${!ok && html`<span class="wait">Starting…</span>`}
+    <img key=${run + n} src=${'/stream.mjpeg?r=' + encodeURIComponent(run) + '&n=' + n} alt="The live stream" onLoad=${() => setOk(true)}
+      onError=${() => { setOk(false); setTimeout(() => setN((x) => x + 1), 1500); }} />
+    ${st.mode === 'live' ? html`<span class="tag live">● LIVE</span>` : html`<span class="tag">Preview — not live</span>`}
+  </div>`;
+}
+
+function StreamView({ s }) {
+  const [tab, setTab] = useState(STREAM_SECTIONS.some(([id]) => '#' + id === location.hash) ? 'settings' : 'live');
+  const [dialog, setDialog] = useState(null);
+  const st = s.stream;
+  const cfg = s.config;
+  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
+  const dests = Object.entries(st.destinations || {});
+  const slide = s.live && s.live.item.slides[s.live.index];
+  useEffect(() => { document.title = 'Stream · ChurchStream'; }, []);
+  // 1 / 2 switch cameras, as on the control panel.
+  useEffect(() => {
+    const key = (e) => {
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if ((e.key === '1' || e.key === '2') && hasCam2(s.config)) api('/api/camera', { camera: +e.key }).catch(fail);
+    };
+    addEventListener('keydown', key);
+    return () => removeEventListener('keydown', key);
+  }, [s.config]);
+  if (tab === 'settings') {
+    return html`<${SettingsView} s=${s} sections=${STREAM_SECTIONS} backLabel="Back to the stream" onBack=${() => { history.replaceState({}, '', '/stream'); setTab('live'); }} />`;
+  }
+  return html`<div class="shell stream-page">
+    <div class="topbar">
+      <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
+      <span class="spacer"></span>
+      <${StreamStatus} s=${s} />
+      <a class="btn icon round" href="/manual#the-stream-page-a-second-laptop" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
+      <button class="btn icon round" title="Stream settings" aria-label="Stream settings" onClick=${() => { history.replaceState({}, '', '/stream#camera'); setTab('settings'); }}>${icons.gear()}</button>
+    </div>
+    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
+      ${st.mode !== 'off' && html`<button class="btn small" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop</button>`}</div>`}
+    ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
+    <div class="stream-grid">
+      <div class="card stack stream-main">
+        <${LiveFeed} s=${s} />
+        <${Meter} />
+        <div class="stream-dests">
+          ${st.mode === 'live'
+            ? html`${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Recording</span>`}`
+            : html`<span class="muted">${configured ? 'Not live. ' + [cfg.outputs.youtube.enabled && cfg.outputs.youtube.hasKey && 'YouTube', cfg.outputs.facebook.enabled && cfg.outputs.facebook.hasKey && 'Facebook', cfg.outputs.custom.enabled && cfg.outputs.custom.hasKey && 'Other', cfg.record && 'Recording'].filter(Boolean).join(' · ') : 'No stream keys yet — add them in the stream settings.'}</span>`}
+          <span class="spacer"></span>
+          ${st.mode === 'preview' && html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`}
+        </div>
+        <${StreamPhase} s=${s} />
+        ${!configured
+          ? html`<button class="btn big" onClick=${() => { history.replaceState({}, '', '/stream#streaming'); setTab('settings'); }}>Set up YouTube & Facebook</button>`
+          : st.mode === 'live'
+            ? html`<button class="btn big" onClick=${() => setDialog('stop')}>End live stream</button>`
+            : html`<button class="btn big danger" onClick=${() => setDialog('golive')}>${icons.radio()} Go live</button>`}
+      </div>
+      <div class="stream-side">
+        <div class="card stack">
+          <${CameraSwitch} s=${s} />
+          <${StreamScene} s=${s} />
+          <${RecordingOptions} s=${s} compact=${true} />
+        </div>
+        <${NameOnStream} s=${s} />
+        <${TickerCard} s=${s} />
+        <div class="card mini">
+          <div class="card-head"><b>On the screens now</b></div>
+          <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+            countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
+          <${StreamOnScreens} s=${s} />
+          <div class="hint">The slides are run from the main control panel.</div>
+        </div>
+      </div>
+    </div>
+    ${dialog === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------------------
 function Root() {
   const [s, setS] = useState(null);
   const [online, setOnline] = useState(true);
@@ -2772,6 +2886,7 @@ function Root() {
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;
   else if (route === '/settings') view = html`<${SettingsView} s=${s} />`;
+  else if (route === '/stream') view = html`<${StreamView} s=${s} />`;
   else view = html`<${ControlView} s=${s} />`;
   return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
 }

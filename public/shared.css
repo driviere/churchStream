@@ -71,6 +71,9 @@
 .screen-logo.large.with-name img { max-height: 56cqh; }
 .screen-logo .name.under { font-size: 5.5cqh; }
 .screen-logo .name { font-size: 7cqh; letter-spacing: 0.01em; text-align: center; padding: 0 8cqw; }
+/* "Stream on screens": the live stream picture, full screen (over everything but Black) */
+.screen-feed { position: absolute; inset: 0; background: #000; }
+.screen-feed img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .screen-black { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
 .screen-identify {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;

@@ -29,9 +29,9 @@ const MIME = {
   '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.webp': 'image/webp', '.otf': 'font/otf', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
 };
-const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html', '/remote': 'remote.html', '/manual': 'manual.html' };
+const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html', '/remote': 'remote.html', '/manual': 'manual.html', '/stream': 'control.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
-const OPEN = [/^\/(display|stage|manual)$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
+const OPEN = [/^\/(display|stage|manual)$/, /^\/stream\.mjpeg$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
 
 const app = new App();
 const clients = new Set();
@@ -297,6 +297,8 @@ const server = http.createServer(async (req, res) => {
     const handler = routes[`${req.method} ${p}`];
     if (handler) return send(res, 200, (await handler(req, url)) ?? { ok: true });
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Unknown API' });
+    // The live stream picture (open like the projector page: it's what viewers see anyway).
+    if (p === '/stream.mjpeg') return app.feed.serve(req, res);
     if (p === '/preview.jpg') return serveFile(res, path.join(paths.runDir, 'preview.jpg'), 'image/jpeg');
     if (p.startsWith('/media/')) {
       const name = path.basename(p);
