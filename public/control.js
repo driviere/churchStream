@@ -123,7 +123,7 @@ function Screen({ slide, kind, subtitle, theme = {}, churchName = '', black, cle
     ${!black && !logo && kind === 'media' && html`<div class="screen-logo"><div class="name" style="font-size:6cqh">${slide ? '▶ ' + slide.label : ''}</div></div>`}
     ${isCount && html`<${CountdownFace} cd=${countdown} skew=${skew} ann=${!clear && slide ? slide.text : ''} />`}
     ${ltOn && html`<div class="screen-lt"><div class="n">${lt.name}</div><div class="t">${lt.title}</div></div>`}
-    ${logo && (() => { const lp = logoParts(theme, churchName); return html`<div class=${lp.cls}>${lp.img && html`<img src=${lp.img} alt="" />`}${lp.name && html`<div class=${'name' + (lp.img ? ' under' : '')}>${lp.name}</div>`}</div>`; })()}
+    ${logo && (() => { const lp = logoParts(theme, churchName); return html`<div class=${lp.cls}>${lp.img && (lp.video ? html`<video src=${lp.img} muted loop autoplay playsinline></video>` : html`<img src=${lp.img} alt="" />`)}${lp.name && html`<div class=${'name' + (lp.img ? ' under' : '')}>${lp.name}</div>`}</div>`; })()}
     ${black && html`<div class="screen-black"></div>`}
   </div>`;
 }
@@ -546,33 +546,10 @@ function TickerCard({ s }) {
   </div>`;
 }
 
-function Aside({ s, onGoLive, onStop, active }) {
-  const st = s.stream;
+// What the stream shows (camera, slides, both, auto), and words on the camera view.
+function StreamScene({ s }) {
   const cfg = s.config;
-  const slide = s.live && s.live.item.slides[s.live.index];
-  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
-  const dests = Object.entries(st.destinations || {});
-  return html`<aside class=${'aside' + (active ? ' active' : '')}>
-    <div class="card mini">
-      <div class="card-head"><b>Screens</b>
-        <span class="note-r">${s.projectorOpen
-          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
-          : html`<button class="btn small" onClick=${openProjector}>Open on projector</button>`}</span></div>
-      <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
-        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
-        countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
-    </div>
-
-    <div class="card stack vol-hide">
-      <div class="card-head" style="margin:0"><b>Live stream</b>
-        <span class="note-r">${st.mode === 'live'
-          ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
-          : st.mode === 'preview'
-            ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
-            : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
-      ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
-      <${StreamPhase} s=${s} />
-      <${CameraSwitch} s=${s} />
+  return html`
       <div>
         <div class="seg-label">Stream shows</div>
         <div class="seg" role="radiogroup" aria-label="What the stream shows">
@@ -588,7 +565,47 @@ function Aside({ s, onGoLive, onStop, active }) {
         }[cfg.streamScene || 'camera']}</div>
       </div>
       ${(cfg.streamScene || 'camera') !== 'slides' && (cfg.streamScene || 'camera') !== 'pip' && html`
-        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}
+        <label class="switch" style="min-height:36px"><input type="checkbox" checked=${cfg.streamCaptions} onChange=${(e) => api('/api/config', { streamCaptions: e.target.checked }).catch(fail)} /><span>Words along the bottom of the camera view</span></label>`}`;
+}
+
+// The projector shows the live stream picture (exactly what online viewers see) instead of the slides.
+function StreamOnScreens({ s }) {
+  const on = !!s.streamOnScreens;
+  return html`<label class="switch" style="min-height:36px;margin-top:8px" title="The projector shows the stream: camera, slides, names and ticker"><input type="checkbox" checked=${on}
+    onChange=${(e) => api('/api/toggle', { name: 'streamOnScreens', value: e.target.checked }).catch(fail)} /><span>Show the live stream on the screens${on && s.stream.mode === 'preview' ? ' (camera preview)' : ''}</span></label>`;
+}
+
+function Aside({ s, onGoLive, onStop, active }) {
+  const st = s.stream;
+  const cfg = s.config;
+  const slide = s.live && s.live.item.slides[s.live.index];
+  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
+  const dests = Object.entries(st.destinations || {});
+  return html`<aside class=${'aside' + (active ? ' active' : '')}>
+    <div class="card mini">
+      <div class="card-head"><b>Screens</b>
+        <span class="note-r">${s.projectorOpen
+          ? html`<button class="btn small ghost" onClick=${() => api('/api/projector/close', {}).catch(fail)}>Close window</button>`
+          : html`<button class="btn small" onClick=${openProjector}>Open on projector</button>`}</span></div>
+      ${s.streamOnScreens && !s.black
+        ? html`<div class="screen-thumb feed"><img src="/stream.mjpeg" alt="The live stream on the screens" /></div>`
+        : html`<${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+        lt=${cfg.lowerThirdOnProjector && s.lowerThird.visible && (s.lowerThird.name || s.lowerThird.title) ? s.lowerThird : null}
+        countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />`}
+      <${StreamOnScreens} s=${s} />
+    </div>
+
+    <div class="card stack vol-hide">
+      <div class="card-head" style="margin:0"><b>Live stream</b>
+        <span class="note-r">${st.mode === 'live'
+          ? html`<span class="dests">${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Rec</span>`}</span>`
+          : st.mode === 'preview'
+            ? html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`
+            : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
+      ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
+      <${StreamPhase} s=${s} />
+      <${CameraSwitch} s=${s} />
+      <${StreamScene} s=${s} />
       <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
@@ -626,7 +643,7 @@ function TitleHelper({ s }) {
   </div>`;
 }
 
-const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc'; };
+const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc' || v.type === 'phone'; };
 const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // "Starting soon" / "Thank you for watching" on the stream, with a way to skip ahead.
@@ -936,6 +953,30 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
 const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
 // Video / music item: big transport controls instead of a slide grid.
+// A video/music item's current settings: from the item on screen, else the order of service.
+function currentMedia(s, item) {
+  if (s.live && s.live.item.key === item.key && s.live.item.media) return s.live.item.media;
+  const p = s.plan.items.find((x) => x.uid === item.key);
+  return (p && p.media) || item.media || {};
+}
+
+// Settings that can be changed after a video, music or YouTube item was added.
+function MediaSettings({ s, item }) {
+  const m = currentMedia(s, item);
+  const yt = m.type === 'youtube';
+  const set = (patch) => api('/api/media/settings', { key: item.key, patch }).catch(fail);
+  const [start, setStart] = useState(fmtDur((m.youtube && m.youtube.start) || 0));
+  return html`<div class="media-settings">
+    <label class="switch"><input type="checkbox" checked=${!!m.loop} onChange=${(e) => set({ loop: e.target.checked })} /><span>Repeat until stopped</span></label>
+    ${!yt && html`<label class="switch"><input type="checkbox" checked=${m.room !== false} onChange=${(e) => set({ room: e.target.checked })} /><span>${m.type === 'audio' ? 'Also play through this computer (for the room)' : 'Play the sound in the room too'}</span></label>`}
+    <label class="row" style="gap:8px">${icons.music()}<span class="muted" style="font-size:13px">Volume</span>
+      <input type="range" min="0" max=${yt ? 1 : 1.5} step="0.05" value=${m.volume ?? 1} onChange=${(e) => set({ volume: +e.target.value })} aria-label="Volume" /></label>
+    ${yt && html`<label class="row" style="gap:8px"><span class="muted" style="font-size:13px">Start at</span>
+      <input class="input" style="width:80px" value=${start} onInput=${(e) => setStart(e.target.value)} placeholder="0:00"
+        onBlur=${() => { const [a, b] = start.split(':').map(Number); const secs = b === undefined ? a : a * 60 + b; if (Number.isFinite(secs)) set({ start: secs }); }} aria-label="Start at" /></label>`}
+  </div>`;
+}
+
 function MediaPanel(props) {
   return props.item.media && props.item.media.type === 'youtube' ? html`<${YouTubePanel} ...${props} />` : html`<${FilePanel} ...${props} />`;
 }
@@ -944,7 +985,7 @@ const ytThumb = (y) => (y && y.id ? `https://i.ytimg.com/vi/${y.id}/hqdefault.jp
 
 // A YouTube item: plays in YouTube's player on the projector (needs internet).
 function YouTubePanel({ s, item, isLive, onShow }) {
-  const m = item.media || {};
+  const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
   useEffect(() => { if (!playing || playing.paused) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt, playing && playing.paused]);
@@ -968,16 +1009,15 @@ function YouTubePanel({ s, item, isLive, onShow }) {
         : html`<button class="btn big primary" onClick=${() => (isLive ? ctl({ action: 'play' }) : onShow())}>${icons.play()} Play</button>`}
       <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
         <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
-      <label class="media-vol" title="Volume in the room">${icons.music()}<input type="range" min="0" max="1" step="0.05" value=${playing ? playing.volume : (m.volume ?? 1)}
-        onChange=${(e) => (playing ? ctl({ volume: +e.target.value }) : Promise.resolve())} /></label>
     </div>
+    <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">Plays from YouTube on the projector, so it needs internet. The live stream shows a “now playing” card (or the camera), and online viewers hear it only through your microphones. To put the video itself into the stream, download it instead (+ Add → Video, music or YouTube).</div>
   </div>`;
 }
 
 // A video / music file from the media library.
 function FilePanel({ s, item, isLive, onShow }) {
-  const m = item.media || {};
+  const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
   useEffect(() => { if (!playing) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt]);
@@ -985,7 +1025,6 @@ function FilePanel({ s, item, isLive, onShow }) {
   const elapsed = playing ? (Date.now() + skew - playing.startedAt) / 1000 : 0;
   const dur = m.duration || 0;
   const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
-  const vol = playing ? playing.volume : (m.volume ?? 1);
   const src = '/media/' + encodeURIComponent((m.file || '').replace(/^media:/, ''));
   return html`<div class="media-panel">
     <div class="media-view">
@@ -1001,9 +1040,8 @@ function FilePanel({ s, item, isLive, onShow }) {
         : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
       <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
         <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
-      <label class="media-vol" title="Volume on the stream">${icons.music()}<input type="range" min="0" max="1.5" step="0.05" value=${vol}
-        onChange=${(e) => (playing ? api('/api/media/control', { volume: +e.target.value }) : Promise.resolve()).catch(fail)} /></label>
     </div>
+    <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
       ? 'The video fills the projector and the stream while it plays (names and the ticker stay on top). Background music pauses during the video.'
       : 'The music plays on the stream' + (m.room ? ' and through this computer’s speakers.' : '.')}</div>
@@ -1763,8 +1801,22 @@ function SectionGeneral({ s }) {
 function LogoField({ s }) {
   const theme = s.config.theme || {};
   const [busy, setBusy] = useState(false);
-  const pick = () => pickFiles('image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg', false, async ([f]) => {
+  const pick = () => pickFiles('image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm', false, async ([f]) => {
     if (!f) return;
+    if (/^video\//.test(f.type) || /\.(mp4|m4v|mov|webm)$/i.test(f.name)) {
+      // A video logo: stored with the other videos, played muted and repeating.
+      if (f.size > 500 * 1024 * 1024) { fail(new Error('That video is over 500 MB. Please choose a shorter one.')); return; }
+      setBusy(true);
+      try {
+        const res = await fetch('/api/upload?name=' + encodeURIComponent(f.name), { method: 'POST', body: f });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.error || 'Upload failed');
+        await api('/api/config', { theme: { logo: d.file, logoSize: 'full' } }); // a video logo starts full screen
+        toast('Video logo saved');
+      } catch (err) { fail(err); }
+      setBusy(false);
+      return;
+    }
     const type = f.type || { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml' }[(f.name.split('.').pop() || '').toLowerCase()] || '';
     if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(type)) { fail(new Error('Please choose a PNG, JPG, WebP or SVG image. (iPhone photos: share them as JPG first.)')); return; }
     if (f.size > 12 * 1024 * 1024) { fail(new Error('That image is over 12 MB. Please choose a smaller one.')); return; }
@@ -1777,18 +1829,18 @@ function LogoField({ s }) {
     } catch (err) { fail(err); }
     setBusy(false);
   });
-  const sizes = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
+  const sizes = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['full', 'Full screen']];
   return html`<div class="field"><label class="label">Church logo</label>
     <div class="logo-field">
       <div class="logo-preview"><${Screen} slide=${null} theme=${theme} bg=${effectiveBg(null, null, theme)} churchName=${s.config.churchName} logo=${true} /></div>
       <div class="grow">
         <div class="row wrap">
-          <button class="btn primary" disabled=${busy} onClick=${pick}>${busy ? 'Uploading…' : theme.logo ? 'Change logo…' : 'Upload logo…'}</button>
+          <button class="btn primary" disabled=${busy} onClick=${pick}>${busy ? 'Uploading…' : theme.logo ? 'Change logo…' : 'Upload a picture or video…'}</button>
           ${theme.logo && html`<button class="btn ghost" onClick=${() => api('/api/media/remove', { kind: 'logo' }).then(() => toast('Logo removed')).catch(fail)}>Remove</button>`}
         </div>
-        ${theme.logo && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${!!theme.logoName} onChange=${(e) => save({ theme: { logoName: e.target.checked } })} /><span>Show the church name under the logo</span></label>`}
+        ${theme.logo && theme.logoSize !== 'full' && html`<label class="switch" style="margin-top:8px"><input type="checkbox" checked=${!!theme.logoName} onChange=${(e) => save({ theme: { logoName: e.target.checked } })} /><span>Show the church name under the logo</span></label>`}
         ${theme.logo && html`<div class="choices" style="margin-top:8px">${sizes.map(([v, t]) => html`<button class=${'choice' + ((theme.logoSize || 'medium') === v ? ' on' : '')} onClick=${() => save({ theme: { logoSize: v } })}><b>${t}</b></button>`)}</div>`}
-        <div class="hint">Shown full screen on the projector and the stream when you press <b>Logo</b>. A PNG with a transparent background looks best. ${theme.logo ? '' : 'Until you upload one, the church name is shown.'}</div>
+        <div class="hint">Shown on the projector and the stream when you press <b>Logo</b>. A picture (a PNG with a transparent background looks best) or a short video (MP4, MOV or WebM), which plays silently and repeats. <b>Full screen</b> fills the whole screen. ${theme.logo ? '' : 'Until you upload one, the church name is shown.'}</div>
       </div>
     </div></div>`;
 }
@@ -1855,6 +1907,7 @@ function SectionCamera({ s, autoPreview }) {
   const types = [
     ['dshow', s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card', s.platform === 'darwin' ? 'The built-in camera, USB webcams, HDMI capture devices or an iPhone (Continuity Camera)' : 'Webcams and HDMI-to-USB capture devices'],
     ['rtsp', 'Network (IP) camera', 'PTZ and IP cameras on your network'],
+    ['phone', 'Phone (scan a QR code)', 'A phone’s camera over the church Wi-Fi — nothing to install'],
     ['testsrc', 'Test pattern', 'Try everything without a camera'],
   ];
   return html`<div class="two">
@@ -1872,6 +1925,7 @@ function SectionCamera({ s, autoPreview }) {
       ${v.type === 'rtsp' && html`<div class="field"><label class="label">Camera address (RTSP)</label>
         <input class="input" value=${rtsp} placeholder="rtsp://user:password@192.168.1.50:554/stream1" onInput=${(e) => setRtsp(e.target.value)} onBlur=${() => save({ video: { rtspUrl: rtsp.trim() } })} />
         <div class="hint">Found in your camera's manual or app. Usually starts with rtsp://</div></div>`}
+      ${v.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${1} />`}
       <${SecondCamera} s=${s} devs=${devs} />
       <div class="field"><label class="label">Sound</label>
         <select class="select" value=${a.source === 'device' ? 'device:' + a.device : a.source} onChange=${(e) => {
@@ -1919,8 +1973,10 @@ function SecondCamera({ s, devs }) {
       <option value="none">None</option>
       <option value="dshow">${s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card'}</option>
       <option value="rtsp">Network (IP) camera</option>
+      <option value="phone">Phone (scan a QR code)</option>
       <option value="testsrc">Test pattern (to try it out)</option>
     </select>
+    ${v2.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${2} />`}
     ${v2.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Second camera" value=${v2.device} onChange=${(e) => save({ video2: { device: e.target.value } })}>
       <option value="">${devs ? (cams.length ? 'Choose the second camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
       ${cams.map((d) => html`<option value=${d}>${d}</option>`)}
@@ -1928,6 +1984,36 @@ function SecondCamera({ s, devs }) {
     </select></div>`}
     ${v2.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label="Second camera address" value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ video2: { rtspUrl: url.trim() } })} />`}
     <div class="hint">${hasCam2(s.config) ? 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.' : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div></div>`;
+}
+
+// A phone as a camera: scan the QR code with the phone, allow the camera, done.
+function PhoneCamSetup({ s, cam }) {
+  const [info, setInfo] = useState(null);
+  const [pick, setPick] = useState(0);
+  const load = () => get('/api/phone-camera/info').then(setInfo).catch(fail);
+  useEffect(() => { load(); }, []);
+  const links = (info && info['cam' + cam]) || [];
+  const link = links[pick] || links[0];
+  const on = !!(s.phoneCams && s.phoneCams[cam]);
+  const renew = () => { if (confirm('Make a new camera address? Phones using the old QR code stop sending until they scan the new one.')) api('/api/phone-camera/renew', {}).then(setInfo).catch(fail); };
+  const iphone = 'Show Details → visit this website';
+  return html`<div class="phonecam">
+    <div class=${'phonecam-status' + (on ? ' on' : '')}><i></i>${on ? `Phone connected — camera ${cam} is sending` : 'Waiting for the phone…'}</div>
+    ${!info ? html`<div class="hint">Loading…</div>` : !link ? html`<div class="note">${info.error || 'This computer isn’t on a network. Connect it to the church Wi-Fi first.'}</div>` : html`<div class="phonecam-body">
+      <${QrCode} text=${link} size=${168} />
+      <ol class="phonecam-steps">
+        <li>On the phone (on the <b>same Wi-Fi</b>), open the camera app and scan this code.</li>
+        <li>The phone warns that the connection isn’t private — that’s expected for a page on your own network. Tap <b>Advanced → Proceed</b> (Android) or <b>${iphone}</b> (iPhone). Only the first time.</li>
+        <li>Tap <b>Start camera</b> and allow the camera. Hold the phone sideways; keep it plugged in.</li>
+      </ol>
+    </div>
+    ${links.length > 1 && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Network address" value=${pick} onChange=${(e) => setPick(+e.target.value)}>${info.ips.map((ip, i) => html`<option value=${i}>${ip}</option>`)}</select></div>`}
+    <div class="row wrap" style="margin-top:8px">
+      <button class="btn small ghost" onClick=${() => (navigator.clipboard ? navigator.clipboard.writeText(link).then(() => toast('Link copied')) : Promise.reject(new Error('Copy is not available here'))).catch(fail)}>Copy link</button>
+      <button class="btn small ghost" onClick=${renew}>New address</button>
+    </div>
+    <div class="hint">If the phone drops off the Wi-Fi, the stream shows “Waiting for the phone camera” and the picture comes back by itself.</div>`}
+  </div>`;
 }
 
 function SectionProjector({ s }) {
@@ -2321,6 +2407,7 @@ function SectionDevices({ s }) {
   const pages = best ? [
     ['Phone remote', best.url + '/remote', 'Big Next and Back buttons and the order of service — turns any phone into the clicker.'],
     ['Control panel', best.url + '/control', 'Run the service from a phone or tablet (same as this screen).'],
+    ['Stream page', best.url + '/stream', 'For a second person on another laptop: go live, cameras, names, ticker and recording, with the live picture.'],
     ['Stage screen', best.url + '/stage', 'For musicians and the speaker: current and next slide, and a clock.'],
     ['Projector', best.url + '/display', 'Only if the projector is connected to a different computer.'],
   ] : [];
@@ -2369,15 +2456,15 @@ const SECTIONS = [
   ['advanced', 'Advanced', SectionAdvanced],
 ];
 
-function SettingsView({ s }) {
-  const [sec, setSec] = useState((location.hash || '#general').slice(1));
-  const cur = SECTIONS.find((x) => x[0] === sec) || SECTIONS[0];
+function SettingsView({ s, sections = SECTIONS, onBack = null, backLabel = 'Back to control panel' }) {
+  const [sec, setSec] = useState((location.hash || '#' + sections[0][0]).slice(1));
+  const cur = sections.find((x) => x[0] === sec) || sections[0];
   const C = cur[2];
   return html`<div class="settings-shell">
-    <div class="settings-top"><button class="btn ghost" onClick=${() => navigate('/control')}>${icons.back()} Back to control panel</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
+    <div class="settings-top"><button class="btn ghost" onClick=${onBack || (() => navigate('/control'))}>${icons.back()} ${backLabel}</button><span class="spacer"></span><${StreamStatus} s=${s} /></div>
     <div class="settings">
-      <nav>${SECTIONS.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
-        <span class="spacer"></span><button onClick=${() => window.open('/manual', '_blank')}>User manual</button><button onClick=${() => navigate('/setup')}>Run setup again</button></nav>
+      <nav>${sections.map(([id, label]) => html`<button class=${id === cur[0] ? 'on' : ''} onClick=${() => { setSec(id); history.replaceState({}, '', '#' + id); }}>${label}</button>`)}
+        <span class="spacer"></span><button onClick=${() => window.open('/manual', '_blank')}>User manual</button>${!onBack && html`<button onClick=${() => navigate('/setup')}>Run setup again</button>`}</nav>
       <div class="content"><div><h1>${cur[1]}</h1><div style="height:14px"></div><${C} s=${s} key=${cur[0]} /></div></div>
     </div>
   </div>`;
@@ -2514,7 +2601,15 @@ async function renderProgram(s) {
   if (s.logo) {
     // Same layout as the projector (shared.css .screen-logo): image, name, or image with the name under it.
     const lp = logoParts(t, s.config.churchName);
-    const logo = lp.img && await loadImg(lp.img);
+    // A video logo plays on the stream's own video layer (see App.syncLogoVideo); draw nothing here.
+    const logo = lp.img && !lp.video && await loadImg(lp.img);
+    if (logo && lp.size === 'full') {
+      // Full screen: fill the picture (cover), like the projector.
+      const k = Math.max(W / logo.naturalWidth, H / logo.naturalHeight);
+      const sh = ctx.shadowColor; ctx.shadowColor = 'transparent';
+      ctx.drawImage(logo, (W - logo.naturalWidth * k) / 2, (H - logo.naturalHeight * k) / 2, logo.naturalWidth * k, logo.naturalHeight * k);
+      ctx.shadowColor = sh;
+    } else {
     const box = { small: [0.34, 0.34, 0.30], medium: [0.5, 0.5, 0.42], large: [0.8, 0.7, 0.56] }[lp.size];
     const nameSize = H * (logo ? 0.055 : 0.07);
     let ih = 0;
@@ -2537,6 +2632,7 @@ async function renderProgram(s) {
       let size = nameSize;
       for (; size > H * 0.03; size -= H * 0.003) { ctx.font = `600 ${size}px ${FONT}`; if (ctx.measureText(lp.name).width <= W * 0.84) break; }
       ctx.fillText(lp.name, W / 2, y + nameSize * 0.6);
+    }
     }
   } else if (slide && slide.image && !s.clear) {
     const pic = await loadImg(bgInfo(slide.image).url);
@@ -2669,6 +2765,102 @@ function updateProgram(s) {
 }
 
 // ---------------------------------------------------------------------------------------
+// The stream page (/stream): for a second person, on another laptop, who runs the live stream
+// while the main control panel runs the slides. Same settings and state as the control panel.
+const STREAM_SECTIONS = [['camera', 'Camera & sound', SectionCamera], ['streaming', 'YouTube & Facebook', SectionStreaming], ['lowerthirds', 'Names (lower thirds)', SectionLowerThirds]];
+
+// The finished stream picture, as viewers see it (MJPEG; reconnects after a restart).
+function LiveFeed({ s }) {
+  const st = s.stream;
+  const [n, setN] = useState(0);
+  const [ok, setOk] = useState(false);
+  const run = st.mode !== 'off' ? `${st.mode}-${st.since || ''}` : '';
+  useEffect(() => { setOk(false); }, [run]);
+  if (!run) {
+    return html`<div class="live-feed off"><div><b>The camera is off</b><span>Start the preview to see the stream picture, or go live.</span>
+      <button class="btn" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button></div></div>`;
+  }
+  return html`<div class="live-feed">
+    ${!ok && html`<span class="wait">Starting…</span>`}
+    <img key=${run + n} src=${'/stream.mjpeg?r=' + encodeURIComponent(run) + '&n=' + n} alt="The live stream" onLoad=${() => setOk(true)}
+      onError=${() => { setOk(false); setTimeout(() => setN((x) => x + 1), 1500); }} />
+    ${st.mode === 'live' ? html`<span class="tag live">● LIVE</span>` : html`<span class="tag">Preview — not live</span>`}
+  </div>`;
+}
+
+function StreamView({ s }) {
+  const [tab, setTab] = useState(STREAM_SECTIONS.some(([id]) => '#' + id === location.hash) ? 'settings' : 'live');
+  const [dialog, setDialog] = useState(null);
+  const st = s.stream;
+  const cfg = s.config;
+  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
+  const dests = Object.entries(st.destinations || {});
+  const slide = s.live && s.live.item.slides[s.live.index];
+  useEffect(() => { document.title = 'Stream · ChurchStream'; }, []);
+  // 1 / 2 switch cameras, as on the control panel.
+  useEffect(() => {
+    const key = (e) => {
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if ((e.key === '1' || e.key === '2') && hasCam2(s.config)) api('/api/camera', { camera: +e.key }).catch(fail);
+    };
+    addEventListener('keydown', key);
+    return () => removeEventListener('keydown', key);
+  }, [s.config]);
+  if (tab === 'settings') {
+    return html`<${SettingsView} s=${s} sections=${STREAM_SECTIONS} backLabel="Back to the stream" onBack=${() => { history.replaceState({}, '', '/stream'); setTab('live'); }} />`;
+  }
+  return html`<div class="shell stream-page">
+    <div class="topbar">
+      <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
+      <span class="spacer"></span>
+      <${StreamStatus} s=${s} />
+      <a class="btn icon round" href="/manual#the-stream-page-a-second-laptop" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
+      <button class="btn icon round" title="Stream settings" aria-label="Stream settings" onClick=${() => { history.replaceState({}, '', '/stream#camera'); setTab('settings'); }}>${icons.gear()}</button>
+    </div>
+    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
+      ${st.mode !== 'off' && html`<button class="btn small" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop</button>`}</div>`}
+    ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
+    <div class="stream-grid">
+      <div class="card stack stream-main">
+        <${LiveFeed} s=${s} />
+        <${Meter} />
+        <div class="stream-dests">
+          ${st.mode === 'live'
+            ? html`${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Recording</span>`}`
+            : html`<span class="muted">${configured ? 'Not live. ' + [cfg.outputs.youtube.enabled && cfg.outputs.youtube.hasKey && 'YouTube', cfg.outputs.facebook.enabled && cfg.outputs.facebook.hasKey && 'Facebook', cfg.outputs.custom.enabled && cfg.outputs.custom.hasKey && 'Other', cfg.record && 'Recording'].filter(Boolean).join(' · ') : 'No stream keys yet — add them in the stream settings.'}</span>`}
+          <span class="spacer"></span>
+          ${st.mode === 'preview' && html`<button class="btn small ghost" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop preview</button>`}
+        </div>
+        <${StreamPhase} s=${s} />
+        ${!configured
+          ? html`<button class="btn big" onClick=${() => { history.replaceState({}, '', '/stream#streaming'); setTab('settings'); }}>Set up YouTube & Facebook</button>`
+          : st.mode === 'live'
+            ? html`<button class="btn big" onClick=${() => setDialog('stop')}>End live stream</button>`
+            : html`<button class="btn big danger" onClick=${() => setDialog('golive')}>${icons.radio()} Go live</button>`}
+      </div>
+      <div class="stream-side">
+        <div class="card stack">
+          <${CameraSwitch} s=${s} />
+          <${StreamScene} s=${s} />
+          <${RecordingOptions} s=${s} compact=${true} />
+        </div>
+        <${NameOnStream} s=${s} />
+        <${TickerCard} s=${s} />
+        <div class="card mini">
+          <div class="card-head"><b>On the screens now</b></div>
+          <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+            countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
+          <${StreamOnScreens} s=${s} />
+          <div class="hint">The slides are run from the main control panel.</div>
+        </div>
+      </div>
+    </div>
+    ${dialog === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------------------
 function Root() {
   const [s, setS] = useState(null);
   const [online, setOnline] = useState(true);
@@ -2694,6 +2886,7 @@ function Root() {
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;
   else if (route === '/settings') view = html`<${SettingsView} s=${s} />`;
+  else if (route === '/stream') view = html`<${StreamView} s=${s} />`;
   else view = html`<${ControlView} s=${s} />`;
   return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
 }

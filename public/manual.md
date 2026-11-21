@@ -183,6 +183,9 @@ Build your usual service once: welcome, opening hymn, scripture reading, prayer,
 
 These buttons stay lit while they're on. Press again to turn them off.
 
+### The live stream on the screens
+Turn on **Show the live stream on the screens** (under the screen picture on the right) and the projector shows exactly what online viewers see: the camera, the slides, names and the ticker. Useful for an overflow room, or to show the preacher on a big screen. If the stream isn't running, the camera preview starts by itself. Turn it off to go back to the slides. (Black still works on top of it.) The picture is about a second behind the room.
+
 ### Names on the stream (lower thirds)
 In the **Names** card, tap a name to show it at the bottom of the stream, e.g. *Pastor John Smith · Sermon*. Tap it again to hide it. **+ New name** adds one: **Show now** shows it once, **Show & save** also keeps it for next time. **Also show on the projector screens** shows names in the room too.
 
@@ -230,9 +233,23 @@ You can stream to both at once. It doesn't use extra computer power, because the
 Changes apply the next time you go live.
 
 ### Two cameras
-In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, or a network camera. The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
+In **Settings → Camera & sound**, choose a **Second camera**: another USB camera or capture card, a network camera, or a phone (see below). The sound still comes from your microphone or sound desk. The Live stream card then shows **Camera 1 / Camera 2**: click one, or press **1** or **2**, to switch instantly without interrupting the stream. *Slides + camera* uses the camera that is on air.
 
 If camera 2 stops during the service (unplugged, a loose cable, a network camera that drops out), ChurchStream notices within a few seconds and carries on with **camera 1**, with a red note on the Live stream card. It keeps checking, and when camera 2 works again it is added back by itself (with a brief pause in the stream) and shows as ready. Camera 1 stays on air until you switch. If the picture ever freezes completely, ChurchStream restarts the stream on its own.
+
+### A phone as a camera
+Any recent iPhone or Android phone can be a camera, with nothing to install. In **Settings → Camera & sound**, choose **Phone (scan a QR code)** as the camera type, or as the **Second camera**. A QR code appears.
+1. Connect the phone to the **same Wi-Fi** as the ChurchStream computer, open its camera app and scan the code.
+2. The phone warns that the connection is not private. That is expected: the page comes from your own computer, not from the internet. Tap **Advanced → Proceed** (Android) or **Show Details → visit this website** (iPhone). This is only needed the first time.
+3. Tap **Start camera** and allow the camera. The settings page shows a green dot when the phone is sending.
+
+Tips:
+- Hold the phone **sideways**, on a small tripod or stand, and keep it **plugged in**. Keep the camera page open; the phone's screen stays on by itself.
+- **Switch camera** chooses the front or back camera, and **Light** turns on the torch (where the phone has one).
+- If the phone leaves the Wi-Fi or the page is closed, the stream shows "Waiting for the phone camera" instead of freezing, and the picture comes back by itself when the phone reconnects.
+- The phone sends pictures only; the sound still comes from your microphone or sound desk.
+- **New address** makes a new QR code, so phones using the old one stop sending.
+- On Windows, allow ChurchStream through the firewall when asked, so phones can connect. The camera page uses port 8443.
 
 ### What the stream shows
 In the **Live stream** card, choose:
@@ -242,6 +259,17 @@ In the **Live stream** card, choose:
 - **Auto:** the camera, switching to slides + camera whenever words are on the screen.
 
 You can switch at any time without interrupting the stream.
+
+### The stream page (a second laptop)
+A second person can run the live stream from another laptop or tablet while the main computer runs the slides. On that laptop, open the **stream page**: the main computer's address followed by **/stream**, for example *http://192.168.1.20:8080/stream* (the address and a QR code are in **Settings → Phones & tablets**, under *Stream page*). It has:
+- the **live picture**, exactly as viewers see it, with the sound meter and whether YouTube and Facebook are connected;
+- **Go live** and **End live stream** (with the start and end screens);
+- **Camera 1 / Camera 2** (or the **1** and **2** keys), **Stream shows**, and words on the camera view;
+- **recording**, **names** (lower thirds) and the **ticker**;
+- **Show the live stream on the screens**, and a small picture of what the projector shows now;
+- the ⚙ button for the stream settings: cameras (including phone cameras) and sound, stream keys and quality, and names.
+
+Both laptops change the same settings, so everything stays in step. If a password is set (Settings → Advanced), the stream page asks for it.
 
 ### Sound for online viewers
 In **Settings → Camera & sound**:
@@ -266,7 +294,7 @@ Click **Open on projector** in the Screens card. ChurchStream opens a full-scree
 
 ### Appearance (Settings → Appearance)
 - **Default background:** used everywhere unless an item or slide has its own.
-- **Church logo:** upload your logo (a PNG with a transparent background looks best). You can show the church name under it, and choose Small, Medium or Large. Also in Settings → General.
+- **Church logo:** upload a picture (a PNG with a transparent background looks best) or a short **video** (MP4, MOV or WebM). A video logo plays silently and repeats, on the projector and the stream, and background music keeps playing under it. Choose Small, Medium, Large or **Full screen** (fills the whole screen; a new video logo starts at Full screen). You can show the church name under a smaller logo. Also in Settings → General.
 - **Largest text size:** Smaller, Normal, Larger or Largest. Every slide uses this size whenever its words fit. A long line continues on the next line when that keeps the words bigger; short lines stay whole.
 - **Smallest text size:** Small, Medium, Large or Extra large. A slide with more words shrinks only as much as it needs, and never below this size.
 - **When the words don't fit at this size, continue on the next slide** (on by default): a slide that would need smaller text is split into parts, e.g. *Verse 1 (1/2)* and *Verse 1 (2/2)*. Whole lines and whole Bible verses stay together, each part of a reading shows its own verses (*John 3:16–17*), and **Next** steps through the parts. **Edit** still shows the slide as you typed it. With this off, a very full slide may not fit on the screen.
@@ -319,7 +347,9 @@ Click **Save / open** above the order of service.
 ### Videos and music files
 **+ Add → Video, music or YouTube → Add video or music…** and choose MP4, MOV or WebM videos (e.g. Mission Spotlight) or MP3/M4A music. The files stay on this computer.
 - A video fills the projector **and** the stream, with sound, while names and the ticker stay on top.
-- Use **Play**, **Stop** and **From the start**, the volume slider, and *Repeat until stopped*.
+- Use **Play**, **Stop** and **From the start**.
+- Under the player you can change the item's settings at any time, even after it was added or while it plays: **Repeat until stopped**, **Play the sound in the room too**, **Volume**, and for YouTube links **Start at**. They're saved in the order of service; turning Repeat on while a video plays takes effect straight away.
+- Videos without sound (for example a silent announcement loop) play too.
 - Background music steps aside automatically while a video plays.
 
 ### Background music

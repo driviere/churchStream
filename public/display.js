@@ -1,4 +1,4 @@
-import { connect, fitText, textSizes, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts, themeClasses } from '/shared.js';
+import { connect, fitText, textSizes, slideHtml, escapeHtml, currentSlide, bgInfo, effectiveBg, countdownParts, logoParts, logoHtml, themeClasses } from '/shared.js';
 
 const $ = (id) => document.getElementById(id);
 const layers = [$('layerA'), $('layerB')];
@@ -207,12 +207,12 @@ function render(state) {
   if (logoKey !== lastLogo) {
     lastLogo = logoKey;
     $('logo').className = lp.cls + (state.logo ? '' : ' hidden');
-    $('logo').innerHTML = (lp.img ? `<img src="${lp.img}" alt="">` : '') + (lp.name ? `<div class="name${lp.img ? ' under' : ''}">${escapeHtml(lp.name)}</div>` : '');
+    $('logo').innerHTML = logoHtml(lp);
   }
 
   // Lower third on the projector (optional; always on the stream).
   const lt = state.lowerThird || {};
-  const ltOn = !!(state.config.lowerThirdOnProjector && lt.visible && (lt.name || lt.title) && !state.black && !state.logo);
+  const ltOn = !!(state.config.lowerThirdOnProjector && lt.visible && (lt.name || lt.title) && !state.black && !state.logo && !state.streamOnScreens);
   if (ltOn) { $('lt').firstElementChild.textContent = lt.name || ''; $('lt').lastElementChild.textContent = lt.title || ''; }
   $('lt').classList.toggle('hidden', !ltOn);
   if ($('screen').classList.contains('has-lt') !== ltOn) {
@@ -222,7 +222,7 @@ function render(state) {
 
   // Ticker along the bottom (optional on the projector; always available on the stream).
   const tk = state.ticker || {};
-  const tickOn = !!(state.config.tickerOnProjector && tk.visible && tk.text && !state.black);
+  const tickOn = !!(state.config.tickerOnProjector && tk.visible && tk.text && !state.black && !state.streamOnScreens);
   const span = $('ticker').firstElementChild;
   if (tickOn && span.textContent !== tk.text) {
     span.textContent = tk.text;
@@ -269,6 +269,7 @@ function render(state) {
   $('tag').textContent = !hideText && !isCount && item && item.kind === 'song' && item.subtitle ? item.subtitle : '';
   $('logo').classList.toggle('hidden', !state.logo);
   $('black').classList.toggle('hidden', !state.black);
+  syncFeed(!!state.streamOnScreens && !state.black);
 
   const ident = state.identify && state.identify > state.now;
   $('identify').classList.toggle('hidden', !ident);
@@ -280,3 +281,23 @@ let last = null;
 connect((s) => { if (s) last = s; render(s); });
 addEventListener('resize', () => { shownKey = null; if (last) render(last); });
 document.fonts && document.fonts.ready.then(() => { shownKey = null; if (last) render(last); });
+
+// "Stream on screens": the live stream picture (camera, slides, names — what viewers see).
+// The picture keeps coming over one connection; if it breaks (ChurchStream restarted), try again.
+let feedOn = false;
+let feedRetry = null;
+function syncFeed(on) {
+  const box = $('feed');
+  const img = box.firstElementChild;
+  box.classList.toggle('hidden', !on);
+  if (on === feedOn) return;
+  feedOn = on;
+  clearTimeout(feedRetry);
+  if (on) {
+    img.onerror = () => { clearTimeout(feedRetry); feedRetry = setTimeout(() => { if (feedOn) img.src = '/stream.mjpeg?t=' + Date.now(); }, 1500); };
+    img.src = '/stream.mjpeg?t=' + Date.now();
+  } else {
+    img.onerror = null;
+    img.removeAttribute('src'); // closes the connection
+  }
+}

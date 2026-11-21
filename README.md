@@ -25,7 +25,10 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Feature | What it does |
 | --- | --- |
 | YouTube and Facebook at once | Streams to both at the same time, from one encode, so the second platform costs no extra computer power. If one drops, the other keeps going and the dropped one reconnects. |
-| Two cameras | Add a second camera (USB, capture card or network camera) and switch with **Camera 1 / Camera 2** or the **1**/**2** keys, instantly and without interrupting the stream. If camera 2 drops out, the stream carries on with camera 1 and camera 2 comes back by itself when it works again. |
+| Stream page | A second person can run the stream from another laptop at **/stream**: the live picture, go live/end, cameras, what the stream shows, names, ticker, recording and the stream settings, while the main laptop runs the slides. |
+| Stream on the screens | One switch shows the live stream picture (camera, slides, names) on the projector, e.g. for an overflow room. |
+| Phone as a camera | Scan a QR code with any phone on the church Wi-Fi and it becomes camera 1 or 2: nothing to install. If the phone drops off, the stream shows a waiting picture and recovers by itself. |
+| Two cameras | Add a second camera (USB, capture card, network camera or phone) and switch with **Camera 1 / Camera 2** or the **1**/**2** keys, instantly and without interrupting the stream. If camera 2 drops out, the stream carries on with camera 1 and camera 2 comes back by itself when it works again. |
 | Recording | One switch on the Live stream card keeps a copy of each service on the computer. Choose the quality: the stream itself (no extra work), or a better 720p/1080p copy encoded separately. Optionally each camera on its own, without slides or names, for editing afterwards. |
 | Starting soon / thank-you screens | Go live with a countdown ("Our service begins in 4:59") that switches to the service by itself; end with "Thank you for worshipping with us" for a few seconds before the stream stops. |
 | What viewers see | **Camera**, **Slides** (exactly what the projector shows), **Slides + camera** in a corner, or **Auto**. Switching never interrupts the stream. |
@@ -45,7 +48,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Projector window | Opens full screen on the projector output. It also works with an HDMI splitter feeding two screens. |
 | Exact preview | The slide thumbnails and the small screen in the control panel look exactly like the projector. |
 | Backgrounds | 15 built-in backgrounds made for projection, plus your own photos. Set one for everything, one item, or a single slide. |
-| Church logo | Your logo full screen with one tap, optionally with the church name under it, in three sizes. |
+| Church logo | A picture or a short video (plays silently and repeats), shown with one tap: small, medium, large or full screen, optionally with the church name under it. |
 | Black, Clear, Logo | Blank the screens, hide just the words, or show the logo. Each is one tap or one key. |
 | Text options | Choose the font; put the words in the middle or along the bottom; centred or left; with an outline for busy photos. |
 | Stage screen | Current slide, next slide and a clock for musicians and the speaker, on any phone or tablet. |
