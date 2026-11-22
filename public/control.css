@@ -823,3 +823,15 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .keys-row kbd { min-width: 64px; text-align: center; padding: 4px 8px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px; font: 700 13px var(--font); background: var(--panel-2); }
 @media (max-width: 640px) { .keys-grid { grid-template-columns: 1fr; } }
 @media print { body * { visibility: hidden; } .modal, .modal * { visibility: visible; } .modal { position: absolute; inset: 0; box-shadow: none; border: 0; } .modal footer, .modal header button { display: none; } }
+
+/* Updates (lib/updater.js): a card in the corner, on every page, that never covers the middle. */
+.banner.update { position: fixed; right: 16px; bottom: 16px; z-index: 60; max-width: min(460px, calc(100vw - 32px)); align-items: flex-start; background: var(--panel); border: 1px solid var(--line); color: var(--text); box-shadow: var(--shadow); font-weight: 400; }
+.banner.update b { font-weight: 600; }
+.update-buttons { display: flex; gap: 6px; flex: none; align-items: center; }
+.update-notes { margin-top: 6px; max-height: 170px; overflow: auto; font-size: 13px; color: var(--muted); display: grid; gap: 3px; }
+.update-notes b { color: var(--text); margin-top: 4px; }
+.update-bar { margin-top: 6px; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.update-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s; }
+.update-error { margin-top: 6px; color: var(--live-ink); font-size: 13px; }
+.linkish { background: none; border: 0; padding: 0; margin-top: 4px; color: var(--accent-text); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; }
+@media (max-width: 560px) { .banner.update { left: 12px; right: 12px; bottom: 12px; flex-direction: column; align-items: stretch; } .update-buttons { justify-content: flex-end; } }

@@ -24,11 +24,15 @@ This manual is written for volunteers. You don't need any technical knowledge.
 ## 1. Getting started
 
 ### Installing on Windows
-1. Download **ChurchStream-win-x64.zip** from the project's *Releases* page on GitHub.
-2. Unzip it anywhere, for example to your Desktop or Documents. Nothing needs installing, and FFmpeg (the streaming engine) is included.
-3. Double-click **ChurchStream.exe**.
+1. Download **ChurchStream-Setup.exe** from the project's *Releases* page on GitHub.
+2. Double-click it. It installs ChurchStream for you (no administrator password needed) with a **ChurchStream** shortcut in the Start menu, and on the desktop if you tick that box. FFmpeg (the streaming engine) is included.
+   - Windows may say *"Windows protected your PC"*, because the app isn't code-signed. Click **More info → Run anyway**.
+   - Used ChurchStream from a folder before? The installer asks for that folder and brings your settings, songs and services along.
+3. Start **ChurchStream** from the Start menu or the desktop.
 
-The first time you open it, Windows may say *"Windows protected your PC"*, because the app isn't code-signed. Click **More info → Run anyway**.
+Your settings, songs, services and recordings are kept in the **ChurchStream-data** folder in your user folder (for example *C:\Users\Church\ChurchStream-data*). Uninstalling or installing again never touches them. ChurchStream can be removed in **Settings → Apps**.
+
+*Prefer no installer?* **ChurchStream-win-x64.zip** is the same program in a folder: unzip it anywhere (even a USB stick) and double-click **ChurchStream.exe**. Its data then sits in ChurchStream-data next to the exe.
 
 If Windows asks whether to allow ChurchStream on networks, click **Allow**. Phones and tablets need this to connect.
 
@@ -62,7 +66,16 @@ A short setup guide walks you through:
 You can change all of this later in **Settings** (the ⚙ button).
 
 ### Moving to another computer
-Everything ChurchStream keeps (settings, songs, services, pictures, videos) lives in the **ChurchStream-data** folder next to ChurchStream.exe. Copy the whole ChurchStream folder to the new computer and everything comes with it. On a Mac, copy **ChurchStream.app** and the **ChurchStream-data** folder from your home folder.
+Everything ChurchStream keeps (settings, songs, services, pictures, videos) lives in the **ChurchStream-data** folder: in your user folder when ChurchStream was installed (Windows installer, or a Mac), or next to ChurchStream.exe for the zip. Install ChurchStream on the new computer and copy that **ChurchStream-data** folder to the same place there (with the zip, simply copy the whole ChurchStream folder).
+
+### Updates
+ChurchStream checks by itself whether there is a newer version (when it starts and every few hours). When there is, a card appears in the corner of the control panel and the stream page: *ChurchStream 1.0.1 is available*, with **What's new**, **Update** and **Later**.
+- **Update** downloads only what changed, usually a few MB, never the whole program again. Then **Restart now** (about 10 seconds), or the new version starts next time you open ChurchStream. Pages on other laptops and tablets reconnect by themselves.
+- Nothing is downloaded until someone clicks **Update**, and never during a live stream or recording: the card waits until the stream ends.
+- **Later** hides the card until ChurchStream is started again.
+- Once in a while an update changes the program itself; then the card says so and links to the full download (on Windows, run the new **ChurchStream-Setup.exe**; your settings are kept).
+- If an update ever fails to start, ChurchStream goes back to the version you had and says so. Your settings are not affected.
+- To check by hand, or to stop the checks: **Settings → Advanced → Updates**. Checking contacts GitHub (github.com), where ChurchStream is published.
 
 ---
 

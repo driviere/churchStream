@@ -2415,6 +2415,7 @@ function SectionAdvanced({ s }) {
         <option value="auto">Automatic (uses the graphics chip when possible)</option>
         <option value="h264_qsv">Intel Quick Sync</option><option value="h264_nvenc">NVIDIA NVENC</option><option value="h264_amf">AMD AMF</option><option value="libx264">Software (x264)</option>
       </select>${s.stream.encoder && html`<div class="hint">In use: ${s.stream.encoder}</div>`}</div>
+    <${UpdateSettings} s=${s} save=${save} />
     <div class="field"><label class="label">Studio</label>
       ${s.studioSupported
         ? html`<label class="switch"><input type="checkbox" checked=${s.config.studioEnabled !== false} onChange=${(e) => save({ studioEnabled: e.target.checked })} /><span>Scenes and transitions on the stream page</span></label>
@@ -3568,6 +3569,76 @@ function SceneEditor({ info, scene: start, isNew, onClose }) {
 }
 
 // ---------------------------------------------------------------------------------------
+// Updates: ChurchStream looks for a newer version by itself (lib/updater.js) and this shows it
+// on every page. Nothing is downloaded until someone clicks Update; it waits while live.
+const fmtMB = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(b >= 10485760 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+function NotesText({ text }) {
+  const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const plain = (t) => t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/\[(.+?)\]\([^)]*\)/g, '$1');
+  return html`<div class="update-notes">${lines.map((l) => (/^#+\s/.test(l) ? html`<b>${plain(l.replace(/^#+\s*/, ''))}</b>` : html`<div>${/^[-*]\s/.test(l) ? '• ' : ''}${plain(l.replace(/^[-*]\s+/, ''))}</div>`))}</div>`;
+}
+function UpdateBanner({ s }) {
+  const u = s.update;
+  const a = u && u.available;
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // The first time a new version is seen, its "What's new" opens by itself.
+  useEffect(() => {
+    if (!a) return;
+    let seen = '';
+    try { seen = localStorage.getItem('cs-update-seen') || ''; } catch { /* private window */ }
+    if (seen !== a.version) { setOpen(true); try { localStorage.setItem('cs-update-seen', a.version); } catch { /* fine */ } }
+  }, [a && a.version]);
+  if (!u || u.hidden) return null;
+  const live = s.stream && s.stream.mode === 'live';
+  const later = () => api('/api/update/later', {}).catch(fail);
+  if (u.failed && !a) {
+    return html`<div class="banner update">${icons.alert()}<span class="grow">The update to ChurchStream ${u.failed} could not start, so this computer stays on ${s.version}. Your settings are fine.</span><button class="btn small ghost" onClick=${later}>OK</button></div>`;
+  }
+  if (!a || (live && !u.progress)) return null; // during the service it waits until the stream ends
+  const install = () => { setBusy(true); api('/api/update/install', {}).catch(fail).finally(() => setBusy(false)); };
+  const restart = () => api('/api/update/restart', {}).then(() => toast('ChurchStream is restarting with the new version…')).catch(fail);
+  let body;
+  let buttons;
+  if (u.ready === a.version) {
+    body = html`<b>ChurchStream ${a.version} is ready.</b> Restart to use it (about 10 seconds), or it starts next time.`;
+    buttons = html`<button class="btn small primary" disabled=${live} onClick=${restart}>Restart now</button><button class="btn small ghost" onClick=${later}>Later</button>`;
+  } else if (u.progress) {
+    const pct = u.progress.total ? Math.min(100, Math.round((u.progress.done / u.progress.total) * 100)) : 0;
+    body = html`<b>Downloading ChurchStream ${a.version}…</b> ${pct}%<div class="update-bar"><i style=${{ width: pct + '%' }}></i></div>`;
+    buttons = null;
+  } else if (a.needs === 'full') {
+    body = html`<b>ChurchStream ${a.version} is available.</b> This one needs the full download (the program itself changed).`;
+    buttons = html`<a class="btn small primary" href=${a.fullUrl || a.notesUrl} target="_blank" rel="noopener">Download</a><button class="btn small ghost" onClick=${later}>Later</button>`;
+  } else {
+    body = html`<b>ChurchStream ${a.version} is available</b>${a.size ? ` (${fmtMB(a.size)})` : ''}. You have ${s.version}.`;
+    buttons = html`<button class="btn small primary" disabled=${busy || !u.canInstall} onClick=${install}>Update</button><button class="btn small ghost" onClick=${later}>Later</button>`;
+  }
+  return html`<div class="banner update" role="status">
+    <div class="grow">
+      <div>${body}</div>
+      ${a.notes && html`<button class="linkish" onClick=${() => setOpen(!open)}>${open ? 'Hide what’s new' : 'What’s new'}</button>`}
+      ${open && a.notes && html`<${NotesText} text=${a.notes} />`}
+      ${u.error && html`<div class="update-error">${u.error}</div>`}
+    </div>
+    <div class="update-buttons">${buttons}</div>
+  </div>`;
+}
+
+function UpdateSettings({ s, save }) {
+  const u = s.update || {};
+  const [checking, setChecking] = useState(false);
+  const check = () => { setChecking(true); api('/api/update/check', {}).then((r) => { if (!r.available && !r.error) toast(`ChurchStream ${s.version} is the newest version`); }).catch(fail).finally(() => setChecking(false)); };
+  return html`<div class="field"><label class="label">Updates</label>
+    <div class="note">This is ChurchStream ${s.version}.${u.available ? ` Version ${u.available.version} is available.` : ''}</div>
+    <label class="switch" style="margin-top:8px"><input type="checkbox" checked=${s.config.checkUpdates !== false} onChange=${(e) => save({ checkUpdates: e.target.checked })} /><span>Check for updates by itself</span></label>
+    <div class="hint">ChurchStream asks GitHub (github.com) every few hours whether there is a newer version and shows it on this page. Nothing is downloaded until you click Update, and never during a live stream. Most updates are only a few MB.</div>
+    <button class="btn small" style="margin-top:8px" disabled=${checking || u.checking} onClick=${check}>${checking || u.checking ? 'Checking…' : 'Check now'}</button>
+    ${u.error && html`<div class="hint">${u.error}</div>`}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------------------
 function Root() {
   const [s, setS] = useState(null);
   const [online, setOnline] = useState(true);
@@ -3592,13 +3663,20 @@ function Root() {
     const id = setInterval(() => updateProgram(s), 1000);
     return () => clearInterval(id);
   }, [s]);
+  // ChurchStream came back as a newer version (after Update → Restart): load the new pages.
+  const firstVersion = useRef(null);
+  useEffect(() => {
+    if (!s || !s.version) return;
+    if (!firstVersion.current) firstVersion.current = s.version;
+    else if (firstVersion.current !== s.version) location.reload();
+  }, [s && s.version]);
   if (!s) return html`<div class="boot">ChurchStream</div>`;
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;
   else if (route === '/settings') view = html`<${SettingsView} s=${s} />`;
   else if (route === '/stream') view = s.studioOn ? html`<${StudioView} s=${s} />` : html`<${StreamView} s=${s} />`;
   else view = html`<${ControlView} s=${s} />`;
-  return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
+  return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}${route !== '/setup' && html`<${UpdateBanner} s=${s} />`}<${Toasts} />`;
 }
 
 render(html`<${Root} />`, document.getElementById('app'));

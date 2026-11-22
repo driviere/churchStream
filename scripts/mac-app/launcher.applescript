@@ -80,11 +80,21 @@ on openControl()
 	end repeat
 end openControl
 
--- If ChurchStream stops by itself, say so and close the app.
+-- If ChurchStream stops by itself, say so and close the app. If it stopped to restart (after
+-- an update: it leaves run/restart behind), start it again.
 on idle
 	try
 		do shell script "/bin/kill -0 " & serverPid
 	on error
+		set restartFile to dataDir & "/run/restart"
+		set wantsRestart to do shell script "if [ -f " & quoted form of restartFile & " ]; then /bin/rm -f " & quoted form of restartFile & "; echo yes; fi"
+		if wantsRestart is "yes" then
+			logStep("restarting (update)")
+			try
+				launchChurchStream()
+				return 2
+			end try
+		end if
 		set lastLines to ""
 		try
 			set lastLines to do shell script "/usr/bin/tail -6 " & quoted form of (dataDir & "/run/churchstream.log")

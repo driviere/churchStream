@@ -7,14 +7,25 @@
 //   dist/ChurchStream/README.txt
 //   dist/ChurchStream-win-x64.zip
 //
+//   dist/ChurchStream-app-<version>.zip    ← the app pack: ChurchStream's own code, web pages
+//                                            and default data (~3 MB), what the updater downloads
+//   dist/ffmpeg-<target>.zip (+ .json)     ← the FFmpeg on its own, with its id (the updater
+//                                            downloads it only when the id changes)
+//
+// The program's "main" is a small loader (scripts/launcher.cjs) that runs the built-in app pack,
+// or a newer one the updater downloaded (lib/updater.js, lib/packs.js).
+//
 // Works on Windows, Linux or macOS (the exe is always for Windows x64).
 // Options: --no-ffmpeg   skip bundling FFmpeg
 //          --ffmpeg-zip <file>  use a local FFmpeg zip instead of downloading
+//          --pack-only   only the app pack (dist/ChurchStream-app-<version>.zip)
+//          --target linux-x64  a Linux program, without FFmpeg (for testing the loader/updater)
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { readZip } = require('../lib/unzip');
 const { zipDirectory } = require('./zip');
+const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const BUILD = path.join(ROOT, 'build');
@@ -22,6 +33,8 @@ const DIST = path.join(ROOT, 'dist');
 const APP = path.join(DIST, 'ChurchStream');
 const CACHE = path.join(BUILD, 'cache');
 const NODE_VERSION = process.version; // the SEA blob must match the node.exe version
+// --version X builds as another version (tests of the updater only).
+const VERSION = (process.argv.includes('--version') && process.argv[process.argv.indexOf('--version') + 1]) || require('../package.json').version;
 const NODE_URL = `https://nodejs.org/dist/${NODE_VERSION}/win-x64/node.exe`;
 // BtbN renames release builds as FFmpeg versions move on, so try the newest names first.
 const FFMPEG_BASE = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/';
@@ -35,7 +48,7 @@ const flag = (f) => args.includes(f);
 const opt = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : null; };
 // --target win-x64 (default) | mac-arm64 (Apple Silicon) | mac-x64 (Intel Macs)
 const TARGET = opt('--target') || 'win-x64';
-if (!['win-x64', 'mac-arm64', 'mac-x64'].includes(TARGET)) throw new Error('Unknown --target ' + TARGET);
+if (!['win-x64', 'mac-arm64', 'mac-x64', 'linux-x64'].includes(TARGET)) throw new Error('Unknown --target ' + TARGET);
 const MAC = TARGET.startsWith('mac-');
 const MAC_ARCH = TARGET === 'mac-arm64' ? 'arm64' : 'x64';
 // Static macOS FFmpeg builds (GPL, with libx264), by Martin Riedl; evermeet.cx as an Intel fallback.
@@ -69,8 +82,10 @@ function listFiles(dir, base) {
 let ffmpegUrl = null;
 
 async function main() {
-  fs.rmSync(APP, { recursive: true, force: true });
-  fs.mkdirSync(APP, { recursive: true });
+  if (!flag('--pack-only')) { // (a pack on its own leaves an already built program alone)
+    fs.rmSync(APP, { recursive: true, force: true });
+    fs.mkdirSync(APP, { recursive: true });
+  }
   fs.mkdirSync(CACHE, { recursive: true });
 
   step('Bundling the server');
@@ -82,18 +97,39 @@ async function main() {
     format: 'cjs',
     outfile: path.join(BUILD, 'churchstream.cjs'),
     external: ['node:sea', 'node:sqlite'],
+    define: { __CS_VERSION__: JSON.stringify(VERSION) },
     legalComments: 'none',
     logLevel: 'warning',
   });
 
-  step('Embedding the web UI and default data');
+  step('Bundling the start-up loader');
+  require('esbuild').buildSync({
+    entryPoints: [path.join(ROOT, 'scripts', 'launcher.cjs')],
+    bundle: true,
+    platform: 'node',
+    target: 'node22',
+    format: 'cjs',
+    outfile: path.join(BUILD, 'launcher.cjs'),
+    external: ['node:sea'],
+    legalComments: 'none',
+    logLevel: 'warning',
+  });
+
+  step('The app pack (ChurchStream\'s code, web UI and default data)');
   const keys = [...listFiles(path.join(ROOT, 'public'), 'public'), ...listFiles(path.join(ROOT, 'defaults'), 'defaults')];
   fs.writeFileSync(path.join(BUILD, 'assets-manifest.json'), JSON.stringify(keys));
-  const assets = { 'assets-manifest.json': path.join(BUILD, 'assets-manifest.json') };
-  for (const k of keys) assets[k] = path.join(ROOT, k);
+  const pack = { format: 'churchstream-app', version: VERSION, minRuntime: Number(process.versions.node.split('.')[0]) };
+  fs.writeFileSync(path.join(BUILD, 'pack.json'), JSON.stringify(pack, null, 2));
   console.log(`  ${keys.length} files`);
+  const packZip = buildPack(keys);
+  console.log(`  ${path.relative(ROOT, packZip)} (${(fs.statSync(packZip).size / 1048576).toFixed(1)} MB)`);
+  if (flag('--pack-only')) return;
+
+  step('Embedding the app pack');
+  const assets = { 'assets-manifest.json': path.join(BUILD, 'assets-manifest.json'), 'pack.json': path.join(BUILD, 'pack.json'), 'app/churchstream.cjs': path.join(BUILD, 'churchstream.cjs') };
+  for (const k of keys) assets[k] = path.join(ROOT, k);
   const seaConfig = {
-    main: path.join(BUILD, 'churchstream.cjs'),
+    main: path.join(BUILD, 'launcher.cjs'),
     output: path.join(BUILD, 'sea-prep.blob'),
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
@@ -103,6 +139,7 @@ async function main() {
   fs.writeFileSync(path.join(BUILD, 'sea-config.json'), JSON.stringify(seaConfig, null, 2));
   execFileSync(process.execPath, ['--experimental-sea-config', path.join(BUILD, 'sea-config.json')], { stdio: 'inherit' });
 
+  if (TARGET === 'linux-x64') return buildLinux();
   if (MAC) return buildMac();
 
   step(`Creating ChurchStream.exe (Node ${NODE_VERSION})`);
@@ -131,6 +168,9 @@ async function main() {
     const lic = pick(/(^|\/)LICENSE(\.txt)?$/i);
     fs.writeFileSync(path.join(APP, 'ffmpeg', 'LICENSE.txt'), (lic ? lic.read().toString('utf8') : '') +
       `\n\nThis ffmpeg.exe is an unmodified build from https://github.com/BtbN/FFmpeg-Builds (GPL).\nSource code: https://ffmpeg.org/download.html and https://github.com/BtbN/FFmpeg-Builds (${path.basename(ffmpegUrl || zipFile)})\n`);
+    // Which FFmpeg this is: the BtbN series (a new daily build of the same series isn't worth a download).
+    const series = /-n(\d+\.\d+)-/.exec(path.basename(ffmpegUrl || zipFile));
+    ffmpegPiece(path.join(APP, 'ffmpeg'), series ? `btbn-${series[1]}` : 'btbn-' + path.basename(ffmpegUrl || zipFile).replace(/\.zip$/, ''), ['ffmpeg.exe', 'LICENSE.txt']);
   }
 
   step('Writing README.txt');
@@ -142,6 +182,51 @@ async function main() {
   const mb = (f) => (fs.statSync(f).size / 1048576).toFixed(1) + ' MB';
   console.log(`\n✓ ${path.relative(ROOT, exe)} (${mb(exe)})`);
   console.log(`✓ ${path.relative(ROOT, zipOut)} (${mb(zipOut)})\n`);
+}
+
+// The app pack as its own zip: what the updater downloads (no program, no FFmpeg).
+function buildPack(keys) {
+  const dir = path.join(BUILD, 'pack');
+  fs.rmSync(dir, { recursive: true, force: true });
+  for (const k of keys) {
+    fs.mkdirSync(path.dirname(path.join(dir, k)), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, k), path.join(dir, k));
+  }
+  for (const f of ['churchstream.cjs', 'assets-manifest.json', 'pack.json']) fs.copyFileSync(path.join(BUILD, f), path.join(dir, f));
+  fs.mkdirSync(DIST, { recursive: true });
+  const out = path.join(DIST, `ChurchStream-app-${VERSION}.zip`);
+  fs.rmSync(out, { force: true });
+  zipDirectory(dir, out);
+  return out;
+}
+
+// FFmpeg as its own download for the updater: dist/ffmpeg-<target>.zip, and its id (written
+// next to the bundled FFmpeg too, so the updater knows what this computer has).
+function ffmpegPiece(ffDir, id, files) {
+  fs.writeFileSync(path.join(ffDir, 'ffmpeg.id'), id);
+  const tmp = path.join(BUILD, 'ffmpeg-piece');
+  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.mkdirSync(tmp, { recursive: true });
+  for (const f of [...files, 'ffmpeg.id']) fs.copyFileSync(path.join(ffDir, f), path.join(tmp, f));
+  fs.mkdirSync(DIST, { recursive: true });
+  const out = path.join(DIST, `ffmpeg-${TARGET}.zip`);
+  fs.rmSync(out, { force: true });
+  zipDirectory(tmp, out);
+  fs.writeFileSync(path.join(DIST, `ffmpeg-${TARGET}.json`), JSON.stringify({ id, file: path.basename(out) }));
+  console.log(`  FFmpeg ${id} → ${path.relative(ROOT, out)}`);
+}
+
+// Linux (for testing the loader and updater; churches use Windows or Mac): this Node with the
+// app injected, no FFmpeg.
+function buildLinux() {
+  if (process.platform !== 'linux') throw new Error('Build the Linux test program on Linux.');
+  step('Creating ChurchStream for Linux (testing)');
+  const bin = path.join(APP, 'ChurchStream');
+  fs.copyFileSync(process.execPath, bin);
+  fs.chmodSync(bin, 0o755);
+  const postject = require.resolve('postject/dist/cli.js');
+  run(process.execPath, [postject, bin, 'NODE_SEA_BLOB', path.join(BUILD, 'sea-prep.blob'), '--sentinel-fuse', FUSE, '--overwrite'], { stdio: 'ignore' });
+  console.log(`\n✓ ${path.relative(ROOT, bin)}\n`);
 }
 
 // macOS: the official Node binary for the chosen chip with the app injected, ad-hoc signed
@@ -179,6 +264,10 @@ async function buildMac() {
     const lic = entries.find((e) => /(^|\/)LICENSE\.txt$/i.test(e.name));
     fs.writeFileSync(path.join(APP, 'ffmpeg', 'LICENSE.txt'), lic ? lic.read() :
       `This ffmpeg is an unmodified static build of FFmpeg (GPL), from ${ffmpegUrl || path.basename(zipFile)}.\nFFmpeg is licensed under the GNU GPL; source code: https://ffmpeg.org/download.html\n`);
+    // ChurchStream's own build: its id is the build script's fingerprint (it changes only when the script does).
+    const ours = lic && /built by ChurchStream/.test(lic.read().toString('utf8'));
+    const id = ours ? 'cs-' + crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'scripts', 'build-ffmpeg-mac.sh'))).digest('hex').slice(0, 12) : 'other-' + path.basename(ffmpegUrl || zipFile);
+    ffmpegPiece(path.join(APP, 'ffmpeg'), id, ['ffmpeg', 'LICENSE.txt']);
   }
 
   step('Making ChurchStream.app');
@@ -193,7 +282,7 @@ async function buildMac() {
   fs.renameSync(bin, path.join(res, 'ChurchStream'));
   if (fs.existsSync(path.join(APP, 'ffmpeg'))) fs.renameSync(path.join(APP, 'ffmpeg'), path.join(res, 'ffmpeg'));
   const plist = path.join(appBundle, 'Contents', 'Info.plist');
-  const version = require(path.join(ROOT, 'package.json')).version;
+  const version = VERSION;
   const setKey = (key, value) => run('plutil', ['-replace', key, '-string', value, plist]);
   setKey('CFBundleIdentifier', 'org.churchstream.ChurchStream');
   setKey('CFBundleName', 'ChurchStream');
@@ -299,6 +388,12 @@ Recordings are in ChurchStream-data/recordings. Updating ChurchStream (replacing
 ChurchStream.app) keeps them. If you used an older ChurchStream, whose data sat in
 this folder, it's copied there the first time you open the app.
 
+Updates
+-------
+ChurchStream checks for a newer version by itself and shows it in the control panel.
+Click Update: only what changed is downloaded (usually a few MB), never during a live
+stream. Settings -> Advanced -> Updates to check by hand or turn the checks off.
+
 Moving to another computer
 --------------------------
 Copy ChurchStream.app and the ChurchStream-data folder from your home folder.
@@ -328,6 +423,12 @@ User manual
 -----------
 Click the "?" button at the top of the control panel (or open
 http://localhost:8080/manual while ChurchStream is running).
+
+Updates
+-------
+ChurchStream checks for a newer version by itself and shows it in the control panel.
+Click Update: only what changed is downloaded (usually a few MB), never during a live
+stream. Settings -> Advanced -> Updates to check by hand or turn the checks off.
 
 Moving to another computer
 --------------------------

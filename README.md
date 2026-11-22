@@ -130,11 +130,11 @@ Downloads are on the [Releases page](../../releases).
 
 ## Install (Windows)
 
-1. Download **`ChurchStream-win-x64.zip`** from the [Releases page](../../releases) (or from the latest *Build* workflow run).
-2. Unzip it anywhere, for example `Documents\ChurchStream`.
-3. Double-click **`ChurchStream.exe`**.
+1. Download **`ChurchStream-Setup.exe`** from the [Releases page](../../releases).
+2. Run it. It installs for the current user (no administrator password), with Start menu and desktop shortcuts and an uninstaller.
    - The first time, Windows SmartScreen may say *“Windows protected your PC”*. Click **More info → Run anyway**. The app isn't code-signed.
-   - If Windows Firewall asks, allow **Private networks** so a tablet can connect.
+   - Used the zip before? The installer can bring that folder's settings along.
+3. Start **ChurchStream**. If Windows Firewall asks, allow **Private networks** so a tablet can connect.
 4. Your browser opens the **setup wizard**:
    1. Church name (and its location, for sunset times)
    2. Camera and microphone, with a live preview and sound meter
@@ -142,7 +142,13 @@ Downloads are on the [Releases page](../../releases).
    4. YouTube and Facebook stream keys
    5. Hymnal downloads
 
-Settings, songs, Bibles and recordings live in `ChurchStream-data\` next to the exe. Copy the folder to move everything to another laptop.
+Settings, songs, Bibles and recordings live in `ChurchStream-data\` in your user folder, so reinstalling or uninstalling keeps them.
+
+**Portable:** `ChurchStream-win-x64.zip` is the same program without an installer (unzip anywhere, even a USB stick; its data stays next to the exe).
+
+## Updates
+
+ChurchStream checks GitHub for a newer version by itself and shows it on the control panel and stream page. Nothing is downloaded until someone clicks **Update**, and never during a live stream. Only what changed is downloaded, usually a few MB: ChurchStream's own code comes as a small *app pack*, FFmpeg only when it changed, and the full download only when the program itself (the Node runtime) changes. Every file is checked against the SHA-256 in the release's `update.json`; an update that fails to start is given up and the previous version runs. It can be switched off in **Settings → Advanced**.
 
 ## Install (Mac)
 
@@ -312,17 +318,19 @@ Node server (no deps) ── SSE ──► control panel (Preact + htm, 13 KB) �
 - `lib/app.js`: state and actions (live slide, plan, toggles, lower third, downloads).
 - `lib/stream.js`: the FFmpeg command builder (pure and tested) and the supervisor. The supervisor restarts with back-off, parses progress and loudness, maps errors to plain language, and masks stream keys in logs.
 - `lib/overlay.js`: atomic text-file overlays for FFmpeg `drawtext` (`reload=1`), so changing a lower third never restarts the stream.
-- `lib/media.js`: the media relay. Videos and music are decoded by a player FFmpeg and sent to ChurchStream as raw frames and PCM. ChurchStream feeds the stream's FFmpeg a steady 30 fps / 20 ms bus over local TCP: black and silence when idle, mixed music and volume ramps otherwise. That means the stream FFmpeg never waits on that input, and playing a video never restarts the stream.
+- `lib/media.js`: the media relay. Videos and music are decoded by a player FFmpeg and sent to ChurchStream as raw frames and PCM. ChurchStream feeds the stream's FFmpeg over local TCP: the picture as timed frames (Matroska, uncompressed; a few black frames a second while idle), the sound as a steady 20 ms PCM bus. That means the stream FFmpeg never waits on that input, and playing a video never restarts the stream.
+- `lib/updater.js`, `lib/packs.js`, `scripts/launcher.cjs`: updates. The program's main is a small loader that runs the built-in *app pack* (ChurchStream's own code, web pages and default data) or a newer one downloaded to `<data>/app/<version>/`; a pack that fails to start twice is given up. The release's `update.json` (`scripts/make-update-json.js`) lists the pack, each platform's FFmpeg (with an id, so it is only downloaded when it changed) and their SHA-256. `scripts/test-update.js` runs the whole flow against the built program.
 - Stream views: the control panel renders the projector picture to `run/program.jpg`, which FFmpeg re-reads 4×/s. The slide and camera-inset layers are switched with live filter commands (`overlay@slides` / `overlay@pip`), so the stream never restarts.
 - `lib/songs.js`, `lib/bible.js`, `lib/importers/*`: song library, reference parser, and hymnal/Bible importers.
 - `public/`: control panel, projector (`display.html`) and stage pages.
   - `shared.css` defines the projected slide once, in container units, so thumbnails look exactly like the projector.
 - `scripts/build-exe.js`:
-  1. bundles with esbuild
-  2. embeds `public/` and `defaults/` as Node SEA assets
-  3. injects the result into the official `node.exe` with postject
-  4. adds the BtbN FFmpeg GPL build and zips the release
-- `.github/workflows/windows-build.yml`: tests on Linux and Windows. It builds the exe, smoke-tests it on Windows (including a real recording through the bundled FFmpeg), uploads the zip, and publishes a GitHub Release for `v*` tags.
+  1. bundles the server and the start-up loader with esbuild
+  2. makes the app pack (`dist/ChurchStream-app-<version>.zip`) and embeds it, with `public/` and `defaults/`, as Node SEA assets
+  3. injects the result into the official `node.exe` (or Node for Mac) with postject
+  4. adds FFmpeg (BtbN's GPL build on Windows; ChurchStream's own build on Mac, `scripts/build-ffmpeg-mac.sh`), also as `dist/ffmpeg-<target>.zip`, and zips the release
+- `scripts/installer/churchstream.iss`: the Windows installer (Inno Setup; per-user, no admin; data in the home folder via `ChurchStream.ini`).
+- `.github/workflows/windows-build.yml`: tests on Linux, Windows and Mac. It builds the exe, the installer and the Mac apps, smoke-tests them (including a real recording through the bundled FFmpeg, installing and uninstalling, and an update end to end), and publishes a GitHub Release with `update.json` for `v*` tags.
 
 ### Contributing
 
