@@ -75,6 +75,7 @@ Type: files; Name: "{app}\ChurchStream.ini"
 
 [Code]
 var
+  ImportChoice: TInputOptionWizardPage;
   ImportPage: TInputDirWizardPage;
 
 function DataDir(): String;
@@ -82,36 +83,53 @@ begin
   Result := ExpandConstant('{%USERPROFILE}') + '\ChurchStream-data';
 end;
 
-procedure InitializeWizard();
+// The folder of an older ChurchStream to bring the data from: the /ImportFrom=<folder> option
+// (silent installs on many computers), or the folder chosen in the wizard; '' for none.
+function ImportFolder(): String;
 begin
-  ImportPage := CreateInputDirPage(wpSelectTasks,
-    'Settings from an older ChurchStream',
-    'Did you use ChurchStream from a folder (the zip download) before?',
-    'If so, choose that ChurchStream folder and its settings, songs and services come along. ' +
-    'Otherwise leave this empty.' + #13#10#13#10 +
-    'Your ChurchStream data will be kept in: ' + DataDir(),
-    False, '');
-  ImportPage.Add('Older ChurchStream folder (optional):');
-  ImportPage.Values[0] := '';
+  Result := Trim(ExpandConstant('{param:ImportFrom|}'));
+  if (Result = '') and ImportChoice.Values[0] then Result := Trim(ImportPage.Values[0]);
 end;
 
-// The installed ChurchStream already has its data: nothing to ask.
+function HasData(Folder: String): Boolean;
+begin
+  Folder := AddBackslash(Folder);
+  Result := FileExists(Folder + 'ChurchStream-data\config.json') or FileExists(Folder + 'config.json');
+end;
+
+procedure InitializeWizard();
+begin
+  ImportChoice := CreateInputOptionPage(wpSelectTasks,
+    'Settings from an older ChurchStream',
+    'Did you use ChurchStream from a folder (the zip download) before?',
+    'Your ChurchStream data will be kept in: ' + DataDir(),
+    False, False);
+  ImportChoice.Add('Bring the settings, songs and services from an older ChurchStream folder');
+  ImportChoice.Values[0] := False;
+  ImportPage := CreateInputDirPage(ImportChoice.ID,
+    'Settings from an older ChurchStream',
+    'Where is the older ChurchStream?',
+    'Choose the folder that holds ChurchStream.exe (with ChurchStream-data inside). Its settings, songs and services are copied; nothing there is changed.',
+    False, '');
+  ImportPage.Add('Older ChurchStream folder:');
+  ImportPage.Values[0] := ExpandConstant('{userdesktop}\ChurchStream');
+end;
+
+// Nothing to ask when this computer already has ChurchStream data, or the box isn't ticked.
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = ImportPage.ID) and FileExists(DataDir() + '\config.json');
+  Result := False;
+  if (PageID = ImportChoice.ID) or (PageID = ImportPage.ID) then
+    Result := FileExists(DataDir() + '\config.json');
+  if (PageID = ImportPage.ID) and not ImportChoice.Values[0] then Result := True;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  Src: String;
 begin
   Result := True;
-  if CurPageID = ImportPage.ID then begin
-    Src := Trim(ImportPage.Values[0]);
-    if (Src <> '') and not FileExists(AddBackslash(Src) + 'ChurchStream-data\config.json') and not FileExists(AddBackslash(Src) + 'config.json') then begin
-      MsgBox('No ChurchStream settings were found in that folder. Choose the folder that holds ChurchStream.exe (with ChurchStream-data inside), or leave it empty.', mbError, MB_OK);
-      Result := False;
-    end;
+  if (CurPageID = ImportPage.ID) and not HasData(ImportPage.Values[0]) then begin
+    MsgBox('No ChurchStream settings were found in that folder. Choose the folder that holds ChurchStream.exe (with ChurchStream-data inside), or go Back and untick the box.', mbError, MB_OK);
+    Result := False;
   end;
 end;
 
@@ -122,11 +140,16 @@ var
   Code: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
-  Src := Trim(ImportPage.Values[0]);
+  Src := ImportFolder();
   if Src = '' then Exit;
   if FileExists(DataDir() + '\config.json') then Exit;
   Src := AddBackslash(Src);
-  if FileExists(Src + 'ChurchStream-data\config.json') then Src := Src + 'ChurchStream-data';
+  if FileExists(Src + 'ChurchStream-data\config.json') then Src := Src + 'ChurchStream-data'
+  else if not FileExists(Src + 'config.json') then begin
+    Log('No ChurchStream data in ' + Src);
+    Exit;
+  end;
+  Log('Bringing the data from ' + Src);
   Exec(ExpandConstant('{sys}\robocopy.exe'), '"' + RemoveBackslash(Src) + '" "' + DataDir() + '" /E /XC /XN /XO /R:1 /W:1 /NP /NFL /NDL',
     '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
