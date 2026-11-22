@@ -340,3 +340,25 @@ test('media player: a video with no sound track plays to the end (silence is sen
   assert.equal(error, '', 'played without an error');
   relay.close();
 });
+
+test('media relay: the picture goes as timed frames, a few a second while nothing plays', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 30000 }, async () => {
+  const net = require('net');
+  const { MediaRelay, IDLE_FPS } = require('../lib/media');
+  const relay = new MediaRelay({ ffmpegPath: 'ffmpeg' });
+  await relay.ready;
+  relay.configure({ width: 64, height: 36, fps: 30 });
+  // Read 2 seconds of what the stream FFmpeg would get, then let FFmpeg read it back.
+  const chunks = [];
+  const sock = net.connect(relay.ports.video, '127.0.0.1');
+  sock.on('data', (d) => chunks.push(d));
+  await new Promise((r) => setTimeout(r, 2000));
+  sock.destroy();
+  relay.close();
+  const r = spawnSync('ffprobe', ['-v', 'error', '-f', 'matroska', '-i', 'pipe:0', '-select_streams', 'v', '-show_entries', 'stream=width,height,pix_fmt:frame=pts_time', '-of', 'json'], { input: Buffer.concat(chunks) });
+  const info = JSON.parse(String(r.stdout));
+  assert.deepEqual([info.streams[0].width, info.streams[0].height, info.streams[0].pix_fmt], [64, 36, 'yuv420p']);
+  const times = info.frames.map((f) => Number(f.pts_time));
+  assert.ok(times.length >= IDLE_FPS * 2 - 2 && times.length <= IDLE_FPS * 2 + 2, `about ${IDLE_FPS} frames a second, got ${times.length}`);
+  assert.ok(Math.abs(times[0] - 0.2) < 0.05, 'stamped with the head start');
+  for (let i = 1; i < times.length; i++) assert.ok(Math.abs(times[i] - times[i - 1] - 1 / IDLE_FPS) < 0.06, `steady: ${times}`);
+});

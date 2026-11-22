@@ -289,6 +289,9 @@ jobs:
             curl -s --max-time 4 localhost:8126/studio/multiview.mjpeg | head -c 40 | grep -q churchstreamframe && echo "Multiview OK"
             post /api/studio/preview '{"id":"slides"}'; post /api/studio/take '{"type":"fade","ms":500}'; sleep 2
             curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("After a fade:",JSON.stringify(s.studio),s.state);if(s.studio.onAir!=="slides"||s.state!=="running")process.exit(1)})'
+            # Back to the (moving) test camera for the live recording: the slides here are one
+            # flat colour, which the encoder squeezes to almost nothing.
+            post /api/studio/preview '{"id":"cam1"}'; post /api/studio/take '{"type":"cut"}'; sleep 1
           fi
           post /api/stream/stop '{}'
           sleep 2
@@ -298,9 +301,13 @@ jobs:
           post /api/stream/stop '{}'
           sleep 3
           ls -l "$CHURCHSTREAM_DATA/recordings"
-          SIZE=$(find "$CHURCHSTREAM_DATA/recordings" -name '*.mkv' -exec stat -f %z {} \; | sort -n | tail -1)
-          [ "${SIZE:-0}" -gt 50000 ] || { echo "::error::Recording was not created"; curl -sf localhost:8126/api/logs | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>JSON.parse(d).slice(-60).forEach(l=>console.log("  log:",l)))'; exit 1; }
-          echo "Recording OK: $SIZE bytes"
+          # The recording plays: count its frames (the CI Mac runs at about half speed, so 12 s
+          # live gives about 6 s of stream; a picture that barely changes makes a small file).
+          REC=$(find "$CHURCHSTREAM_DATA/recordings" -name '*.mkv' | head -1)
+          FRAMES=$(./ffmpeg/ffmpeg -hide_banner -nostats -i "$REC" -map 0:v -f null - 2>&1 | grep -o 'frame= *[0-9]*' | tail -1 | grep -o '[0-9]*' || echo 0)
+          echo "Recording: $(stat -f %z "$REC") bytes, $FRAMES frames"
+          [ "${FRAMES:-0}" -ge 60 ] || { echo "::error::Recording was not created"; curl -sf localhost:8126/api/logs | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>JSON.parse(d).slice(-60).forEach(l=>console.log("  log:",l)))'; exit 1; }
+          echo "Recording OK"
 
       - name: Open ChurchStream.app like a user would, then quit it
         shell: bash
