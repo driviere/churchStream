@@ -216,3 +216,27 @@ test('real FFmpeg: the stream with the studio runs, with its preview and multivi
   feeds.preview.close(); feeds.multiview.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('sound mixer: a live volume and a meter per source, and one for the whole mix', () => {
+  const { buildFfmpegArgs, Streamer } = require('../lib/stream');
+  const c2 = cfg({ audio: { source: 'none' }, audioMix: { mic: { gain: 0.5, mute: false }, media: { gain: 1, mute: true }, master: { gain: 2 } } });
+  const index = c.sourceIndex(c.sourceIds(c2, { media: true }));
+  const args = buildFfmpegArgs({ cfg: c2, mode: 'preview', platform: 'linux', media: { video: 4100, audio: 4101 }, studio: { zmqPort: 5557, sceneA: c.findScene(c2, 'cam1'), sceneB: c.findScene(c2, 'slides'), index, slots: 1 } });
+  const s = args.join(' ');
+  assert.match(s, /volume@amic=volume=0\.5/);
+  assert.match(s, /volume@amedia=volume=0[,;]/, 'muted');
+  assert.match(s, /volume@amaster=volume=2,ebur128/);
+  assert.match(s, /ametadata@mmic=mode=print/);
+  assert.match(s, /\[mico\]\[mediao\]amix=inputs=2/);
+  // The meter lines from FFmpeg's log become levels, and are not logged.
+  const st = new Streamer({ getConfig: () => c2, runDir: '.', recordingsDir: '.', ffmpeg: { path: 'ffmpeg' }, getEncoder: async () => 'libx264' });
+  const got = [];
+  const logged = [];
+  st.on('levels', (v) => got.push(v));
+  st.on('log', (l) => logged.push(l));
+  st.lastLines = [];
+  st.onLog('[ametadata@mmic @ 0x55] [info] lavfi.astats.Overall.RMS_level=-23.456');
+  st.onLog('[ametadata@mmic @ 0x55] [info] frame:3 pts:14400 pts_time:0.3');
+  assert.deepEqual(got[0], { mic: -23.5 });
+  assert.equal(logged.length, 0);
+});

@@ -92,6 +92,7 @@ function broadcast(event, data) {
 }
 app.on('state', (s) => broadcast('state', s));
 app.on('meter', (v) => broadcast('meter', v));
+app.on('levels', (v) => broadcast('levels', v));
 
 function serveFile(res, file, type, req) {
   fs.stat(file, (err, st) => {
@@ -211,6 +212,7 @@ const routes = {
   'POST /api/studio/tbar': async (req) => app.studioTbar((await json(req)).pos),
   'POST /api/studio/scene': async (req) => app.saveScene((await json(req)).scene),
   'POST /api/studio/scene/delete': async (req) => app.deleteScene((await json(req)).id),
+  'POST /api/studio/audio': async (req) => { const b = await json(req); return app.setAudioMix(b.id, b); },
   'POST /api/phone-camera/renew': () => { app.renewPhoneToken(); return phoneInfo(); },
 };
 

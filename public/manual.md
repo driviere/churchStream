@@ -283,6 +283,8 @@ With the studio (on by default when ChurchStream's FFmpeg supports it), the **st
 - While a stream page is open, the main control panel hides its camera and "Stream shows" switches and says the stream is run from the stream page. When the stream page closes, the control panel takes over again from its next change (reloading the stream page doesn't make the stream jump).
 - The start and end screens still take over the stream, and give it back afterwards.
 
+**Sound mixer.** The stream page has a fader for each sound source: the microphone or sound desk, videos and music, a second microphone (add one in Settings → Camera & sound), and **Stream** for everything together. The bars show the level as it reaches viewers; **M** mutes a source. Double-click a fader to put it back to normal. Changes are instant, don't interrupt the stream, and are remembered.
+
 The studio uses a little more computer power than before (about a tenth of one processor core). On a computer that struggles, turn it off in **Settings → Advanced → Studio** to go back to the simple switching.
 
 ### Sound for online viewers

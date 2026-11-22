@@ -788,3 +788,19 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
   .studio-monitors .tr-controls { grid-column: 1 / -1; order: 3; padding-top: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .editor { grid-template-columns: 1fr; }
 }
+
+/* the sound mixer (stream page) */
+.mix-row { display: flex; gap: 10px; justify-content: space-between; }
+.mix-ch { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.mix-ch.master { border-left: 1px solid var(--line); padding-left: 10px; }
+.mix-strip { display: flex; gap: 6px; height: 150px; align-items: stretch; }
+.mix-meter { position: relative; width: 8px; border-radius: 4px; background: var(--panel-3); overflow: hidden; }
+.mix-level { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #17b26a; transition: height .12s linear; }
+.mix-level.warm { background: #f79009; }
+.mix-level.hot { background: var(--live); }
+.vfader { writing-mode: vertical-lr; direction: rtl; width: 26px; height: 150px; margin: 0; accent-color: var(--accent); }
+.mix-db { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mix-mute { width: 30px; height: 26px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel); font: 800 11px var(--font); color: var(--text); cursor: pointer; }
+.mix-mute.on { background: var(--live); border-color: var(--live); color: #fff; }
+.mix-ch.muted .mix-level { opacity: .35; }
+.mix-name { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.25; }

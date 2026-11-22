@@ -24,6 +24,7 @@ const undoPlan = () => api('/api/plan/undo', {}).then((r) => toast(r.ok ? 'Undon
 const undoToast = (msg) => toast(msg, 'info', { label: 'Undo', run: undoPlan });
 const fail = (err) => toast(err.message || String(err), 'error');
 const meterBus = new EventTarget();
+const levelsBus = new EventTarget(); // the sound mixer's level per source (stream page)
 
 const navigate = (path) => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); };
 const fmtTime = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const hh = Math.floor(s / 3600); const mm = Math.floor((s % 3600) / 60); const ss = s % 60; return `${hh ? hh + ':' : ''}${String(mm).padStart(hh ? 2 : 1, '0')}:${String(ss).padStart(2, '0')}`; };
@@ -1948,6 +1949,13 @@ function SectionCamera({ s, autoPreview }) {
           <option value="none">No sound (silent stream)</option>
         </select>
         <div class="hint">For the best sound, connect the sound desk to the computer (or to the capture card) and pick it here.</div></div>
+      ${s.studioOn && html`<div class="field"><label class="label">Second microphone (optional)</label>
+        <select class="select" value=${(s.config.audio2 && s.config.audio2.device) || ''} onChange=${(e) => save({ audio2: { device: e.target.value } })}>
+          <option value="">None</option>
+          ${devs && devs.audio.filter((d) => !(a.source === 'device' && d === a.device)).map((d) => html`<option value=${d}>${d}</option>`)}
+          ${s.config.audio2 && s.config.audio2.device && devs && !devs.audio.includes(s.config.audio2.device) && html`<option value=${s.config.audio2.device}>${s.config.audio2.device} (not connected)</option>`}
+        </select>
+        <div class="hint">For example a radio microphone or a second sound card. It gets its own fader on the stream page.</div></div>`}
       <div class="field"><label class="label">Sound of videos and background music on the stream</label>
         <select class="select" value=${s.config.mediaSound || 'direct'} onChange=${(e) => save({ mediaSound: e.target.value })}>
           <option value="direct">Mix it straight into the stream (recommended)</option>
@@ -3123,8 +3131,8 @@ function StudioView({ s }) {
               ? html`<button class="btn big" onClick=${() => setDialog({ type: 'stop' })}>End live stream</button>`
               : html`<button class="btn big danger" onClick=${() => setDialog({ type: 'golive' })}>${icons.radio()} Go live</button>`}
           <${RecordingOptions} s=${s} compact=${true} />
-          <${Meter} />
         </div>
+        <${AudioMixer} s=${s} />
         <${NameOnStream} s=${s} />
         <${TickerCard} s=${s} />
         <div class="card mini">
@@ -3139,6 +3147,66 @@ function StudioView({ s }) {
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'scene' && html`<${SceneEditor} info=${info} scene=${dialog.scene} isNew=${!!dialog.isNew} onClose=${() => setDialog(null)} />`}
+  </div>`;
+}
+
+
+// --- the sound mixer (stream page) ------------------------------------------------------
+const toDb = (g) => (g <= 0.001 ? '−∞' : (20 * Math.log10(g) >= 0 ? '+' : '') + (20 * Math.log10(g)).toFixed(0) + ' dB');
+function MixerChannel({ id, name, mix, levelKey, master }) {
+  const cur = mix[id] || { gain: 1, mute: false };
+  const [gain, setGain] = useState(cur.gain);
+  const bar = useRef();
+  const timer = useRef(null);
+  const pending = useRef(null);
+  useEffect(() => { setGain(cur.gain); }, [cur.gain]);
+  useEffect(() => {
+    // Sources: RMS level of the source; the whole mix: its loudness (LUFS).
+    const show = (db) => { if (bar.current) { const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100)); bar.current.style.height = pct + '%'; bar.current.className = 'mix-level' + (db > -6 ? ' hot' : db > -18 ? ' warm' : ''); } };
+    const onL = (e) => { if (!master && levelKey) show(e.detail[levelKey] ?? -120); };
+    const onM = (e) => { if (master) show(e.detail); };
+    levelsBus.addEventListener('l', onL);
+    meterBus.addEventListener('m', onM);
+    return () => { levelsBus.removeEventListener('l', onL); meterBus.removeEventListener('m', onM); };
+  }, [levelKey, master]);
+  const send = (g) => {
+    pending.current = g;
+    if (timer.current) return;
+    const flush = () => {
+      timer.current = null;
+      if (pending.current === null) return;
+      const v = pending.current;
+      pending.current = null;
+      api('/api/studio/audio', { id, gain: v }).catch(fail);
+      timer.current = setTimeout(flush, 80);
+    };
+    flush();
+  };
+  return html`<div class=${'mix-ch' + (cur.mute ? ' muted' : '') + (master ? ' master' : '')}>
+    <div class="mix-strip">
+      <div class="mix-meter"><i ref=${bar} class="mix-level"></i></div>
+      <input class="vfader" type="range" min="0" max="200" step="1" value=${Math.round(gain * 100)} aria-label=${name + ' volume'}
+        onInput=${(e) => { const g = +e.target.value / 100; setGain(g); send(g); }} onDblClick=${() => { setGain(1); send(1); }} title="Double-click: back to normal" />
+    </div>
+    <span class="mix-db">${toDb(gain)}</span>
+    <button class=${'mix-mute' + (cur.mute ? ' on' : '')} aria-pressed=${!!cur.mute} onClick=${() => api('/api/studio/audio', { id, mute: !cur.mute }).catch(fail)} title=${cur.mute ? 'Turn back on' : 'Mute'}>M</button>
+    <span class="mix-name">${name}</span>
+  </div>`;
+}
+
+function AudioMixer({ s }) {
+  const cfg = s.config;
+  const mix = cfg.audioMix || {};
+  const a = cfg.audio || {};
+  const micName = a.source === 'camera' ? 'Camera sound' : a.source === 'none' ? 'No microphone' : 'Microphone / desk';
+  const chans = [['mic', micName], ['media', 'Videos & music'], ...(cfg.audio2 && cfg.audio2.device ? [['mic2', 'Second mic']] : [])];
+  return html`<div class="card mixer" aria-label="Sound mixer">
+    <div class="card-head"><b>Sound</b><span class="note-r muted" style="font-size:12px">Double-click a fader for normal</span></div>
+    <div class="mix-row">
+      ${chans.map(([id, name]) => html`<${MixerChannel} key=${id} id=${id} name=${name} mix=${mix} levelKey=${id} />`)}
+      <${MixerChannel} id="master" name="Stream" mix=${mix} master=${true} />
+    </div>
+    ${s.stream.mode === 'off' && html`<div class="hint">The meters move when the camera preview or the stream is running.</div>`}
   </div>`;
 }
 
@@ -3266,7 +3334,10 @@ function Root() {
     const stop = connect((st) => {
       setOnline(!!st);
       if (st) { SAB = st.sabbath; st.receivedAt = Date.now(); setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
-    }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })), { page: location.pathname === '/stream' ? 'stream' : '' });
+    }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })), {
+      page: location.pathname === '/stream' ? 'stream' : '',
+      events: { levels: (v) => levelsBus.dispatchEvent(new CustomEvent('l', { detail: v })) },
+    });
     const pop = () => setRoute(location.pathname);
     addEventListener('popstate', pop);
     return () => { stop(); removeEventListener('popstate', pop); };
