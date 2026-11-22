@@ -177,7 +177,11 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          & $iscc /Qp "/DAppVersion=$version" "/DSourceDir=$PWD\dist\ChurchStream" "/DOutputDir=$PWD\dist" scripts\installer\churchstream.iss
+          # The exe carries ChurchStream's icon and name (set by build-exe.js with rcedit).
+          $vi = (Get-Item dist\ChurchStream\ChurchStream.exe).VersionInfo
+          Write-Host "ChurchStream.exe: $($vi.ProductName) $($vi.ProductVersion) - $($vi.FileDescription)"
+          if ($vi.ProductName -ne 'ChurchStream') { throw "ChurchStream.exe still says it is $($vi.ProductName)" }
+          & $iscc /Qp "/DAppVersion=$version" "/DSourceDir=$PWD\dist\ChurchStream" "/DOutputDir=$PWD\dist" "/DIconFile=$PWD\assets\icon\churchstream.ico" scripts\installer\churchstream.iss
           if ($LASTEXITCODE -ne 0) { throw "The installer could not be built" }
           Get-Item dist\ChurchStream-Setup.exe | Select-Object Name, Length
 

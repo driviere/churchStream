@@ -148,6 +148,18 @@ async function main() {
   fs.copyFileSync(nodeExe, exe);
   if (process.platform === 'win32') {
     try { execFileSync('signtool', ['remove', '/s', exe], { stdio: 'ignore' }); } catch { /* signtool is optional */ }
+    // ChurchStream's icon and name (Explorer, the taskbar and Task Manager show these, not Node's).
+    // rcedit is a Windows program, so this happens only when building on Windows.
+    const rcedit = require('rcedit');
+    await rcedit(exe, {
+      icon: path.join(ROOT, 'assets', 'icon', 'churchstream.ico'),
+      'file-version': VERSION.replace(/-.*/, '') + '.0',
+      'product-version': VERSION.replace(/-.*/, '') + '.0',
+      'version-string': { ProductName: 'ChurchStream', FileDescription: 'ChurchStream', CompanyName: 'ChurchStream', OriginalFilename: 'ChurchStream.exe', InternalName: 'ChurchStream', LegalCopyright: 'GPL-3.0 (see LICENSE)' },
+    });
+    console.log('  icon and version details set');
+  } else {
+    console.log('  (the exe keeps Node\'s icon: its icon can only be set when building on Windows)');
   }
   const postject = require.resolve('postject/dist/cli.js');
   execFileSync(process.execPath, [postject, exe, 'NODE_SEA_BLOB', path.join(BUILD, 'sea-prep.blob'), '--sentinel-fuse', FUSE, '--overwrite'], { stdio: 'inherit' });
@@ -294,18 +306,17 @@ async function buildMac() {
   setKey('NSMicrophoneUsageDescription', 'ChurchStream sends the sound of the service to the live stream and recording.');
   setKey('NSLocalNetworkUsageDescription', 'ChurchStream connects to network cameras and lets phones and tablets on the church Wi-Fi control it.');
   setKey('NSAppleEventsUsageDescription', 'ChurchStream asks PowerPoint or Keynote to open presentations you add to the service.');
-  // The icon: ChurchStream's logo, if this Mac can render it; otherwise the standard one.
+  // The icon: the church's design (assets/icon/png, made by scripts/make-icons.js).
   try {
-    const tmp = path.join(BUILD, 'icon');
-    fs.rmSync(tmp, { recursive: true, force: true });
-    fs.mkdirSync(path.join(tmp, 'ChurchStream.iconset'), { recursive: true });
-    execFileSync('qlmanage', ['-t', '-s', '1024', '-o', tmp, path.join(ROOT, 'public', 'favicon.svg')], { stdio: 'ignore' });
-    const png = path.join(tmp, 'favicon.svg.png');
+    const set = path.join(BUILD, 'icon', 'ChurchStream.iconset');
+    fs.rmSync(path.dirname(set), { recursive: true, force: true });
+    fs.mkdirSync(set, { recursive: true });
+    const png = (n) => path.join(ROOT, 'assets', 'icon', 'png', `icon_${n}.png`);
     for (const sz of [16, 32, 128, 256, 512]) {
-      execFileSync('sips', ['-z', String(sz), String(sz), png, '--out', path.join(tmp, 'ChurchStream.iconset', `icon_${sz}x${sz}.png`)], { stdio: 'ignore' });
-      execFileSync('sips', ['-z', String(sz * 2), String(sz * 2), png, '--out', path.join(tmp, 'ChurchStream.iconset', `icon_${sz}x${sz}@2x.png`)], { stdio: 'ignore' });
+      fs.copyFileSync(png(sz), path.join(set, `icon_${sz}x${sz}.png`));
+      fs.copyFileSync(png(sz * 2), path.join(set, `icon_${sz}x${sz}@2x.png`));
     }
-    execFileSync('iconutil', ['-c', 'icns', '-o', path.join(res, 'applet.icns'), path.join(tmp, 'ChurchStream.iconset')], { stdio: 'ignore' });
+    execFileSync('iconutil', ['-c', 'icns', '-o', path.join(res, 'applet.icns'), set], { stdio: 'ignore' });
   } catch (err) { console.log('  (standard app icon: ' + err.message.split('\n')[0] + ')'); }
   run('codesign', ['--force', '--deep', '--sign', '-', appBundle]);
   run('codesign', ['--verify', '--deep', appBundle]);

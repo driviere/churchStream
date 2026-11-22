@@ -32,7 +32,7 @@ const MIME = {
 };
 const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html', '/remote': 'remote.html', '/manual': 'manual.html', '/stream': 'control.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
-const OPEN = [/^\/(display|stage|manual)$/, /^\/stream\.mjpeg$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
+const OPEN = [/^\/(display|stage|manual)$/, /^\/stream\.mjpeg$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/(favicon|logo)/];
 
 const app = new App();
 const clients = new Set();

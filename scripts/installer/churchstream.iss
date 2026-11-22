@@ -18,6 +18,9 @@
 #ifndef SourceDir
   #define SourceDir "..\..\dist\ChurchStream"
 #endif
+#ifndef IconFile
+  #define IconFile "..\..\assets\icon\churchstream.ico"
+#endif
 #ifndef OutputDir
   #define OutputDir "..\..\dist"
 #endif
@@ -43,6 +46,7 @@ OutputBaseFilename=ChurchStream-Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\ChurchStream.exe
 UninstallDisplayName=ChurchStream
 CloseApplications=force

@@ -1719,7 +1719,7 @@ function ControlView({ s }) {
   const live = s.live;
   return html`<div class=${'shell' + (vol ? ' volunteer' : '')}>
     <div class="topbar">
-      <div class="brand"><img src="/favicon.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
+      <div class="brand"><img src="/logo.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
       <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
       <span class="spacer"></span>
       ${s.sabbath && s.sabbath.label && html`<div class=${'status sun' + (s.sabbath.isSabbath ? ' sabbath' : '')} title="Sunset times for your church's location (Settings → General)">${icons.sun()}<span class="extra-sun">${s.sabbath.label}</span></div>`}
@@ -2540,7 +2540,7 @@ function SetupView({ s }) {
     scrollTo(0, 0);
   };
   return html`<div class="setup">
-    <div class="setup-top"><div class="brand"><img src="/favicon.svg" alt="" /><span>ChurchStream</span></div>
+    <div class="setup-top"><div class="brand"><img src="/logo.svg" alt="" /><span>ChurchStream</span></div>
       <div class="steps">${STEPS.map((_, j) => html`<i class=${j <= i ? 'done' : ''}></i>`)}</div></div>
     <div class="setup-body" style=${step.wide ? 'width:min(980px,100%)' : ''}>
       <h1>${step.title}</h1>
@@ -2856,7 +2856,7 @@ function StreamView({ s }) {
   }
   return html`<div class="shell stream-page">
     <div class="topbar">
-      <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
+      <div class="brand"><img src="/logo.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
       <span class="spacer"></span>
       <${StreamStatus} s=${s} />
       <a class="btn icon round" href="/manual#the-stream-page-a-second-laptop" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
@@ -3096,7 +3096,7 @@ function StudioView({ s }) {
   keys.current = { s, info, quick, scenes, pick, dialog };
   return html`<div class="shell studio-page">
     <div class="topbar">
-      <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
+      <div class="brand"><img src="/logo.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
       <div class="seg mode-seg" role="radiogroup" aria-label="How scenes go on air">
         ${[['quick', 'Quick'], ['studio', 'Studio']].map(([id, label]) => html`<button role="radio" aria-checked=${(quick ? 'quick' : 'studio') === id} class=${(quick ? 'quick' : 'studio') === id ? 'on' : ''}
           title=${id === 'quick' ? 'A scene goes on air as soon as you click it' : 'A scene goes to Preview first; then Cut or Auto'} onClick=${() => api('/api/config', { studio: { mode: id } }).catch(fail)}>${label}</button>`)}
