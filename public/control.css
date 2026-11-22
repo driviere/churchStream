@@ -816,3 +816,10 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .btn.on-air { background: var(--live); border-color: var(--live); color: #fff; }
 .title-preview { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; margin: 10px 0; background: #273449; }
 .chip.on { background: var(--text); color: var(--panel); border-color: var(--text); }
+
+/* keyboard shortcuts (stream page) */
+.keys-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
+.keys-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.keys-row kbd { min-width: 64px; text-align: center; padding: 4px 8px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px; font: 700 13px var(--font); background: var(--panel-2); }
+@media (max-width: 640px) { .keys-grid { grid-template-columns: 1fr; } }
+@media print { body * { visibility: hidden; } .modal, .modal * { visibility: visible; } .modal { position: absolute; inset: 0; box-shadow: none; border: 0; } .modal footer, .modal header button { display: none; } }

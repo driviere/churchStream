@@ -287,6 +287,8 @@ With the studio (on by default when ChurchStream's FFmpeg supports it), the **st
 
 **Titles and pictures.** On the stream page, **Titles** puts a title on the stream: choose Scripture, Sermon title, Speaker or Welcome, type one or two lines (or use **Use the reading on screen** during a Bible reading), pick a style (Classic, Modern bar or Minimal) and press **Show title**; **Take off** removes it. **Pictures** keeps your own pictures (a logo, a QR code for giving, a flyer): **Add picture…**, choose where it goes (a corner, lower middle or full screen) and press **Off** to switch it on. PNG pictures with a see-through background look best. Titles and pictures stay on through scene changes and transitions, and the names and ticker go on top of them.
 
+**Keyboard shortcuts** on the stream page (press **?** or **Keys** for the list, which can be printed): **1–9** scenes 1 to 9, **Space** Cut, **Enter** Auto transition, **D** dip to black, **F1–F4** cameras 1 to 4, **G** picture on/off, **N** name on/off, **T** ticker on/off, **R** recording on/off. Shortcuts don't work while you type in a box. A **Stream Deck** can press them: give each button a *Hotkey* action with the key, while the stream page is in front.
+
 The studio uses a little more computer power than before (about a tenth of one processor core). On a computer that struggles, turn it off in **Settings → Advanced → Studio** to go back to the simple switching.
 
 ### Sound for online viewers

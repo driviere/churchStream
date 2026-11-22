@@ -3045,7 +3045,43 @@ function StudioView({ s }) {
   const slide = s.live && s.live.item.slides[s.live.index];
   const run = st.mode !== 'off' ? `${st.mode}-${st.since || ''}` : '';
   useEffect(() => { document.title = 'Stream · ChurchStream'; }, []);
+  // Keyboard shortcuts (also for a Stream Deck: give each button a Hotkey action with these keys).
+  const keys = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = keys.current;
+      if (!k || k.dialog || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      const st2 = k.s;
+      const act = () => { e.preventDefault(); };
+      if (/^[1-9]$/.test(e.key)) { const sc = k.scenes[+e.key - 1]; if (sc) { act(); k.pick(sc.id); } return; }
+      if (/^F[1-4]$/.test(e.key)) { const id = 'cam' + e.key.slice(1); if (k.info && k.info.tiles.includes(id)) { act(); k.pick(id); } return; }
+      switch (e.key) {
+        case ' ': act(); api('/api/studio/take', { type: 'cut' }).catch(fail); break;
+        case 'Enter': act(); api('/api/studio/take', {}).catch(fail); break;
+        case 'd': case 'D': act(); api('/api/studio/take', { type: 'dip' }).catch(fail); break;
+        case 'n': case 'N': act(); api('/api/lower-third', { visible: !st2.lowerThird.visible }).catch(fail); break;
+        case 't': case 'T': act(); api('/api/ticker', { text: st2.ticker.text, visible: !st2.ticker.visible }).catch(fail); break;
+        case 'g': case 'G': {
+          act();
+          const g1 = (st2.gfx && st2.gfx[1]) || {};
+          if (g1.on) { api('/api/studio/gfx/show', { n: 1, on: false }).catch(fail); break; }
+          const list = st2.config.graphics || [];
+          const g = list.find((x) => x.id === g1.label) || list[0];
+          if (g && k.info) loadImage('/media/' + encodeURIComponent(g.file)).then((img) => sendGraphic(k.info, 1, g.id, (ctx, W, H) => drawPicture(ctx, W, H, img, g.position || 'tr'))).catch(fail);
+          else toast('Add a picture first (Pictures, on the right)');
+          break;
+        }
+        case 'r': case 'R': act(); api('/api/config', { record: !st2.config.record }).then(() => toast(st2.config.record ? 'Recording off' : st2.stream.mode === 'live' ? 'Recording on — it starts the next time you go live' : 'Recording on')).catch(fail); break;
+        case '?': act(); setDialog({ type: 'keys' }); break;
+        default:
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
   if (tab === 'settings') {
+    keys.current = null;
     return html`<${SettingsView} s=${s} sections=${STREAM_SECTIONS} backLabel="Back to the stream" onBack=${() => { history.replaceState({}, '', '/stream'); setTab('live'); }} />`;
   }
   const scenes = info ? info.scenes : [];
@@ -3056,6 +3092,7 @@ function StudioView({ s }) {
   // Click a scene: on air at once (Quick) or into Preview (Studio).
   const pick = (id) => api(quick ? '/api/studio/show' : '/api/studio/preview', { id }).catch(fail);
   const openSettings = (sec) => { history.replaceState({}, '', '/stream#' + sec); setTab('settings'); };
+  keys.current = { s, info, quick, scenes, pick, dialog };
   return html`<div class="shell studio-page">
     <div class="topbar">
       <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
@@ -3065,6 +3102,7 @@ function StudioView({ s }) {
       </div>
       <span class="spacer"></span>
       <${StreamStatus} s=${s} />
+      <button class="btn small ghost" title="Keyboard shortcuts (?)" onClick=${() => setDialog({ type: 'keys' })}>Keys</button>
       <a class="btn icon round" href="/manual#the-studio-scenes-and-transitions" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
       <button class="btn icon round" title="Stream settings" aria-label="Stream settings" onClick=${() => openSettings('camera')}>${icons.gear()}</button>
     </div>
@@ -3149,6 +3187,7 @@ function StudioView({ s }) {
     ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'scene' && html`<${SceneEditor} info=${info} scene=${dialog.scene} isNew=${!!dialog.isNew} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'keys' && html`<${ShortcutsDialog} onClose=${() => setDialog(null)} />`}
   </div>`;
 }
 
@@ -3400,6 +3439,18 @@ function TitlesCard({ s, info }) {
       ${g2.on && html`<button class="btn on red" onClick=${() => api('/api/studio/gfx/show', { n: 2, on: false }).catch(fail)}>Take off</button>`}
     </div>
   </div>`;
+}
+
+// --- keyboard shortcuts (stream page) --------------------------------------------------
+const STUDIO_KEYS = [
+  ['1 – 9', 'Scene 1 to 9 (on air in Quick mode, into Preview in Studio mode)'], ['Space', 'Cut'], ['Enter', 'Auto transition'], ['D', 'Dip to black'],
+  ['F1 – F4', 'Camera 1 to 4'], ['G', 'Picture on / off'], ['N', 'Name on / off'], ['T', 'Ticker on / off'], ['R', 'Recording on / off'], ['?', 'This list'],
+];
+function ShortcutsDialog({ onClose }) {
+  return html`<${Modal} title="Keyboard shortcuts" onClose=${onClose} footer=${html`<button class="btn" onClick=${() => print()}>Print</button><button class="btn primary" onClick=${onClose}>Close</button>`}>
+    <div class="keys-grid">${STUDIO_KEYS.map(([k, what]) => html`<div class="keys-row"><kbd>${k}</kbd><span>${what}</span></div>`)}</div>
+    <div class="note" style="margin-top:14px">Have a Stream Deck? Give each button a <b>Hotkey</b> action with these keys while the stream page is in front.</div>
+  </${Modal}>`;
 }
 
 // --- the scene editor ------------------------------------------------------------------
