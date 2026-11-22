@@ -155,6 +155,10 @@ jobs:
           Start-Sleep -Seconds 2
           Remove-Item -Recurse -Force dist\ChurchStream\ChurchStream-data -ErrorAction SilentlyContinue
 
+      - name: Computer power benchmark (Windows, bundled FFmpeg)
+        continue-on-error: true
+        run: node scripts/bench-studio.js dist/ChurchStream/ffmpeg/ffmpeg.exe 20
+
       - name: YouTube lookup and download (YouTube sometimes blocks cloud machines, so not fatal)
         shell: pwsh
         continue-on-error: true
@@ -233,6 +237,12 @@ jobs:
       - name: Build for Apple Silicon Macs
         run: node scripts/build-exe.js --target mac-arm64 --ffmpeg-zip ffmpeg-mac-arm64.zip
 
+      # ChurchStream (before the studio, studio at rest, fading) against the floor: plain FFmpeg
+      # doing only the same encode. Results on the run's summary page; never fails the build.
+      - name: Computer power benchmark (Mac, bundled FFmpeg)
+        continue-on-error: true
+        run: node scripts/bench-studio.js dist/ChurchStream/ChurchStream.app/Contents/Resources/ffmpeg/ffmpeg 20
+
       - name: Smoke test on a Mac (UI, Bible, devices, a live recording through FFmpeg)
         shell: bash
         run: |
@@ -289,7 +299,7 @@ jobs:
           sleep 3
           ls -l "$CHURCHSTREAM_DATA/recordings"
           SIZE=$(find "$CHURCHSTREAM_DATA/recordings" -name '*.mkv' -exec stat -f %z {} \; | sort -n | tail -1)
-          [ "${SIZE:-0}" -gt 50000 ] || { echo "::error::Recording was not created"; exit 1; }
+          [ "${SIZE:-0}" -gt 50000 ] || { echo "::error::Recording was not created"; curl -sf localhost:8126/api/logs | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>JSON.parse(d).slice(-60).forEach(l=>console.log("  log:",l)))'; exit 1; }
           echo "Recording OK: $SIZE bytes"
 
       - name: Open ChurchStream.app like a user would, then quit it
