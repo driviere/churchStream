@@ -285,6 +285,8 @@ With the studio (on by default when ChurchStream's FFmpeg supports it), the **st
 
 **Sound mixer.** The stream page has a fader for each sound source: the microphone or sound desk, videos and music, a second microphone (add one in Settings → Camera & sound), and **Stream** for everything together. The bars show the level as it reaches viewers; **M** mutes a source. Double-click a fader to put it back to normal. Changes are instant, don't interrupt the stream, and are remembered.
 
+**Titles and pictures.** On the stream page, **Titles** puts a title on the stream: choose Scripture, Sermon title, Speaker or Welcome, type one or two lines (or use **Use the reading on screen** during a Bible reading), pick a style (Classic, Modern bar or Minimal) and press **Show title**; **Take off** removes it. **Pictures** keeps your own pictures (a logo, a QR code for giving, a flyer): **Add picture…**, choose where it goes (a corner, lower middle or full screen) and press **Off** to switch it on. PNG pictures with a see-through background look best. Titles and pictures stay on through scene changes and transitions, and the names and ticker go on top of them.
+
 The studio uses a little more computer power than before (about a tenth of one processor core). On a computer that struggles, turn it off in **Settings → Advanced → Studio** to go back to the simple switching.
 
 ### Sound for online viewers

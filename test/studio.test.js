@@ -197,24 +197,30 @@ test('real FFmpeg: the stream with the studio runs, with its preview and multivi
   fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
   new Overlay(dir);
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=navy:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  // The graphics channels (a picture on channel 1).
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black@0.0:s=854x480,format=rgba,drawbox=x=600:y=20:w=200:h=80:color=white@0.9:t=fill', '-frames:v', '1', '-y', path.join(dir, 'gfx1.png')]);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black@0.0:s=854x480,format=rgba', '-frames:v', '1', '-y', path.join(dir, 'gfx2.png')]);
   const c2 = cfg({ quality: 'low', audio: { source: 'none' }, video2: { type: 'testsrc' }, video3: { type: 'rtsp', rtspUrl: 'rtsp://127.0.0.1:9/x' } });
   const feeds = { preview: new ProgramFeed(), multiview: new ProgramFeed() };
   await Promise.all([feeds.preview.ready, feeds.multiview.ready]);
   const index = c.sourceIndex(c.sourceIds(c2, { media: false }));
   const info = { inputQueue: require('../lib/ffmpeg').acceptsInputQueue('ffmpeg'), zmq: true };
-  const args = buildFfmpegArgs({ cfg: c2, mode: 'preview', runDir: dir, ffmpegInfo: info, studio: { zmqPort: await freePort(), sceneA: c.findScene(c2, 'pip'), sceneB: c.findScene(c2, 'side'), index, slots: 2, down: [3], feeds: { preview: feeds.preview.port, multiview: feeds.multiview.port } } });
+  const args = buildFfmpegArgs({ cfg: c2, mode: 'preview', runDir: dir, ffmpegInfo: info, studio: { zmqPort: await freePort(), sceneA: c.findScene(c2, 'pip'), sceneB: c.findScene(c2, 'side'), index, slots: 2, down: [3], gfx: { 1: true }, feeds: { preview: feeds.preview.port, multiview: feeds.multiview.port } } });
   const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
   let err = '';
   p.stderr.on('data', (d) => { err += d; });
-  await new Promise((r) => setTimeout(r, 4000));
+  p.stdin.on('error', () => {});
+  const closed = new Promise((r) => p.on('close', r));
+  await Promise.race([closed, new Promise((r) => setTimeout(r, 7000))]);
   p.stdin.write('q');
-  await new Promise((r) => p.on('close', r));
+  await closed;
+  feeds.preview.close(); feeds.multiview.close();
   const bad = err.split('\n').filter((l) => /\[(error|fatal)\]/.test(l)).slice(0, 5).join('\n');
-  assert.ok(fs.existsSync(path.join(dir, 'preview.jpg')), 'the camera preview picture is made: ' + bad);
+  const made = fs.existsSync(path.join(dir, 'preview.jpg'));
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.ok(made, 'the camera preview picture is made: ' + bad);
   assert.ok(feeds.preview.latest && feeds.preview.latest.length > 1000, 'Preview picture: ' + bad);
   assert.ok(feeds.multiview.latest && feeds.multiview.latest.length > 1000, 'multiview picture: ' + bad);
-  feeds.preview.close(); feeds.multiview.close();
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('sound mixer: a live volume and a meter per source, and one for the whole mix', () => {
@@ -239,4 +245,37 @@ test('sound mixer: a live volume and a meter per source, and one for the whole m
   st.onLog('[ametadata@mmic @ 0x55] [info] frame:3 pts:14400 pts_time:0.3');
   assert.deepEqual(got[0], { mic: -23.5 });
   assert.equal(logged.length, 0);
+});
+
+test('graphics: the pictures that are on become one ready picture, fed to the stream', { skip: !HAVE, timeout: 30000 }, async () => {
+  const { GraphicsFeed } = require('../lib/graphics');
+  const { buildFfmpegArgs } = require('../lib/stream');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-gfx-'));
+  const png = (name, x) => {
+    const f = path.join(dir, name);
+    spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=white:s=320x180,format=rgba,geq=r=255:g=255:b=255:a='if(between(X,${x},${x + 40})*between(Y,10,40),255,0)'`, '-frames:v', '1', '-y', f]);
+    return f;
+  };
+  const a = png('a.png', 10);
+  const b = png('b.png', 200);
+  const g = new GraphicsFeed({ ffmpegPath: 'ffmpeg' });
+  await g.ready;
+  g.configure({ width: 320, height: 180, fps: 30 });
+  const alpha = (frame, x, y) => frame[320 * 180 * 1.5 + y * 320 + x];
+  assert.equal(alpha(g.current(), 20, 20), 0, 'nothing shown: see-through');
+  await g.show([a, b]);
+  assert.equal(g.current().length, 320 * 180 * 2.5);
+  assert.ok(alpha(g.current(), 20, 20) > 200 && alpha(g.current(), 210, 20) > 200, 'both pictures');
+  assert.equal(alpha(g.current(), 120, 20), 0);
+  await g.show([b]);
+  assert.equal(alpha(g.current(), 20, 20), 0);
+  await g.show([]);
+  assert.equal(g.current(), g.blank);
+  g.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+  // In the stream: a raw see-through input timed on arrival, laid over the program.
+  const c2 = cfg({ audio: { source: 'none' } });
+  const args = buildFfmpegArgs({ cfg: c2, mode: 'preview', studio: { zmqPort: 5558, sceneA: c.findScene(c2, 'cam1'), sceneB: c.findScene(c2, 'slides'), index: c.sourceIndex(c.sourceIds(c2, { media: false })), slots: 1, graphics: 4200, gfxOn: true } }).join(' ');
+  assert.match(args, /-use_wallclock_as_timestamps 1 -f rawvideo -pix_fmt yuva420p .* -i tcp:\/\/127\.0\.0\.1:4200/);
+  assert.match(args, /overlay@gfx=x=0:y=0:enable=1/);
 });

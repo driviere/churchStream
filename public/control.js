@@ -3134,6 +3134,8 @@ function StudioView({ s }) {
         </div>
         <${AudioMixer} s=${s} />
         <${NameOnStream} s=${s} />
+        <${TitlesCard} s=${s} info=${info} />
+        <${GraphicsCard} s=${s} info=${info} />
         <${TickerCard} s=${s} />
         <div class="card mini">
           <div class="card-head"><b>On the screens now</b></div>
@@ -3207,6 +3209,196 @@ function AudioMixer({ s }) {
       <${MixerChannel} id="master" name="Stream" mix=${mix} master=${true} />
     </div>
     ${s.stream.mode === 'off' && html`<div class="hint">The meters move when the camera preview or the stream is running.</div>`}
+  </div>`;
+}
+
+// --- graphics and titles (stream page) -----------------------------------------------------
+// The stream has two graphics channels on top of every scene: 1 for a picture (a logo in the
+// corner, a QR code, a flyer), 2 for a title. Both are drawn here, at the stream's size, as a
+// transparent PNG, and sent to ChurchStream; FFmpeg lays them over the picture.
+const GFX_POSITIONS = [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left'], ['lower', 'Lower middle'], ['full', 'Full screen']];
+const TITLE_TEMPLATES = [
+  ['scripture', 'Scripture', 'Reading, e.g. Psalm 46:1', 'Words (optional)'],
+  ['sermon', 'Sermon title', 'Title', 'Speaker (optional)'],
+  ['speaker', 'Speaker', 'Name', 'Role, e.g. Guest speaker'],
+  ['welcome', 'Welcome', 'Headline, e.g. Welcome!', 'Second line (optional)'],
+];
+const TITLE_STYLES = [['classic', 'Classic'], ['bar', 'Modern bar'], ['minimal', 'Minimal']];
+
+const loadImage = (src) => new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('Could not load the picture')); im.src = src; });
+
+function drawPicture(ctx, W, H, img, position) {
+  const ar = img.naturalWidth / img.naturalHeight;
+  let w;
+  let h;
+  if (position === 'full') { const s = Math.min(W / img.naturalWidth, H / img.naturalHeight); w = img.naturalWidth * s; h = img.naturalHeight * s; ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h); return; }
+  if (position === 'lower') { w = Math.min(W * 0.6, H * 0.25 * ar); h = w / ar; ctx.drawImage(img, (W - w) / 2, H * 0.94 - h, w, h); return; }
+  // A corner: about a fifth of the width, never taller than a quarter of the height.
+  w = Math.min(W * 0.18, H * 0.25 * ar); h = w / ar;
+  const m = H * 0.045;
+  const x = position.endsWith('l') ? m : W - m - w;
+  const y = position.startsWith('t') ? m : H - m - h;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+// One line of text, shortened with … when too wide.
+function fitLine(ctx, text, maxW) {
+  let t = String(text || '');
+  if (ctx.measureText(t).width <= maxW) return t;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t.trimEnd() + '…';
+}
+
+function drawTitle(ctx, W, H, style, a, b) {
+  const font = (wt, px) => `${wt} ${Math.round(px)}px Inter, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  if (style === 'bar') {
+    const bh = b ? H * 0.15 : H * 0.1;
+    const y = H * 0.955 - bh;
+    ctx.fillStyle = 'rgba(14,122,109,0.94)';
+    ctx.fillRect(0, y, W, bh);
+    ctx.fillStyle = '#fff';
+    ctx.font = font(800, H * 0.048);
+    ctx.fillText(fitLine(ctx, a, W * 0.9), W * 0.05, y + (b ? bh * 0.33 : bh / 2));
+    if (b) { ctx.font = font(500, H * 0.032); ctx.fillText(fitLine(ctx, b, W * 0.9), W * 0.05, y + bh * 0.72); }
+    return;
+  }
+  if (style === 'minimal') {
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = H * 0.012;
+    ctx.fillStyle = '#fff';
+    const x = W * 0.06;
+    const y = H * (b ? 0.78 : 0.84);
+    ctx.font = font(700, H * 0.055);
+    ctx.fillText(fitLine(ctx, a, W * 0.86), x, y);
+    ctx.fillRect(x, y + H * 0.045, W * 0.06, Math.max(2, H * 0.005));
+    if (b) { ctx.font = font(400, H * 0.034); ctx.fillText(fitLine(ctx, b, W * 0.86), x, y + H * 0.095); }
+    ctx.shadowBlur = 0;
+    return;
+  }
+  // Classic: like the names on the stream — white box, blue box underneath.
+  const x = W * 0.055;
+  const pad = H * 0.02;
+  ctx.font = font(800, H * 0.05);
+  const t1 = fitLine(ctx, a, W * 0.8);
+  const w1 = ctx.measureText(t1).width + pad * 2;
+  const h1 = H * 0.05 * 1.25 + pad;
+  const y1 = H * (b ? 0.71 : 0.78);
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
+  ctx.fillRect(x, y1, w1, h1);
+  ctx.fillStyle = '#111827';
+  ctx.fillText(t1, x + pad, y1 + h1 / 2);
+  if (b) {
+    ctx.font = font(500, H * 0.034);
+    const t2 = fitLine(ctx, b, W * 0.8);
+    const w2 = ctx.measureText(t2).width + pad * 1.6;
+    const h2 = H * 0.034 * 1.3 + pad * 0.8;
+    ctx.fillStyle = 'rgba(37,99,235,0.95)';
+    ctx.fillRect(x, y1 + h1, w2, h2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(t2, x + pad * 0.8, y1 + h1 + h2 / 2);
+  }
+}
+
+// Draw at the stream's size and send to channel n, then switch it on.
+async function sendGraphic(info, n, label, draw) {
+  const { width: W, height: H } = info.size;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  try { await document.fonts.load(`700 ${Math.round(H * 0.05)}px Inter`); } catch { /* system font */ }
+  await draw(ctx, W, H);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  const res = await fetch(`/api/studio/gfx?n=${n}&label=${encodeURIComponent(label)}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not send the graphic');
+  await api('/api/studio/gfx/show', { n, on: true });
+}
+
+function GraphicsCard({ s, info }) {
+  const list = s.config.graphics || [];
+  const g1 = (s.gfx && s.gfx[1]) || {};
+  const fileRef = useRef();
+  const [busy, setBusy] = useState('');
+  const upload = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    setBusy('upload');
+    try {
+      const res = await fetch(`/api/media?kind=graphic&name=${encodeURIComponent(f.name.replace(/\.[^.]+$/, ''))}`, { method: 'POST', body: f, headers: { 'Content-Type': f.type } });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Upload failed');
+      toast('Picture added');
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const show = async (g) => {
+    if (!info) return;
+    setBusy(g.id);
+    try {
+      const img = await loadImage('/media/' + encodeURIComponent(g.file));
+      await sendGraphic(info, 1, g.id, (ctx, W, H) => drawPicture(ctx, W, H, img, g.position || 'tr'));
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const isOn = (g) => g1.on && g1.label === g.id;
+  return html`<div class="card gfx-card">
+    <div class="card-head"><b>Pictures</b><span class="note-r"><button class="btn small" disabled=${busy === 'upload'} onClick=${() => fileRef.current.click()}>${busy === 'upload' ? 'Adding…' : 'Add picture…'}</button></span></div>
+    <input ref=${fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange=${upload} />
+    ${!list.length && html`<div class="hint" style="margin:0">A logo in the corner, a QR code for giving, or a flyer. PNG pictures can have a see-through background.</div>`}
+    ${list.map((g) => html`<div class=${'gfx-row' + (isOn(g) ? ' on' : '')} key=${g.id}>
+      <img class="gfx-thumb" src=${'/media/' + encodeURIComponent(g.file)} alt="" />
+      <div class="gfx-info">
+        <span class="gfx-name">${g.name}</span>
+        <select class="select small" aria-label="Where" value=${g.position || 'tr'} onChange=${async (e) => { await api('/api/studio/graphic', { id: g.id, position: e.target.value }).catch(fail); if (isOn(g)) show({ ...g, position: e.target.value }); }}>
+          ${GFX_POSITIONS.map(([id, label]) => html`<option value=${id}>${label}</option>`)}
+        </select>
+      </div>
+      ${isOn(g)
+        ? html`<button class="btn small on-air" onClick=${() => api('/api/studio/gfx/show', { n: 1, on: false }).catch(fail)}>On</button>`
+        : html`<button class="btn small" disabled=${busy === g.id} onClick=${() => show(g)}>Off</button>`}
+      <button class="btn small ghost" aria-label=${'Remove ' + g.name} title="Remove" onClick=${() => { if (confirm(`Remove “${g.name}”?`)) { if (isOn(g)) api('/api/studio/gfx/show', { n: 1, on: false }); api('/api/studio/graphic/delete', { id: g.id }).catch(fail); } }}>×</button>
+    </div>`)}
+  </div>`;
+}
+
+function TitlesCard({ s, info }) {
+  const g2 = (s.gfx && s.gfx[2]) || {};
+  const style = s.config.titleStyle || 'classic';
+  const [tpl, setTpl] = useState('scripture');
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
+  const prev = useRef();
+  const t = TITLE_TEMPLATES.find((x) => x[0] === tpl) || TITLE_TEMPLATES[0];
+  const slide = s.live && s.live.item.slides[s.live.index];
+  const reading = s.live && s.live.item.kind === 'bible' && slide;
+  // A small preview of the title over a dark picture.
+  useEffect(() => {
+    const c = prev.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#273449';
+    ctx.fillRect(0, 0, c.width, c.height);
+    if (a.trim()) drawTitle(ctx, c.width, c.height, style, a.trim(), b.trim());
+  }, [a, b, style]);
+  const show = async () => {
+    if (!info || !a.trim()) return;
+    try { await sendGraphic(info, 2, a.trim(), (ctx, W, H) => drawTitle(ctx, W, H, style, a.trim(), b.trim())); } catch (err) { fail(err); }
+  };
+  return html`<div class="card gfx-card">
+    <div class="card-head"><b>Titles</b>${g2.on && html`<span class="note-r"><span class="tally-tag program">ON AIR</span></span>`}</div>
+    <div class="chips" style="margin-bottom:8px">${TITLE_TEMPLATES.map(([id, label]) => html`<button class=${'chip' + (tpl === id ? ' on' : '')} onClick=${() => setTpl(id)}>${label}</button>`)}</div>
+    <input class="input" placeholder=${t[2]} value=${a} maxlength="80" onInput=${(e) => setA(e.target.value)} />
+    <input class="input" style="margin-top:6px" placeholder=${t[3]} value=${b} maxlength="140" onInput=${(e) => setB(e.target.value)} />
+    ${tpl === 'scripture' && reading && html`<button class="btn small ghost" style="margin-top:6px" onClick=${() => { setA(slide.ref || s.live.item.title || ''); setB(String(slide.text || '').replace(/\s+/g, ' ').slice(0, 140)); }}>Use the reading on screen</button>`}
+    <div class="seg" role="radiogroup" aria-label="Title style" style="margin-top:8px;grid-template-columns:repeat(3,1fr)">
+      ${TITLE_STYLES.map(([id, label]) => html`<button role="radio" aria-checked=${style === id} class=${style === id ? 'on' : ''} onClick=${() => api('/api/config', { titleStyle: id }).catch(fail)}>${label}</button>`)}
+    </div>
+    <canvas ref=${prev} class="title-preview" width="640" height="360" aria-label="How the title looks"></canvas>
+    <div class="row" style="gap:8px">
+      <button class="btn primary grow" disabled=${!a.trim() || !info} onClick=${show}>${g2.on ? 'Update title' : 'Show title'}</button>
+      ${g2.on && html`<button class="btn on red" onClick=${() => api('/api/studio/gfx/show', { n: 2, on: false }).catch(fail)}>Take off</button>`}
+    </div>
   </div>`;
 }
 

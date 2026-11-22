@@ -195,7 +195,7 @@ const routes = {
   'POST /api/media/settings': async (req) => { const b = await json(req); return app.mediaSettings(b.key, b.patch || {}); },
   'POST /api/bible/remove': async (req) => app.removeBible((await json(req)).id),
   'POST /api/media': async (req, url) => {
-    const name = app.saveMedia(url.searchParams.get('kind'), await readBody(req), (req.headers['content-type'] || '').split(';')[0]);
+    const name = app.saveMedia(url.searchParams.get('kind'), await readBody(req), (req.headers['content-type'] || '').split(';')[0], url.searchParams.get('name') || '');
     return { ok: true, name };
   },
   'POST /api/media/remove': async (req) => { const { kind } = await json(req); app.updateConfig({ theme: { [kind]: '' } }); return { ok: true }; },
@@ -213,6 +213,11 @@ const routes = {
   'POST /api/studio/scene': async (req) => app.saveScene((await json(req)).scene),
   'POST /api/studio/scene/delete': async (req) => app.deleteScene((await json(req)).id),
   'POST /api/studio/audio': async (req) => { const b = await json(req); return app.setAudioMix(b.id, b); },
+  // Graphics: the picture for channel n (a PNG drawn by the stream page), on/off, the pictures.
+  'POST /api/studio/gfx': async (req, url) => app.saveGfx(url.searchParams.get('n'), await readBody(req, 8 * 1024 * 1024), url.searchParams.get('label') || ''),
+  'POST /api/studio/gfx/show': async (req) => { const b = await json(req); return app.showGfx(b.n, b.on); },
+  'POST /api/studio/graphic': async (req) => { const b = await json(req); return app.graphicUpdate(b.id, b); },
+  'POST /api/studio/graphic/delete': async (req) => app.graphicDelete((await json(req)).id),
   'POST /api/phone-camera/renew': () => { app.renewPhoneToken(); return phoneInfo(); },
 };
 

@@ -804,3 +804,15 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .mix-mute.on { background: var(--live); border-color: var(--live); color: #fff; }
 .mix-ch.muted .mix-level { opacity: .35; }
 .mix-name { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.25; }
+
+/* graphics and titles (stream page) */
+.gfx-card .input { width: 100%; box-sizing: border-box; }
+.gfx-row { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; }
+.gfx-row.on { border-color: var(--live); }
+.gfx-thumb { width: 52px; height: 34px; object-fit: contain; border-radius: 5px; background: repeating-conic-gradient(#e4e7ec 0 25%, #fff 0 50%) 0 0 / 10px 10px; flex: none; }
+.gfx-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gfx-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.select.small { height: 30px; font-size: 12px; padding: 0 6px; }
+.btn.on-air { background: var(--live); border-color: var(--live); color: #fff; }
+.title-preview { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; margin: 10px 0; background: #273449; }
+.chip.on { background: var(--text); color: var(--panel); border-color: var(--text); }
