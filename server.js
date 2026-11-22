@@ -22,6 +22,7 @@ const office = require('./lib/office');
 const assets = require('./lib/assets');
 const { App } = require('./lib/app');
 const { loadCertificate } = require('./lib/cert');
+const { bootOk } = require('./lib/packs');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -31,7 +32,7 @@ const MIME = {
 };
 const PAGES = { '/control': 'control.html', '/setup': 'control.html', '/settings': 'control.html', '/display': 'display.html', '/stage': 'stage.html', '/remote': 'remote.html', '/manual': 'manual.html', '/stream': 'control.html' };
 // Pages the projector / stage screens need; everything else requires the password (if one is set).
-const OPEN = [/^\/(display|stage|manual)$/, /^\/stream\.mjpeg$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/favicon/];
+const OPEN = [/^\/(display|stage|manual)$/, /^\/stream\.mjpeg$/, /^\/manual\.md$/, /^\/api\/display\/youtube$/, /^\/events$/, /^\/(fonts|vendor|media|backgrounds)\//, /^\/(display|stage|shared)\.(js|css)$/, /^\/(favicon|logo)/];
 
 const app = new App();
 const clients = new Set();
@@ -176,6 +177,12 @@ const routes = {
   'POST /api/config': async (req) => { app.updateConfig(await json(req)); return { ok: true }; },
   'GET /api/devices': () => app.devices(),
   'GET /api/logs': () => app.logs.slice(-80),
+  // Updates (lib/updater.js): shown by themselves; downloaded only when asked.
+  'GET /api/update': () => app.snapshot().update,
+  'POST /api/update/check': () => app.updateCheck(),
+  'POST /api/update/install': () => app.updateInstall(),
+  'POST /api/update/later': () => { app.updateLater(); return { ok: true }; },
+  'POST /api/update/restart': () => restart(),
   'POST /api/projector/open': async () => {
     const m = app.cfg.projector;
     const browser = app.projector.launch(`http://127.0.0.1:${server.address().port}/display`, m.x != null ? { x: m.x, y: m.y } : null);
@@ -358,11 +365,49 @@ function listen(port, attempts = 10) {
     console.log('');
     // Where to find the control panel (the Mac app opens it when its Dock icon is clicked).
     try { fs.writeFileSync(path.join(paths.runDir, 'url.txt'), `${local}/control`); fs.writeFileSync(path.join(paths.runDir, 'server.pid'), String(process.pid)); } catch { /* not needed */ }
-    if (paths.isSea && !process.env.CHURCHSTREAM_NO_BROWSER) openBrowser(`${local}${app.cfg.setupComplete ? '/control' : '/setup'}`);
+    bootOk(paths.runDir); // this start worked (an updated app pack is kept: lib/packs.js)
+    if (app.updater.state.failed) console.log(`  The update to ${app.updater.state.failed} could not start, so this computer stays on ${app.snapshot().version}.`);
+    let restarted = false;
+    try { restarted = fs.existsSync(path.join(paths.runDir, 'restarted')); fs.rmSync(path.join(paths.runDir, 'restarted'), { force: true }); } catch { /* fine */ }
+    if (paths.isSea && !process.env.CHURCHSTREAM_NO_BROWSER && !restarted) openBrowser(`${local}${app.cfg.setupComplete ? '/control' : '/setup'}`);
     if (app.cfg.setupComplete && app.cfg.projector.autoLaunch) {
       try { app.projector.launch(`http://127.0.0.1:${p}/display`, app.cfg.projector.x != null ? app.cfg.projector : null); app.state.projectorOpen = true; } catch { /* manual */ }
     }
   });
+}
+
+// Restart ChurchStream (to use a downloaded update). The port is freed first so the new copy
+// takes the same address and open pages reconnect by themselves.
+function restart() {
+  if (app.streamer.status.mode === 'live') throw new Error('Restart after the service: the stream or recording is running.');
+  if (!paths.isSea) throw new Error('Restart ChurchStream by hand (it is not the installed program).');
+  const port = server.address().port;
+  const macApp = /\.app\/Contents\/Resources$/.test(paths.appRoot);
+  setTimeout(() => {
+    stopping = true;
+    server.close();
+    app.shutdown();
+    setTimeout(() => {
+      // The new copy doesn't open another browser tab: the open pages reconnect by themselves.
+      try { fs.writeFileSync(path.join(paths.runDir, 'restarted'), String(Date.now())); } catch { /* a new tab then */ }
+      if (macApp) {
+        // The Mac app (scripts/mac-app/launcher.applescript) sees this and starts ChurchStream again.
+        try { fs.writeFileSync(path.join(paths.runDir, 'restart'), String(Date.now())); } catch { /* the app then says it stopped */ }
+      } else {
+        const env = { ...process.env };
+        delete env.CHURCHSTREAM_PACK;
+        delete env.CHURCHSTREAM_UPDATE_FAILED;
+        if (process.platform === 'win32') {
+          // In a new window, like double-clicking ChurchStream.exe.
+          spawn('cmd', ['/c', 'start', '"ChurchStream"', `"${process.execPath}"`, '--port', String(port)], { detached: true, stdio: 'ignore', env, windowsVerbatimArguments: true }).unref();
+        } else {
+          spawn(process.execPath, ['--port', String(port)], { detached: true, stdio: 'ignore', env }).unref();
+        }
+      }
+      process.exit(0);
+    }, 1700);
+  }, 300); // let this answer reach the browser first
+  return { ok: true, restarting: true };
 }
 
 let stopping = false;

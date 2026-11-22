@@ -32,6 +32,22 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: npm ci
       - run: npm test
+      # Updates, end to end with a Linux build of the program: found by themselves, downloaded,
+      # checked, restarted into; a damaged update is given up (scripts/test-update.js).
+      - name: Updates (Linux build of the program)
+        run: |
+          node scripts/build-exe.js --target linux-x64
+          node scripts/build-exe.js --pack-only --version 9.9.9
+          node scripts/test-update.js dist/ChurchStream/ChurchStream dist/ChurchStream-app-9.9.9.zip
+          rm -f dist/ChurchStream-app-9.9.9.zip dist/update.json
+      # The app pack: what the updater downloads (ChurchStream's own code, ~3 MB, all platforms).
+      - name: App pack
+        run: node scripts/build-exe.js --pack-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChurchStream-app
+          path: dist/ChurchStream-app-*.zip
+          retention-days: 30
 
   windows:
     needs: test
@@ -155,6 +171,70 @@ jobs:
           Start-Sleep -Seconds 2
           Remove-Item -Recurse -Force dist\ChurchStream\ChurchStream-data -ErrorAction SilentlyContinue
 
+      - name: Installer (ChurchStream-Setup.exe)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          # The exe carries ChurchStream's icon and name (set by build-exe.js with rcedit).
+          $vi = (Get-Item dist\ChurchStream\ChurchStream.exe).VersionInfo
+          Write-Host "ChurchStream.exe: $($vi.ProductName) $($vi.ProductVersion) - $($vi.FileDescription)"
+          if ($vi.ProductName -ne 'ChurchStream') { throw "ChurchStream.exe still says it is $($vi.ProductName)" }
+          & $iscc /Qp "/DAppVersion=$version" "/DSourceDir=$PWD\dist\ChurchStream" "/DOutputDir=$PWD\dist" "/DIconFile=$PWD\assets\icon\churchstream.ico" scripts\installer\churchstream.iss
+          if ($LASTEXITCODE -ne 0) { throw "The installer could not be built" }
+          Get-Item dist\ChurchStream-Setup.exe | Select-Object Name, Length
+
+      - name: Install, start and uninstall like a user would
+        shell: pwsh
+        run: |
+          # An older ChurchStream folder (the zip) whose settings should come along.
+          Remove-Item -Recurse -Force "$env:USERPROFILE\ChurchStream-data" -ErrorAction SilentlyContinue
+          $old = "$env:RUNNER_TEMP\old ChurchStream"
+          New-Item -ItemType Directory -Force "$old\ChurchStream-data" | Out-Null
+          '{"setupComplete":true,"churchName":"Old Church"}' | Set-Content -Encoding utf8 "$old\ChurchStream-data\config.json"
+          $p = Start-Process dist\ChurchStream-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon',"/LOG=$env:RUNNER_TEMP\setup.log","/ImportFrom=`"$old`"" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\setup.log" | Select-Object -Last 30; throw "Setup failed ($($p.ExitCode))" }
+          $cfg = Get-Content "$env:USERPROFILE\ChurchStream-data\config.json" -Raw | ConvertFrom-Json
+          if ($cfg.churchName -ne 'Old Church') { Get-Content "$env:RUNNER_TEMP\setup.log" | Select-Object -Last 30; throw "The older folder's settings did not come along" }
+          Write-Host "Settings brought from the older folder: $($cfg.churchName)"
+          # Installing again (an upgrade) never overwrites the settings.
+          '{"setupComplete":true,"churchName":"Other Church"}' | Set-Content -Encoding utf8 "$old\ChurchStream-data\config.json"
+          $p = Start-Process dist\ChurchStream-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/ImportFrom=`"$old`"" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Installing again failed ($($p.ExitCode))" }
+          if ((Get-Content "$env:USERPROFILE\ChurchStream-data\config.json" -Raw | ConvertFrom-Json).churchName -ne 'Old Church') { throw "Installing again overwrote the settings" }
+          Write-Host "Installing again kept the settings"
+          $dir = "$env:LOCALAPPDATA\Programs\ChurchStream"
+          if (-not (Test-Path "$dir\ChurchStream.exe")) { throw "ChurchStream.exe was not installed in $dir" }
+          if (-not (Test-Path "$dir\ffmpeg\ffmpeg.exe")) { throw "FFmpeg was not installed" }
+          Write-Host "Installed in $dir"; Get-Content "$dir\ChurchStream.ini"
+          $lnk = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter 'ChurchStream.lnk' -ErrorAction SilentlyContinue
+          if (-not $lnk) { throw "No Start menu shortcut" }
+          $env:CHURCHSTREAM_NO_BROWSER = "1"
+          $app = Start-Process -FilePath "$dir\ChurchStream.exe" -ArgumentList '--port','8129' -PassThru -WorkingDirectory $dir
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 30 -and -not $ok; $i++) { Start-Sleep -Seconds 1; try { $st = Invoke-RestMethod http://localhost:8129/api/state; $ok = $true } catch { } }
+            if (-not $ok) { throw "The installed ChurchStream did not start" }
+            Write-Host "Installed ChurchStream $($st.version) runs; FFmpeg: $($st.ffmpeg.ok)"
+            if (-not (Test-Path "$env:USERPROFILE\ChurchStream-data\config.json")) { throw "The data did not go to the home folder" }
+          } finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue; Get-Process ffmpeg -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 2
+          $u = Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\ChurchStream.exe") { throw "Uninstalling left ChurchStream.exe behind" }
+          if (-not (Test-Path "$env:USERPROFILE\ChurchStream-data\config.json")) { throw "Uninstalling removed the settings" }
+          Write-Host "Uninstalled; the settings in $env:USERPROFILE\ChurchStream-data are kept"
+
+      - name: Updates (found by themselves, downloaded, restarted into; a damaged one given up)
+        shell: pwsh
+        run: |
+          node scripts/build-exe.js --pack-only --version 9.9.9
+          node scripts/test-update.js dist\ChurchStream\ChurchStream.exe dist\ChurchStream-app-9.9.9.zip
+          if ($LASTEXITCODE -ne 0) { throw "The update test failed" }
+          Remove-Item dist\ChurchStream-app-*.zip, dist\update.json -ErrorAction SilentlyContinue
+          Get-Process ChurchStream, ffmpeg -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
+
       - name: Computer power benchmark (Windows, bundled FFmpeg)
         continue-on-error: true
         run: node scripts/bench-studio.js dist/ChurchStream/ffmpeg/ffmpeg.exe 20
@@ -187,7 +267,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ChurchStream-win-x64
-          path: dist/ChurchStream-win-x64.zip
+          path: |
+            dist/ChurchStream-win-x64.zip
+            dist/ChurchStream-Setup.exe
+            dist/ffmpeg-win-x64.zip
+            dist/ffmpeg-win-x64.json
           retention-days: 30
 
   # ChurchStream's own Mac FFmpeg (static, with the zmq filter the studio needs; no ready-made
@@ -329,6 +413,17 @@ jobs:
           if pgrep -f "Resources/ChurchStream" > /dev/null; then echo "::error::ChurchStream kept running after Quit"; exit 1; fi
           echo "Quit stops ChurchStream"
 
+      - name: Updates in the Mac app (found by themselves, downloaded, restarted through the app)
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="$RUNNER_TEMP/mac-update"; rm -rf "$T"; mkdir -p "$T"
+          ditto -x -k dist/ChurchStream-mac-arm64.zip "$T"
+          node scripts/build-exe.js --pack-only --version 9.9.9
+          trap 'echo "--- app steps ---"; cat "$HOME/ChurchStream-data/run/app.log" 2>/dev/null || true; tail -20 "$HOME/ChurchStream-data/run/churchstream.log" 2>/dev/null || true; pkill -f "Resources/ChurchStream" || true' EXIT
+          node scripts/test-update.js "$T/ChurchStream/ChurchStream.app" dist/ChurchStream-app-9.9.9.zip
+          rm -f dist/ChurchStream-app-*.zip dist/update.json
+
       - name: Build for Intel Macs
         run: node scripts/build-exe.js --target mac-x64 --ffmpeg-zip ffmpeg-mac-x86_64.zip
 
@@ -352,7 +447,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ChurchStream-mac
-          path: dist/ChurchStream-mac-*.zip
+          path: |
+            dist/ChurchStream-mac-*.zip
+            dist/ffmpeg-mac-*.zip
+            dist/ffmpeg-mac-*.json
           retention-days: 30
 
   # One release with the Windows and Mac downloads: on a v* tag push, or when started by hand
@@ -367,6 +465,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: ChurchStream-*
           merge-multiple: true
       - name: Release name and notes
         id: rel
@@ -377,12 +476,23 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           f=".github/release-notes/$TAG.md"
           if [ -f "$f" ]; then echo "notes=$f" >> "$GITHUB_OUTPUT"; fi
+          # What the updater in ChurchStream reads (lib/updater.js): the app pack, each FFmpeg, and their checksums.
+          node scripts/make-update-json.js dist "$TAG"
           ls -l dist
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: ChurchStream ${{ steps.rel.outputs.tag }}
-          files: dist/*.zip
+          files: |
+            dist/ChurchStream-Setup.exe
+            dist/ChurchStream-win-x64.zip
+            dist/ChurchStream-mac-arm64.zip
+            dist/ChurchStream-mac-x64.zip
+            dist/ChurchStream-app-*.zip
+            dist/ffmpeg-win-x64.zip
+            dist/ffmpeg-mac-arm64.zip
+            dist/ffmpeg-mac-x64.zip
+            dist/update.json
           body_path: ${{ steps.rel.outputs.notes }}
           generate_release_notes: ${{ steps.rel.outputs.notes == '' }}
