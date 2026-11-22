@@ -32,7 +32,8 @@ const { acceptsInputQueue, hasZmq } = require('../lib/ffmpeg');
 const { ZmqCommander, freePort } = require('../lib/zmq');
 const { Studio } = require('../lib/studio');
 
-const FF = process.argv[2] || 'ffmpeg';
+// A path to FFmpeg is made absolute: the runs start FFmpeg from their own folders.
+const FF = process.argv[2] && /[\\/]/.test(process.argv[2]) ? path.resolve(process.argv[2]) : process.argv[2] || 'ffmpeg';
 const SECONDS = Number(process.argv[3]) || 20;
 const info = { inputQueue: acceptsInputQueue(FF), zmq: hasZmq(FF), major: 99 };
 const cpuOf = (err) => { const m = err.match(/utime=([\d.]+)s stime=([\d.]+)s/); return m ? Number(m[1]) + Number(m[2]) : NaN; };
