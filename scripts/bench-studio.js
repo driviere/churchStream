@@ -6,8 +6,9 @@
 //   Floor            plain FFmpeg doing only the encode: a 720p test picture + sound → x264
 //                    → a file. Any streaming program (vMix, OBS, …) has at least this cost.
 //   Before studio    ChurchStream's stream with the simple switching (slides + camera).
-//   Studio at rest   the same with the studio (two scenes, transitions ready, Preview,
-//                    multiview, graphics layer).
+//   Studio at rest   the same with the studio (two scenes, transitions ready, graphics layer),
+//                    nobody on the stream page: its pictures are paused, empty texts skipped.
+//   … page open      the same while the stream page shows Program, Preview and multiview.
 //   Studio fading    the same, fading between two scenes every second (the worst case).
 //
 // ChurchStream's runs include everything the real app runs (the video/music feed, the
@@ -73,7 +74,7 @@ async function floor() {
   return { ffmpeg: cpu, node: 0 };
 }
 
-async function churchstream({ studio, fades = false }) {
+async function churchstream({ studio, fades = false, watching = false }) {
   const dir = setup();
   const cfg = config.merge(config.DEFAULTS, { quality: 'good', record: true, audio: { source: 'none' }, video: { type: 'testsrc' }, video2: { type: 'testsrc' } });
   const q = QUALITY.good;
@@ -91,7 +92,9 @@ async function churchstream({ studio, fades = false }) {
     st = { zmqPort: await freePort(), sceneA: compositor.findScene(cfg, 'pip'), sceneB: compositor.findScene(cfg, 'cam2'), index,
       slots: compositor.slotsNeeded(compositor.allScenes(cfg), index), feeds: { preview: feeds.preview.port, multiview: feeds.multiview.port }, graphics: graphics.port, gfxOn: false };
   }
-  const args = buildFfmpegArgs({ cfg, mode: 'live', runDir: dir, recordFile: path.join(dir, 'rec.mkv'), ffmpegInfo: info, feed: feed.port, studio: st, scene: 'pip', media: relay.ports });
+  const watched = { program: watching, preview: watching, multiview: watching };
+  const texts = studio ? { ltName: false, ltTitle: false, caption: false, ticker: false } : null;
+  const args = buildFfmpegArgs({ cfg, mode: 'live', runDir: dir, recordFile: path.join(dir, 'rec.mkv'), ffmpegInfo: info, feed: feed.port, studio: st, scene: 'pip', media: relay.ports, watched, texts });
   const node0 = process.cpuUsage();
   const cpu = await runFfmpeg(args, dir, () => {
     if (!st || !fades) return null;
@@ -122,7 +125,8 @@ async function churchstream({ studio, fades = false }) {
   add('ChurchStream, before studio', await churchstream({ studio: false }));
   if (info.zmq) {
     add('ChurchStream, studio at rest', await churchstream({ studio: true }));
-    add('ChurchStream, studio fading', await churchstream({ studio: true, fades: true }));
+    add('… with the stream page open', await churchstream({ studio: true, watching: true }));
+    add('ChurchStream, studio fading', await churchstream({ studio: true, fades: true, watching: true }));
   } else console.log('This FFmpeg has no zmq filter: the studio is not used with it.');
   const base = rows[0].pct;
   const lines = rows.map((r) => `| ${r.label} | ${r.pct.toFixed(0)}% | ${r.ff.toFixed(0)}% | ${r.node.toFixed(0)}% | ${r === rows[0] ? '—' : `+${(r.pct - base).toFixed(0)} points (×${(r.pct / base).toFixed(2)})`} |`);

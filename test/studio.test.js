@@ -184,8 +184,8 @@ test('stream arguments: the studio uses the compositor, its feeds, and placehold
   assert.match(s, /zmq=bind_address=tcp/);
   assert.match(s, /Camera 3 is not responding/);
   assert.doesNotMatch(s, /rtsp:\/\/10\.0\.0\.9/, 'a stopped camera is not opened');
-  assert.match(s, /-map \[spv\] -c:v mjpeg .* tcp:\/\/127\.0\.0\.1:4001/);
-  assert.match(s, /-map \[smv\] -c:v mjpeg .* tcp:\/\/127\.0\.0\.1:4002/);
+  assert.match(s, /-map \[spv\] .*-c:v mjpeg .* tcp:\/\/127\.0\.0\.1:4001/);
+  assert.match(s, /-map \[smv\] .*-c:v mjpeg .* tcp:\/\/127\.0\.0\.1:4002/);
   assert.doesNotMatch(s, /streamselect@cams/);
 });
 
@@ -221,6 +221,55 @@ test('real FFmpeg: the stream with the studio runs, with its preview and multivi
   assert.ok(made, 'the camera preview picture is made: ' + bad);
   assert.ok(feeds.preview.latest && feeds.preview.latest.length > 1000, 'Preview picture: ' + bad);
   assert.ok(feeds.multiview.latest && feeds.multiview.latest.length > 1000, 'multiview picture: ' + bad);
+});
+
+test('real FFmpeg: picture feeds nobody watches and empty texts cost nothing, and open live', { skip: !ZMQ, timeout: 30000 }, async () => {
+  const { buildFfmpegArgs } = require('../lib/stream');
+  const { ProgramFeed } = require('../lib/program-feed');
+  const { Overlay } = require('../lib/overlay');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-gate-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'public', 'fonts', 'Inter-SemiBold.otf'), path.join(dir, 'font.otf'));
+  const ov = new Overlay(dir);
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=navy:s=320x180', '-frames:v', '1', '-y', path.join(dir, 'program.jpg')]);
+  const c2 = cfg({ quality: 'low', audio: { source: 'none' }, video2: { type: 'testsrc' } });
+  const feed = new ProgramFeed();
+  const feeds = { preview: new ProgramFeed(), multiview: new ProgramFeed() };
+  await Promise.all([feed.ready, feeds.preview.ready, feeds.multiview.ready]);
+  const index = c.sourceIndex(c.sourceIds(c2, { media: false }));
+  const info = { inputQueue: require('../lib/ffmpeg').acceptsInputQueue('ffmpeg'), zmq: true };
+  const zmqPort = await freePort();
+  const args = buildFfmpegArgs({ cfg: c2, mode: 'preview', runDir: dir, ffmpegInfo: info, feed: feed.port, watched: { program: false, preview: false, multiview: false }, texts: { ...ov.has },
+    studio: { zmqPort, sceneA: c.findScene(c2, 'pip'), sceneB: c.findScene(c2, 'side'), index, slots: 2, feeds: { preview: feeds.preview.port, multiview: feeds.multiview.port } } });
+  assert.match(args.join(' '), /drawtext@tname=enable=0:/);
+  const p = spawn('ffmpeg', args, { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'] });
+  let err = '';
+  p.stderr.on('data', (d) => { err += d; });
+  p.stdin.on('error', () => {});
+  const closed = new Promise((r) => p.on('close', r));
+  const count = (f) => { let n = 0; f.on('frame', () => n++); return () => n; };
+  for (const f of [feed, feeds.preview, feeds.multiview]) { const push = f.push.bind(f); f.push = (j) => { push(j); f.emit('frame'); }; }
+  const z = new ZmqCommander(zmqPort);
+  const replies = [];
+  z.on('error-reply', (t) => replies.push(t));
+  setTimeout(() => z.connect(), 300);
+  await new Promise((r) => setTimeout(r, 2500)); // started up
+  let n = [feed, feeds.preview, feeds.multiview].map(count);
+  await new Promise((r) => setTimeout(r, 3000));
+  const closedCounts = n.map((f) => f());
+  z.send([...c.gateCommands('program', true), ...c.gateCommands('preview', true), ...c.gateCommands('multiview', true, 3), 'drawtext@tname enable 1']);
+  await new Promise((r) => setTimeout(r, 500));
+  n = [feed, feeds.preview, feeds.multiview].map(count);
+  await new Promise((r) => setTimeout(r, 3000));
+  const openCounts = n.map((f) => f());
+  p.stdin.write('q');
+  await closed;
+  z.close(); feed.close(); feeds.preview.close(); feeds.multiview.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+  const bad = err.split('\n').filter((l) => /\[(error|fatal)\]/.test(l)).slice(0, 5).join('\n');
+  // Closed: a picture every 2 seconds. Open: program 15, Preview 10, multiview 5 a second.
+  closedCounts.forEach((k) => assert.ok(k <= 3, `closed feeds: ${closedCounts} ${bad}`));
+  assert.ok(openCounts[0] >= 25 && openCounts[1] >= 15 && openCounts[2] >= 8, `open feeds: ${openCounts} ${bad}`);
+  assert.deepEqual(replies, [], 'every command was understood');
 });
 
 test('sound mixer: a live volume and a meter per source, and one for the whole mix', () => {
