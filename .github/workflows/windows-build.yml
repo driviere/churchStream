@@ -95,6 +95,16 @@ jobs:
             if (-not $pi.port) { throw "The phone camera page did not start" }
             $r = Invoke-WebRequest "https://localhost:$($pi.port)/phone-camera" -SkipCertificateCheck -UseBasicParsing
             if ($r.Content -notmatch 'ChurchStream camera') { throw "Phone camera page not served" }
+            # The studio (scenes and transitions): the Windows FFmpeg has the zmq filter it needs.
+            $si = Invoke-RestMethod http://localhost:8123/api/studio
+            Write-Host "Studio available: $($si.available)"
+            if (-not $si.available) { throw "The studio should be available with this FFmpeg" }
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"id":"slides"}' http://localhost:8123/api/studio/preview | Out-Null
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"type":"fade","ms":500}' http://localhost:8123/api/studio/take | Out-Null
+            Start-Sleep -Seconds 2
+            $st = Invoke-RestMethod http://localhost:8123/api/state
+            Write-Host "After a fade: on air $($st.stream.studio.onAir), stream $($st.stream.state)"
+            if ($st.stream.studio.onAir -ne 'slides') { (Invoke-RestMethod http://localhost:8123/api/logs) | Select-Object -Last 40 | ForEach-Object { Write-Host "  log: $_" }; throw "The fade did not happen" }
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' http://localhost:8123/api/stream/stop | Out-Null
             Start-Sleep -Seconds 2
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"mode":"live"}' http://localhost:8123/api/stream/start | Out-Null
@@ -228,6 +238,15 @@ jobs:
           echo "Stream picture starts: $HEAD"; echo "$HEAD" | grep -q churchstreamframe
           PORT=$(curl -sf localhost:8126/api/phone-camera/info | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).port||""))')
           echo "Phone camera page on port $PORT"; curl -skf "https://127.0.0.1:$PORT/phone-camera" | grep -q 'ChurchStream camera'
+          # The studio (scenes and transitions): used when this FFmpeg has the zmq filter.
+          STUDIO=$(curl -sf localhost:8126/api/studio | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).available))')
+          echo "Studio available: $STUDIO"
+          if [ "$STUDIO" = "true" ]; then
+            curl -s --max-time 4 localhost:8126/studio/preview.mjpeg | head -c 40 | grep -q churchstreamframe && echo "Studio preview OK"
+            curl -s --max-time 4 localhost:8126/studio/multiview.mjpeg | head -c 40 | grep -q churchstreamframe && echo "Multiview OK"
+            post /api/studio/preview '{"id":"slides"}'; post /api/studio/take '{"type":"fade","ms":500}'; sleep 2
+            curl -sf localhost:8126/api/state | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d).stream;console.log("After a fade:",JSON.stringify(s.studio),s.state);if(s.studio.onAir!=="slides"||s.state!=="running")process.exit(1)})'
+          fi
           post /api/stream/stop '{}'
           sleep 2
           post /api/stream/start '{"mode":"live"}'

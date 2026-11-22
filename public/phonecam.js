@@ -7,7 +7,7 @@
   const H = 720;
   const FPS = 20;
   const params = new URLSearchParams(location.search);
-  const cam = params.get('cam') === '2' ? 2 : 1;
+  const cam = Math.max(1, Math.min(4, parseInt(params.get('cam'), 10) || 1));
   const key = params.get('k') || '';
   const $ = (id) => document.getElementById(id);
   const video = $('video');

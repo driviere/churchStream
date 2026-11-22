@@ -203,6 +203,14 @@ const routes = {
   'POST /api/backgrounds/delete': async (req) => { app.deleteBackground((await json(req)).id); return { ok: true }; },
   // The phone camera addresses (for the QR codes), behind the password.
   'GET /api/phone-camera/info': () => phoneInfo(),
+  // The studio on the stream page: scenes, Preview → Program, transitions.
+  'GET /api/studio': () => app.studioInfo(),
+  'POST /api/studio/preview': async (req) => app.studioPreview((await json(req)).id),
+  'POST /api/studio/take': async (req) => { const b = await json(req); return app.studioTake(b.type, b.ms); },
+  'POST /api/studio/show': async (req) => { const b = await json(req); return app.studioShow(b.id, b.type, b.ms); },
+  'POST /api/studio/tbar': async (req) => app.studioTbar((await json(req)).pos),
+  'POST /api/studio/scene': async (req) => app.saveScene((await json(req)).scene),
+  'POST /api/studio/scene/delete': async (req) => app.deleteScene((await json(req)).id),
   'POST /api/phone-camera/renew': () => { app.renewPhoneToken(); return phoneInfo(); },
 };
 
@@ -213,7 +221,7 @@ function phoneInfo() {
   const port = httpsServer && httpsServer.listening ? httpsServer.address().port : null;
   const ips = lanInfo(0).map((x) => x.ip);
   const link = (ip, cam) => `https://${ip}:${port}/phone-camera?cam=${cam}&k=${app.cfg.phoneToken}`;
-  return { port, error: port ? '' : httpsError || 'The phone camera page isn’t running.', ips, cam1: ips.map((ip) => link(ip, 1)), cam2: ips.map((ip) => link(ip, 2)) };
+  return { port, error: port ? '' : httpsError || 'The phone camera page isn’t running.', ips, cam1: ips.map((ip) => link(ip, 1)), cam2: ips.map((ip) => link(ip, 2)), cam3: ips.map((ip) => link(ip, 3)), cam4: ips.map((ip) => link(ip, 4)) };
 }
 
 async function phoneRequest(req, res) {
@@ -269,7 +277,10 @@ const server = http.createServer(async (req, res) => {
       res.write(`retry: 1500\nevent: state\ndata: ${JSON.stringify(app.snapshot())}\n\n`);
       clients.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
-      req.on('close', () => { clearInterval(ping); clients.delete(res); });
+      // A stream page is open: the control panel hides its simple camera/scene switches.
+      const streamPage = url.searchParams.get('page') === 'stream';
+      if (streamPage) app.setStreamPages(app.streamPages + 1);
+      req.on('close', () => { clearInterval(ping); clients.delete(res); if (streamPage) app.setStreamPages(app.streamPages - 1); });
       return;
     }
     if (req.method === 'POST' && p === '/api/convert/presentation') {
@@ -299,6 +310,8 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Unknown API' });
     // The live stream picture (open like the projector page: it's what viewers see anyway).
     if (p === '/stream.mjpeg') return app.feed.serve(req, res);
+    if (p === '/studio/preview.mjpeg') return app.studioFeeds.preview.serve(req, res);
+    if (p === '/studio/multiview.mjpeg') return app.studioFeeds.multiview.serve(req, res);
     if (p === '/preview.jpg') return serveFile(res, path.join(paths.runDir, 'preview.jpg'), 'image/jpeg');
     if (p.startsWith('/media/')) {
       const name = path.basename(p);
