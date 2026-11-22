@@ -271,6 +271,26 @@ A second person can run the live stream from another laptop or tablet while the 
 
 Both laptops change the same settings, so everything stays in step. If a password is set (Settings → Advanced), the stream page asks for it.
 
+### The studio: scenes and transitions
+With the studio (on by default when ChurchStream's FFmpeg supports it), the **stream page** works like a vision mixer:
+- **Preview** (green, left) shows what goes on air next; **Program** (red, right) is what viewers see now.
+- **Quick** mode: click a scene and it goes on air with the chosen transition. **Studio** mode: a click puts it in Preview; press **Cut** (instant) or **Auto** (the transition), or pull the **T-bar** across by hand.
+- **Transitions:** Cut, Fade, Dip (through black), Slide and Wipe, with a length from 0.3 to 2 seconds. They run inside the stream itself, so they are smooth for viewers and the recording.
+- **Sources** shows every camera, the slides and videos live. Click one to show it full screen.
+- **Scenes** combine up to four pictures: for example two cameras side by side, the slides with the preacher in a corner, or four cameras at once. Built in: each camera, Slides, Slides + camera, and Side by side. **+ New scene** opens the editor: pick a layout (full, corner, side by side, three, four), drag pictures to move them, drag a corner to resize, choose each picture's source, and add a white border or crop the edges. Give scenes a **group** (such as "Sermon" or "Music") to sort them into tabs. Hover a scene and click ✎ to change it; a built-in scene can be changed too and put back with **Reset**.
+- **Cameras 3 and 4:** add them in Settings → Camera & sound (USB, network or phone cameras), and give each camera a name, such as "Pulpit", so the scenes are easy to read.
+- Names, the ticker and a playing video stay on top through every scene change.
+- While a stream page is open, the main control panel hides its camera and "Stream shows" switches and says the stream is run from the stream page. When the stream page closes, the control panel takes over again from its next change (reloading the stream page doesn't make the stream jump).
+- The start and end screens still take over the stream, and give it back afterwards.
+
+**Sound mixer.** The stream page has a fader for each sound source: the microphone or sound desk, videos and music, a second microphone (add one in Settings → Camera & sound), and **Stream** for everything together. The bars show the level as it reaches viewers; **M** mutes a source. Double-click a fader to put it back to normal. Changes are instant, don't interrupt the stream, and are remembered.
+
+**Titles and pictures.** On the stream page, **Titles** puts a title on the stream: choose Scripture, Sermon title, Speaker or Welcome, type one or two lines (or use **Use the reading on screen** during a Bible reading), pick a style (Classic, Modern bar or Minimal) and press **Show title**; **Take off** removes it. **Pictures** keeps your own pictures (a logo, a QR code for giving, a flyer): **Add picture…**, choose where it goes (a corner, lower middle or full screen) and press **Off** to switch it on. PNG pictures with a see-through background look best. Titles and pictures stay on through scene changes and transitions, and the names and ticker go on top of them.
+
+**Keyboard shortcuts** on the stream page (press **?** or **Keys** for the list, which can be printed): **1–9** scenes 1 to 9, **Space** Cut, **Enter** Auto transition, **D** dip to black, **F1–F4** cameras 1 to 4, **G** picture on/off, **N** name on/off, **T** ticker on/off, **R** recording on/off. Shortcuts don't work while you type in a box. A **Stream Deck** can press them: give each button a *Hotkey* action with the key, while the stream page is in front.
+
+The studio uses a little more computer power than before (about a tenth of one processor core). On a computer that struggles, turn it off in **Settings → Advanced → Studio** to go back to the simple switching.
+
 ### Sound for online viewers
 In **Settings → Camera & sound**:
 - **Sound clean-up:**

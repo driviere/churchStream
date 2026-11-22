@@ -175,7 +175,9 @@ async function buildMac() {
     fs.mkdirSync(path.dirname(ffPath), { recursive: true });
     fs.writeFileSync(ffPath, ff.read(), { mode: 0o755 });
     try { execFileSync('codesign', ['-v', ffPath], { stdio: 'ignore' }); } catch { run('codesign', ['--sign', '-', '--force', ffPath]); }
-    fs.writeFileSync(path.join(APP, 'ffmpeg', 'LICENSE.txt'),
+    // ChurchStream's own build (scripts/build-ffmpeg-mac.sh) brings its licence notes along.
+    const lic = entries.find((e) => /(^|\/)LICENSE\.txt$/i.test(e.name));
+    fs.writeFileSync(path.join(APP, 'ffmpeg', 'LICENSE.txt'), lic ? lic.read() :
       `This ffmpeg is an unmodified static build of FFmpeg (GPL), from ${ffmpegUrl || path.basename(zipFile)}.\nFFmpeg is licensed under the GNU GPL; source code: https://ffmpeg.org/download.html\n`);
   }
 

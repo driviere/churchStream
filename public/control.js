@@ -24,6 +24,7 @@ const undoPlan = () => api('/api/plan/undo', {}).then((r) => toast(r.ok ? 'Undon
 const undoToast = (msg) => toast(msg, 'info', { label: 'Undo', run: undoPlan });
 const fail = (err) => toast(err.message || String(err), 'error');
 const meterBus = new EventTarget();
+const levelsBus = new EventTarget(); // the sound mixer's level per source (stream page)
 
 const navigate = (path) => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); };
 const fmtTime = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const hh = Math.floor(s / 3600); const mm = Math.floor((s % 3600) / 60); const ss = s % 60; return `${hh ? hh + ':' : ''}${String(mm).padStart(hh ? 2 : 1, '0')}:${String(ss).padStart(2, '0')}`; };
@@ -604,8 +605,9 @@ function Aside({ s, onGoLive, onStop, active }) {
             : html`<button class="btn small ghost" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button>`}</span></div>
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
       <${StreamPhase} s=${s} />
-      <${CameraSwitch} s=${s} />
-      <${StreamScene} s=${s} />
+      ${s.streamPageOpen && s.studioOn
+        ? html`<div class="note stream-elsewhere">${icons.stream ? icons.stream() : ''}<span><b>The stream is being run from the stream page.</b> Cameras, scenes and transitions are on that screen. Go live and End stay here too.</span></div>`
+        : html`<${CameraSwitch} s=${s} /><${StreamScene} s=${s} />`}
       <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
         ? html`<button class="btn big" onClick=${() => navigate('/settings#streaming')}>Set up YouTube & Facebook</button>`
@@ -643,7 +645,11 @@ function TitleHelper({ s }) {
   </div>`;
 }
 
-const hasCam2 = (cfg) => { const v = cfg.video2 || {}; return (v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc' || v.type === 'phone'; };
+const camUsable = (v) => !!v && ((v.type === 'dshow' && !!v.device) || (v.type === 'rtsp' && !!v.rtspUrl) || v.type === 'testsrc' || v.type === 'phone');
+const hasCam2 = (cfg) => camUsable(cfg.video2);
+const CAMERA_KEYS = ['video', 'video2', 'video3', 'video4'];
+// The cameras that are set up: 1 and 2, plus 3 and 4 with the studio (scenes on the stream page).
+const cameraNumbers = (s) => [1, ...[2, 3, 4].filter((n) => (n === 2 || s.studioOn) && camUsable(s.config[CAMERA_KEYS[n - 1]]))];
 const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // "Starting soon" / "Thank you for watching" on the stream, with a way to skip ahead.
@@ -666,14 +672,17 @@ function StreamPhase({ s }) {
 // Camera 1 / Camera 2 on air.
 function CameraSwitch({ s }) {
   const cfg = s.config;
-  if (!hasCam2(cfg)) return null;
-  const down = s.stream.camera2 === 'down';
-  const cur = down ? 1 : cfg.activeCamera === 2 ? 2 : 1;
+  const cams = cameraNumbers(s);
+  if (cams.length < 2) return null;
+  const downList = s.stream.camerasDown || (s.stream.camera2 === 'down' ? [2] : []);
+  const down = downList.includes(2);
+  const cur = downList.includes(cfg.activeCamera) ? 1 : cfg.activeCamera || 1;
   return html`<div>
-    <div class="seg-label">Camera on air <span class="muted" style="font-weight:400">(keys 1 and 2)</span></div>
-    <div class="seg" role="radiogroup" aria-label="Camera on air" style="grid-template-columns:1fr 1fr">
-      ${[1, 2].map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} disabled=${n === 2 && down} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>Camera ${n}${n === 2 && down ? ' ⚠' : ''}</button>`)}
+    <div class="seg-label">Camera on air <span class="muted" style="font-weight:400">(keys ${cams.join(', ').replace(/, (\d)$/, ' and $1')})</span></div>
+    <div class="seg" role="radiogroup" aria-label="Camera on air" style=${`grid-template-columns:repeat(${cams.length},1fr)`}>
+      ${cams.map((n) => html`<button role="radio" aria-checked=${cur === n} class=${cur === n ? 'on' : ''} disabled=${downList.includes(n)} onClick=${() => api('/api/camera', { camera: n }).catch(fail)}>${cams.length > 2 ? n : `Camera ${n}`}${downList.includes(n) ? ' ⚠' : ''}</button>`)}
     </div>
+    ${downList.filter((n) => n !== 2).map((n) => html`<div class="hint" style="margin-top:6px;color:var(--danger,#d92d20)">Camera ${n} stopped; the stream carries on without it. It comes back by itself once it works again.</div>`)}
     ${down && html`<div class="hint" style="margin-top:6px;color:var(--danger,#d92d20)">Camera 2 stopped, so the stream is showing camera 1. Check its cable; it comes back by itself within about 30 seconds of working again.</div>`}
     ${s.stream.camera2 === 'back' && html`<div class="hint" style="margin-top:6px;color:var(--ok)">Camera 2 is back.</div>`}
   </div>`;
@@ -1652,7 +1661,7 @@ function ControlView({ s }) {
       else if (e.key === 'b' || e.key === 'B' || e.key === '.') toggle('black');
       else if (e.key === 'c' || e.key === 'C') toggle('clear');
       else if (e.key === 'l' || e.key === 'L') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
-      else if ((e.key === '1' || e.key === '2') && hasCam2(s.config)) api('/api/camera', { camera: +e.key }).catch(fail);
+      else if (/^[1-4]$/.test(e.key) && cameraNumbers(s).includes(+e.key) && !(s.streamPageOpen && s.studioOn)) api('/api/camera', { camera: +e.key }).catch(fail);
     };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
@@ -1926,6 +1935,7 @@ function SectionCamera({ s, autoPreview }) {
         <input class="input" value=${rtsp} placeholder="rtsp://user:password@192.168.1.50:554/stream1" onInput=${(e) => setRtsp(e.target.value)} onBlur=${() => save({ video: { rtspUrl: rtsp.trim() } })} />
         <div class="hint">Found in your camera's manual or app. Usually starts with rtsp://</div></div>`}
       ${v.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${1} />`}
+      ${s.studioOn && html`<${CameraName} s=${s} n=${1} />`}
       <${SecondCamera} s=${s} devs=${devs} />
       <div class="field"><label class="label">Sound</label>
         <select class="select" value=${a.source === 'device' ? 'device:' + a.device : a.source} onChange=${(e) => {
@@ -1939,6 +1949,13 @@ function SectionCamera({ s, autoPreview }) {
           <option value="none">No sound (silent stream)</option>
         </select>
         <div class="hint">For the best sound, connect the sound desk to the computer (or to the capture card) and pick it here.</div></div>
+      ${s.studioOn && html`<div class="field"><label class="label">Second microphone (optional)</label>
+        <select class="select" value=${(s.config.audio2 && s.config.audio2.device) || ''} onChange=${(e) => save({ audio2: { device: e.target.value } })}>
+          <option value="">None</option>
+          ${devs && devs.audio.filter((d) => !(a.source === 'device' && d === a.device)).map((d) => html`<option value=${d}>${d}</option>`)}
+          ${s.config.audio2 && s.config.audio2.device && devs && !devs.audio.includes(s.config.audio2.device) && html`<option value=${s.config.audio2.device}>${s.config.audio2.device} (not connected)</option>`}
+        </select>
+        <div class="hint">For example a radio microphone or a second sound card. It gets its own fader on the stream page.</div></div>`}
       <div class="field"><label class="label">Sound of videos and background music on the stream</label>
         <select class="select" value=${s.config.mediaSound || 'direct'} onChange=${(e) => save({ mediaSound: e.target.value })}>
           <option value="direct">Mix it straight into the stream (recommended)</option>
@@ -1962,28 +1979,50 @@ function SectionCamera({ s, autoPreview }) {
   </div>`;
 }
 
-// Camera 2 (optional): switched on air with Camera 1 / Camera 2 on the control panel.
+// Cameras 2–4 (optional). Camera 2 is switched on air with Camera 1 / Camera 2 on the control
+// panel; cameras 3 and 4 come with the studio (scenes on the stream page).
 function SecondCamera({ s, devs }) {
-  const v1 = s.config.video;
-  const v2 = s.config.video2 || { type: 'none' };
-  const [url, setUrl] = useState(v2.rtspUrl || '');
-  const cams = devs ? devs.video.filter((d) => !(v1.type === 'dshow' && d === v1.device)) : [];
-  return html`<div class="field"><label class="label">Second camera (optional)</label>
-    <select class="select" value=${v2.type || 'none'} onChange=${(e) => save({ video2: { type: e.target.value } })}>
+  return html`<${ExtraCamera} s=${s} devs=${devs} n=${2} />
+    ${s.studioOn && html`<${ExtraCamera} s=${s} devs=${devs} n=${3} />`}
+    ${s.studioOn && camUsable(s.config.video3) && html`<${ExtraCamera} s=${s} devs=${devs} n=${4} />`}`;
+}
+
+function CameraName({ s, n }) {
+  const key = CAMERA_KEYS[n - 1];
+  const v = s.config[key] || {};
+  const [name, setName] = useState(v.name || '');
+  useEffect(() => { setName(v.name || ''); }, [v.name]);
+  return html`<input class="input" style="margin-top:8px" aria-label=${`Name of camera ${n}`} placeholder=${`Name, e.g. ${['Pulpit', 'Platform', 'Choir', 'Balcony'][n - 1]} (optional)`} value=${name} maxlength="30"
+    onInput=${(e) => setName(e.target.value)} onBlur=${() => name.trim() !== (v.name || '') && save({ [key]: { name: name.trim() } })} />`;
+}
+
+function ExtraCamera({ s, devs, n }) {
+  const key = CAMERA_KEYS[n - 1];
+  const v = s.config[key] || { type: 'none' };
+  const [url, setUrl] = useState(v.rtspUrl || '');
+  const taken = CAMERA_KEYS.filter((k) => k !== key).map((k) => s.config[k]).filter((x) => x && x.type === 'dshow').map((x) => x.device);
+  const cams = devs ? devs.video.filter((d) => !taken.includes(d)) : [];
+  const label = n === 2 ? 'Second camera (optional)' : `Camera ${n} (optional)`;
+  return html`<div class="field"><label class="label">${label}</label>
+    <select class="select" value=${v.type || 'none'} onChange=${(e) => save({ [key]: { type: e.target.value } })}>
       <option value="none">None</option>
       <option value="dshow">${s.platform === 'darwin' ? 'Camera or capture card' : 'USB camera or capture card'}</option>
       <option value="rtsp">Network (IP) camera</option>
       <option value="phone">Phone (scan a QR code)</option>
       <option value="testsrc">Test pattern (to try it out)</option>
     </select>
-    ${v2.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${2} />`}
-    ${v2.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label="Second camera" value=${v2.device} onChange=${(e) => save({ video2: { device: e.target.value } })}>
-      <option value="">${devs ? (cams.length ? 'Choose the second camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
+    ${v.type === 'phone' && html`<${PhoneCamSetup} s=${s} cam=${n} />`}
+    ${v.type === 'dshow' && html`<div class="row" style="margin-top:8px"><select class="select" aria-label=${`Camera ${n}`} value=${v.device} onChange=${(e) => save({ [key]: { device: e.target.value } })}>
+      <option value="">${devs ? (cams.length ? 'Choose the camera…' : 'No other camera found') : 'Looking for cameras…'}</option>
       ${cams.map((d) => html`<option value=${d}>${d}</option>`)}
-      ${v2.device && devs && !devs.video.includes(v2.device) && html`<option value=${v2.device}>${v2.device} (not connected)</option>`}
+      ${v.device && devs && !devs.video.includes(v.device) && html`<option value=${v.device}>${v.device} (not connected)</option>`}
     </select></div>`}
-    ${v2.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label="Second camera address" value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ video2: { rtspUrl: url.trim() } })} />`}
-    <div class="hint">${hasCam2(s.config) ? 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.' : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div></div>`;
+    ${v.type === 'rtsp' && html`<input class="input" style="margin-top:8px" aria-label=${`Camera ${n} address`} value=${url} placeholder="rtsp://user:password@192.168.1.51:554/stream1" onInput=${(e) => setUrl(e.target.value)} onBlur=${() => save({ [key]: { rtspUrl: url.trim() } })} />`}
+    ${s.studioOn && camUsable(v) && html`<${CameraName} s=${s} n=${n} />`}
+    ${n === 2 && html`<div class="hint">${hasCam2(s.config)
+      ? s.studioOn ? 'Switch cameras with Camera 1 / Camera 2 on the control panel, or build scenes with them on the stream page. Sound still comes from the choice below.' : 'Switch between them with Camera 1 / Camera 2 on the control panel, or the 1 and 2 keys. Sound still comes from the choice below.'
+      : 'Add a second camera (e.g. one on the pulpit and one on the platform) and switch between them during the service.'}</div>`}
+  </div>`;
 }
 
 // A phone as a camera: scan the QR code with the phone, allow the camera, done.
@@ -2376,6 +2415,11 @@ function SectionAdvanced({ s }) {
         <option value="auto">Automatic (uses the graphics chip when possible)</option>
         <option value="h264_qsv">Intel Quick Sync</option><option value="h264_nvenc">NVIDIA NVENC</option><option value="h264_amf">AMD AMF</option><option value="libx264">Software (x264)</option>
       </select>${s.stream.encoder && html`<div class="hint">In use: ${s.stream.encoder}</div>`}</div>
+    <div class="field"><label class="label">Studio</label>
+      ${s.studioSupported
+        ? html`<label class="switch"><input type="checkbox" checked=${s.config.studioEnabled !== false} onChange=${(e) => save({ studioEnabled: e.target.checked })} /><span>Scenes and transitions on the stream page</span></label>
+          <div class="hint">Scenes, Preview → Program, fades and cameras 3 and 4. Uses a little more computer power (about a tenth of one processor core); on a computer that struggles, turn it off for the simple camera and slides switching. The camera preview or stream restarts.</div>`
+        : html`<div class="note">This FFmpeg can’t do scenes and transitions (it has no “zmq” filter), so the stream uses the simple camera and slides switching.</div>`}</div>
     <div class="field"><label class="label">Recent log <button class="btn small ghost" onClick=${load}>Refresh</button> <button class="btn small ghost" onClick=${() => navigator.clipboard.writeText(logs.join('\n')).then(() => toast('Log copied — paste it in a message'), () => fail(new Error('Could not copy; select the text instead.')))}>Copy</button></label><div class="logbox">${logs.length ? logs.join('\n') : 'Nothing yet.'}</div></div>
   </div>`;
 }
@@ -2861,6 +2905,669 @@ function StreamView({ s }) {
 }
 
 // ---------------------------------------------------------------------------------------
+// The studio on the stream page (/stream): scenes, Preview → Program and transitions, like a
+// vision mixer. The pictures come from the stream itself (lib/compositor.js): Program
+// (/stream.mjpeg), Preview (the off-air scene) and the multiview (every source small).
+
+// Studio info from the server (scenes incl. the built-in ones, sources, multiview layout).
+function useStudioInfo(s) {
+  const [info, setInfo] = useState(null);
+  const key = JSON.stringify([s.config.scenes, CAMERA_KEYS.map((k) => s.config[k]), s.studioOn, !!s.stream.studioReady]);
+  useEffect(() => { get('/api/studio').then(setInfo).catch(() => {}); }, [key]);
+  return info;
+}
+
+// The multiview picture, shared by every small source picture on the page (one connection:
+// browsers only allow a few at a time).
+let mvImg = null;
+function multiviewImage() {
+  if (mvImg) return mvImg;
+  mvImg = new Image();
+  mvImg.alt = '';
+  mvImg.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+  const load = () => { mvImg.src = '/studio/multiview.mjpeg?t=' + Date.now(); };
+  mvImg.onerror = () => setTimeout(load, 2000);
+  document.body.appendChild(mvImg);
+  load();
+  return mvImg;
+}
+
+// One source's live picture, cut from the multiview.
+function SourcePicture({ info, source }) {
+  const ref = useRef();
+  useEffect(() => {
+    const img = multiviewImage();
+    const i = info ? info.tiles.indexOf(source) : -1;
+    const draw = () => {
+      const c = ref.current;
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      const cols = Math.min(4, info ? info.tiles.length : 1) || 1;
+      const rows = Math.ceil((info ? info.tiles.length : 1) / 4) || 1;
+      if (i < 0 || !img.naturalWidth) { ctx.fillStyle = source === 'black' ? '#000' : '#1e293b'; ctx.fillRect(0, 0, c.width, c.height); return; }
+      const tw = img.naturalWidth / cols;
+      const th = img.naturalHeight / rows;
+      try { ctx.drawImage(img, (i % cols) * tw, Math.floor(i / cols) * th, tw, th, 0, 0, c.width, c.height); } catch { /* not loaded yet */ }
+    };
+    draw();
+    const t = setInterval(draw, 200);
+    return () => clearInterval(t);
+  }, [info, source]);
+  return html`<canvas ref=${ref} width="320" height="180" class="src-pic" aria-hidden="true"></canvas>`;
+}
+
+// A live MJPEG picture that reconnects after a restart.
+function Monitor({ src, run, kind, label, name }) {
+  const [n, setN] = useState(0);
+  return html`<div class="monitor-col">
+    <div class="monitor-head"><span class=${'tally-tag ' + kind}>${label}</span><span class="monitor-name">${name || ''}</span></div>
+    <div class=${'monitor ' + kind}>
+      ${run ? html`<img key=${run + n} src=${src + '?r=' + encodeURIComponent(run) + '&n=' + n} alt=${label} onError=${() => setTimeout(() => setN((x) => x + 1), 1500)} />`
+        : html`<span class="monitor-off">Camera off</span>`}
+    </div>
+  </div>`;
+}
+
+const SOURCE_COLORS = { cam1: '#475569', cam2: '#64748b', cam3: '#56657a', cam4: '#334155', slides: '#1d3a8a', media: '#7c2d12', black: '#000' };
+// The layers of a scene id, also for the control panel's own scenes (pip2 = slides + camera 2).
+function sceneLayers(info, id) {
+  const sc = info && info.scenes.find((x) => x.id === id);
+  if (sc) return sc.layers;
+  if (/^(cam\d|slides|media)$/.test(id || '')) return [{ source: id, x: 0, y: 0, w: 1, h: 1 }];
+  const m = /^pip(\d)$/.exec(id || '');
+  if (m) return [{ source: 'slides', x: 0, y: 0, w: 1, h: 1 }, { source: 'cam' + m[1], x: 0.671, y: 0.652, w: 0.3, h: 0.3 }];
+  return [];
+}
+function sceneName(info, id) {
+  const sc = info && info.scenes.find((x) => x.id === id);
+  if (sc) return sc.name;
+  const src = info && info.sources.find((x) => x.id === id);
+  if (src) return src.name;
+  if (/^pip\d$/.test(id || '')) return 'Slides + camera';
+  return id || '';
+}
+
+function SceneThumb({ layers }) {
+  return html`<span class="scene-thumb">${layers.map((l) => html`<span style=${`left:${l.x * 100}%;top:${l.y * 100}%;width:${l.w * 100}%;height:${l.h * 100}%;background:${SOURCE_COLORS[l.source] || '#475569'}${l.border ? ';outline:1px solid #fff' : ''}`}></span>`)}</span>`;
+}
+
+const TRANSITIONS = [['cut', 'Cut'], ['fade', 'Fade'], ['dip', 'Dip'], ['slide', 'Slide'], ['wipe', 'Wipe']];
+
+function TransitionControls({ s }) {
+  const tr = (s.config.studio && s.config.studio.transition) || { type: 'fade', ms: 600 };
+  const busy = !!(s.stream.studio && s.stream.studio.transition);
+  const [bar, setBar] = useState(0);
+  const pending = useRef(null);
+  const timer = useRef(null);
+  // The T-bar: sent at most every 40 ms, always ending with the last position.
+  const sendBar = (v) => {
+    pending.current = v;
+    if (timer.current) return;
+    const flush = () => {
+      timer.current = null;
+      if (pending.current === null) return;
+      const pos = pending.current;
+      pending.current = null;
+      api('/api/studio/tbar', { pos }).catch(fail);
+      timer.current = setTimeout(flush, 40);
+    };
+    flush();
+  };
+  useEffect(() => { if (!busy && bar >= 1) setBar(0); }, [busy]);
+  const setTr = (patch) => api('/api/config', { studio: { transition: patch } }).catch(fail);
+  return html`<div class="tr-controls">
+    <button class="btn tr-cut" onClick=${() => api('/api/studio/take', { type: 'cut' }).catch(fail)} disabled=${busy} title="Cut (Space)">Cut</button>
+    <button class="btn primary tr-auto" onClick=${() => api('/api/studio/take', {}).catch(fail)} disabled=${busy} title="Auto transition (Enter)">Auto</button>
+    <label class="tr-label">T-bar
+      <input type="range" min="0" max="100" value=${Math.round(bar * 100)} aria-label="T-bar"
+        onInput=${(e) => { const v = +e.target.value / 100; setBar(v); sendBar(v); }} /></label>
+    <div class="tr-types" role="radiogroup" aria-label="Transition">
+      ${TRANSITIONS.map(([id, label]) => html`<button role="radio" aria-checked=${tr.type === id} class=${tr.type === id ? 'on' : ''} onClick=${() => setTr({ type: id })}>${label}</button>`)}
+    </div>
+    <label class="tr-label">Length
+      <select class="select" value=${tr.ms} onChange=${(e) => setTr({ ms: +e.target.value })}>
+        ${[300, 600, 1000, 1500, 2000].map((ms) => html`<option value=${ms}>${ms / 1000} s</option>`)}
+      </select></label>
+  </div>`;
+}
+
+function StudioView({ s }) {
+  const [tab, setTab] = useState(STREAM_SECTIONS.some(([id]) => '#' + id === location.hash) ? 'settings' : 'live');
+  const [dialog, setDialog] = useState(null);
+  const [group, setGroup] = useState('All');
+  const info = useStudioInfo(s);
+  const st = s.stream;
+  const cfg = s.config;
+  const studio = st.studio || {};
+  const quick = !cfg.studio || cfg.studio.mode !== 'studio';
+  const configured = Object.values(cfg.outputs).some((o) => o.enabled && o.hasKey) || cfg.record;
+  const dests = Object.entries(st.destinations || {});
+  const slide = s.live && s.live.item.slides[s.live.index];
+  const run = st.mode !== 'off' ? `${st.mode}-${st.since || ''}` : '';
+  useEffect(() => { document.title = 'Stream · ChurchStream'; }, []);
+  // Keyboard shortcuts (also for a Stream Deck: give each button a Hotkey action with these keys).
+  const keys = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = keys.current;
+      if (!k || k.dialog || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      const st2 = k.s;
+      const act = () => { e.preventDefault(); };
+      if (/^[1-9]$/.test(e.key)) { const sc = k.scenes[+e.key - 1]; if (sc) { act(); k.pick(sc.id); } return; }
+      if (/^F[1-4]$/.test(e.key)) { const id = 'cam' + e.key.slice(1); if (k.info && k.info.tiles.includes(id)) { act(); k.pick(id); } return; }
+      switch (e.key) {
+        case ' ': act(); api('/api/studio/take', { type: 'cut' }).catch(fail); break;
+        case 'Enter': act(); api('/api/studio/take', {}).catch(fail); break;
+        case 'd': case 'D': act(); api('/api/studio/take', { type: 'dip' }).catch(fail); break;
+        case 'n': case 'N': act(); api('/api/lower-third', { visible: !st2.lowerThird.visible }).catch(fail); break;
+        case 't': case 'T': act(); api('/api/ticker', { text: st2.ticker.text, visible: !st2.ticker.visible }).catch(fail); break;
+        case 'g': case 'G': {
+          act();
+          const g1 = (st2.gfx && st2.gfx[1]) || {};
+          if (g1.on) { api('/api/studio/gfx/show', { n: 1, on: false }).catch(fail); break; }
+          const list = st2.config.graphics || [];
+          const g = list.find((x) => x.id === g1.label) || list[0];
+          if (g && k.info) loadImage('/media/' + encodeURIComponent(g.file)).then((img) => sendGraphic(k.info, 1, g.id, (ctx, W, H) => drawPicture(ctx, W, H, img, g.position || 'tr'))).catch(fail);
+          else toast('Add a picture first (Pictures, on the right)');
+          break;
+        }
+        case 'r': case 'R': act(); api('/api/config', { record: !st2.config.record }).then(() => toast(st2.config.record ? 'Recording off' : st2.stream.mode === 'live' ? 'Recording on — it starts the next time you go live' : 'Recording on')).catch(fail); break;
+        case '?': act(); setDialog({ type: 'keys' }); break;
+        default:
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
+  if (tab === 'settings') {
+    keys.current = null;
+    return html`<${SettingsView} s=${s} sections=${STREAM_SECTIONS} backLabel="Back to the stream" onBack=${() => { history.replaceState({}, '', '/stream'); setTab('live'); }} />`;
+  }
+  const scenes = info ? info.scenes : [];
+  const groups = ['All', ...new Set(scenes.map((x) => x.group).filter(Boolean))];
+  const shown = scenes.filter((x) => group === 'All' || x.group === group);
+  const onAirSources = new Set(sceneLayers(info, studio.onAir).map((l) => l.source));
+  const previewSources = new Set(sceneLayers(info, studio.preview).map((l) => l.source));
+  // Click a scene: on air at once (Quick) or into Preview (Studio).
+  const pick = (id) => api(quick ? '/api/studio/show' : '/api/studio/preview', { id }).catch(fail);
+  const openSettings = (sec) => { history.replaceState({}, '', '/stream#' + sec); setTab('settings'); };
+  keys.current = { s, info, quick, scenes, pick, dialog };
+  return html`<div class="shell studio-page">
+    <div class="topbar">
+      <div class="brand"><img src="/favicon.svg" alt="" /><span>Stream${cfg.churchName ? ' · ' + cfg.churchName : ''}</span></div>
+      <div class="seg mode-seg" role="radiogroup" aria-label="How scenes go on air">
+        ${[['quick', 'Quick'], ['studio', 'Studio']].map(([id, label]) => html`<button role="radio" aria-checked=${(quick ? 'quick' : 'studio') === id} class=${(quick ? 'quick' : 'studio') === id ? 'on' : ''}
+          title=${id === 'quick' ? 'A scene goes on air as soon as you click it' : 'A scene goes to Preview first; then Cut or Auto'} onClick=${() => api('/api/config', { studio: { mode: id } }).catch(fail)}>${label}</button>`)}
+      </div>
+      <span class="spacer"></span>
+      <${StreamStatus} s=${s} />
+      <button class="btn small ghost" title="Keyboard shortcuts (?)" onClick=${() => setDialog({ type: 'keys' })}>Keys</button>
+      <a class="btn icon round" href="/manual#the-studio-scenes-and-transitions" target="_blank" rel="noopener" title="User manual" aria-label="User manual">?</a>
+      <button class="btn icon round" title="Stream settings" aria-label="Stream settings" onClick=${() => openSettings('camera')}>${icons.gear()}</button>
+    </div>
+    ${st.problem && html`<div class=${'banner' + (st.state === 'retrying' || st.state === 'error' ? ' red' : '')}>${icons.alert()}<span class="grow">${st.problem}${st.message && st.state === 'retrying' ? ' ' + st.message : ''}</span>
+      ${st.mode !== 'off' && html`<button class="btn small" onClick=${() => api('/api/stream/stop', {}).catch(fail)}>Stop</button>`}</div>`}
+    ${st.silent && html`<div class="banner red">${icons.alert()}<span class="grow"><b>No sound for 10 seconds.</b> Check that the microphone or sound desk is on and connected.</span></div>`}
+    <div class="studio-grid">
+      <main class="studio-main">
+        <section class="card studio-monitors" aria-label="Preview and Program">
+          <${Monitor} src="/studio/preview.mjpeg" run=${run} kind="preview" label="PREVIEW" name=${sceneName(info, studio.preview)} />
+          <${TransitionControls} s=${s} />
+          <${Monitor} src="/stream.mjpeg" run=${run} kind="program" label=${st.mode === 'live' ? 'PROGRAM · LIVE' : 'PROGRAM'} name=${sceneName(info, studio.onAir)} />
+          ${st.mode === 'off' && html`<div class="studio-off"><span>The camera is off.</span><button class="btn" onClick=${() => api('/api/stream/start', { mode: 'preview' }).catch(fail)}>Preview camera</button></div>`}
+        </section>
+
+        <section class="card" aria-label="Sources">
+          <div class="studio-head"><b>Sources</b><span class="muted">Click one to put it ${quick ? 'on air' : 'in Preview'}</span></div>
+          <div class="src-grid">
+            ${info && info.tiles.concat('black').map((id) => {
+              const tally = onAirSources.has(id) ? 'live' : previewSources.has(id) ? 'preview' : '';
+              return html`<button class=${'src-tile ' + tally} onClick=${() => pick(id)} title=${sceneName(info, id)}>
+                <${SourcePicture} info=${info} source=${id} />
+                <span class="src-name">${sceneName(info, id)}</span>
+                ${tally && html`<span class=${'src-tally ' + tally}>${tally === 'live' ? 'LIVE' : 'PREVIEW'}</span>`}
+              </button>`;
+            })}
+          </div>
+        </section>
+
+        <section class="card" aria-label="Scenes">
+          <div class="studio-head">
+            <b>Scenes</b>
+            <div class="chips">${groups.map((g) => html`<button class=${'chip' + (g === group ? ' on' : '')} onClick=${() => setGroup(g)}>${g}</button>`)}</div>
+            <span class="spacer"></span>
+            <button class="btn small ghost" onClick=${() => setDialog({ type: 'scene', scene: { id: 's' + Date.now().toString(36), name: 'New scene', group: group === 'All' ? '' : group, layers: [{ source: 'cam1', x: 0, y: 0, w: 1, h: 1 }] }, isNew: true })}>+ New scene</button>
+          </div>
+          <div class="scene-grid">
+            ${shown.map((sc) => {
+              const tally = sc.id === studio.onAir ? 'live' : sc.id === studio.preview ? 'preview' : '';
+              const n = scenes.indexOf(sc) + 1;
+              return html`<div class=${'scene-card ' + tally}>
+                <button class="scene-pick" onClick=${() => pick(sc.id)} title=${n <= 9 ? `Key ${n}` : ''}>
+                  <${SceneThumb} layers=${sc.layers} />
+                  <span class="scene-label">${n <= 9 && html`<kbd>${n}</kbd>`}<span>${sc.name}</span></span>
+                </button>
+                <button class="scene-edit" aria-label=${'Edit ' + sc.name} title="Edit" onClick=${() => setDialog({ type: 'scene', scene: JSON.parse(JSON.stringify(sc)) })}>✎</button>
+              </div>`;
+            })}
+          </div>
+        </section>
+      </main>
+
+      <aside class="studio-side">
+        <div class="card stack">
+          <div class="stream-dests">
+            ${st.mode === 'live'
+              ? html`${dests.map(([id, d]) => html`<span class="dest" key=${id}><span class=${'dot ' + d.state}></span>${d.label}</span>`)}${st.recording && html`<span class="dest"><span class="dot ok"></span>Recording</span>`}`
+              : html`<span class="muted">${configured ? 'Not live yet.' : 'No stream keys yet.'}</span>`}
+          </div>
+          <${StreamPhase} s=${s} />
+          ${!configured
+            ? html`<button class="btn big" onClick=${() => openSettings('streaming')}>Set up YouTube & Facebook</button>`
+            : st.mode === 'live'
+              ? html`<button class="btn big" onClick=${() => setDialog({ type: 'stop' })}>End live stream</button>`
+              : html`<button class="btn big danger" onClick=${() => setDialog({ type: 'golive' })}>${icons.radio()} Go live</button>`}
+          <${RecordingOptions} s=${s} compact=${true} />
+        </div>
+        <${AudioMixer} s=${s} />
+        <${NameOnStream} s=${s} />
+        <${TitlesCard} s=${s} info=${info} />
+        <${GraphicsCard} s=${s} info=${info} />
+        <${TickerCard} s=${s} />
+        <div class="card mini">
+          <div class="card-head"><b>On the screens now</b></div>
+          <${Screen} slide=${slide} kind=${s.live && s.live.item.kind} subtitle=${s.live && s.live.item.subtitle} theme=${cfg.theme} bg=${effectiveBg(slide, s.live && s.live.item, cfg.theme)} churchName=${cfg.churchName} black=${s.black} clear=${s.clear} logo=${s.logo}
+            countdown=${s.live && s.live.item.kind === 'countdown' ? s.live.item.countdown : null} skew=${s.now - (s.receivedAt || s.now)} />
+          <${StreamOnScreens} s=${s} />
+          <div class="hint">The slides are run from the main control panel.</div>
+        </div>
+      </aside>
+    </div>
+    ${dialog && dialog.type === 'golive' && html`<${GoLiveDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'stop' && html`<${StopDialog} s=${s} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'scene' && html`<${SceneEditor} info=${info} scene=${dialog.scene} isNew=${!!dialog.isNew} onClose=${() => setDialog(null)} />`}
+    ${dialog && dialog.type === 'keys' && html`<${ShortcutsDialog} onClose=${() => setDialog(null)} />`}
+  </div>`;
+}
+
+
+// --- the sound mixer (stream page) ------------------------------------------------------
+const toDb = (g) => (g <= 0.001 ? '−∞' : (20 * Math.log10(g) >= 0 ? '+' : '') + (20 * Math.log10(g)).toFixed(0) + ' dB');
+function MixerChannel({ id, name, mix, levelKey, master }) {
+  const cur = mix[id] || { gain: 1, mute: false };
+  const [gain, setGain] = useState(cur.gain);
+  const bar = useRef();
+  const timer = useRef(null);
+  const pending = useRef(null);
+  useEffect(() => { setGain(cur.gain); }, [cur.gain]);
+  useEffect(() => {
+    // Sources: RMS level of the source; the whole mix: its loudness (LUFS).
+    const show = (db) => { if (bar.current) { const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100)); bar.current.style.height = pct + '%'; bar.current.className = 'mix-level' + (db > -6 ? ' hot' : db > -18 ? ' warm' : ''); } };
+    const onL = (e) => { if (!master && levelKey) show(e.detail[levelKey] ?? -120); };
+    const onM = (e) => { if (master) show(e.detail); };
+    levelsBus.addEventListener('l', onL);
+    meterBus.addEventListener('m', onM);
+    return () => { levelsBus.removeEventListener('l', onL); meterBus.removeEventListener('m', onM); };
+  }, [levelKey, master]);
+  const send = (g) => {
+    pending.current = g;
+    if (timer.current) return;
+    const flush = () => {
+      timer.current = null;
+      if (pending.current === null) return;
+      const v = pending.current;
+      pending.current = null;
+      api('/api/studio/audio', { id, gain: v }).catch(fail);
+      timer.current = setTimeout(flush, 80);
+    };
+    flush();
+  };
+  return html`<div class=${'mix-ch' + (cur.mute ? ' muted' : '') + (master ? ' master' : '')}>
+    <div class="mix-strip">
+      <div class="mix-meter"><i ref=${bar} class="mix-level"></i></div>
+      <input class="vfader" type="range" min="0" max="200" step="1" value=${Math.round(gain * 100)} aria-label=${name + ' volume'}
+        onInput=${(e) => { const g = +e.target.value / 100; setGain(g); send(g); }} onDblClick=${() => { setGain(1); send(1); }} title="Double-click: back to normal" />
+    </div>
+    <span class="mix-db">${toDb(gain)}</span>
+    <button class=${'mix-mute' + (cur.mute ? ' on' : '')} aria-pressed=${!!cur.mute} onClick=${() => api('/api/studio/audio', { id, mute: !cur.mute }).catch(fail)} title=${cur.mute ? 'Turn back on' : 'Mute'}>M</button>
+    <span class="mix-name">${name}</span>
+  </div>`;
+}
+
+function AudioMixer({ s }) {
+  const cfg = s.config;
+  const mix = cfg.audioMix || {};
+  const a = cfg.audio || {};
+  const micName = a.source === 'camera' ? 'Camera sound' : a.source === 'none' ? 'No microphone' : 'Microphone / desk';
+  const chans = [['mic', micName], ['media', 'Videos & music'], ...(cfg.audio2 && cfg.audio2.device ? [['mic2', 'Second mic']] : [])];
+  return html`<div class="card mixer" aria-label="Sound mixer">
+    <div class="card-head"><b>Sound</b><span class="note-r muted" style="font-size:12px">Double-click a fader for normal</span></div>
+    <div class="mix-row">
+      ${chans.map(([id, name]) => html`<${MixerChannel} key=${id} id=${id} name=${name} mix=${mix} levelKey=${id} />`)}
+      <${MixerChannel} id="master" name="Stream" mix=${mix} master=${true} />
+    </div>
+    ${s.stream.mode === 'off' && html`<div class="hint">The meters move when the camera preview or the stream is running.</div>`}
+  </div>`;
+}
+
+// --- graphics and titles (stream page) -----------------------------------------------------
+// The stream has two graphics channels on top of every scene: 1 for a picture (a logo in the
+// corner, a QR code, a flyer), 2 for a title. Both are drawn here, at the stream's size, as a
+// transparent PNG, and sent to ChurchStream; FFmpeg lays them over the picture.
+const GFX_POSITIONS = [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left'], ['lower', 'Lower middle'], ['full', 'Full screen']];
+const TITLE_TEMPLATES = [
+  ['scripture', 'Scripture', 'Reading, e.g. Psalm 46:1', 'Words (optional)'],
+  ['sermon', 'Sermon title', 'Title', 'Speaker (optional)'],
+  ['speaker', 'Speaker', 'Name', 'Role, e.g. Guest speaker'],
+  ['welcome', 'Welcome', 'Headline, e.g. Welcome!', 'Second line (optional)'],
+];
+const TITLE_STYLES = [['classic', 'Classic'], ['bar', 'Modern bar'], ['minimal', 'Minimal']];
+
+const loadImage = (src) => new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('Could not load the picture')); im.src = src; });
+
+function drawPicture(ctx, W, H, img, position) {
+  const ar = img.naturalWidth / img.naturalHeight;
+  let w;
+  let h;
+  if (position === 'full') { const s = Math.min(W / img.naturalWidth, H / img.naturalHeight); w = img.naturalWidth * s; h = img.naturalHeight * s; ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h); return; }
+  if (position === 'lower') { w = Math.min(W * 0.6, H * 0.25 * ar); h = w / ar; ctx.drawImage(img, (W - w) / 2, H * 0.94 - h, w, h); return; }
+  // A corner: about a fifth of the width, never taller than a quarter of the height.
+  w = Math.min(W * 0.18, H * 0.25 * ar); h = w / ar;
+  const m = H * 0.045;
+  const x = position.endsWith('l') ? m : W - m - w;
+  const y = position.startsWith('t') ? m : H - m - h;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+// One line of text, shortened with … when too wide.
+function fitLine(ctx, text, maxW) {
+  let t = String(text || '');
+  if (ctx.measureText(t).width <= maxW) return t;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t.trimEnd() + '…';
+}
+
+function drawTitle(ctx, W, H, style, a, b) {
+  const font = (wt, px) => `${wt} ${Math.round(px)}px Inter, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  if (style === 'bar') {
+    const bh = b ? H * 0.15 : H * 0.1;
+    const y = H * 0.955 - bh;
+    ctx.fillStyle = 'rgba(14,122,109,0.94)';
+    ctx.fillRect(0, y, W, bh);
+    ctx.fillStyle = '#fff';
+    ctx.font = font(800, H * 0.048);
+    ctx.fillText(fitLine(ctx, a, W * 0.9), W * 0.05, y + (b ? bh * 0.33 : bh / 2));
+    if (b) { ctx.font = font(500, H * 0.032); ctx.fillText(fitLine(ctx, b, W * 0.9), W * 0.05, y + bh * 0.72); }
+    return;
+  }
+  if (style === 'minimal') {
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = H * 0.012;
+    ctx.fillStyle = '#fff';
+    const x = W * 0.06;
+    const y = H * (b ? 0.78 : 0.84);
+    ctx.font = font(700, H * 0.055);
+    ctx.fillText(fitLine(ctx, a, W * 0.86), x, y);
+    ctx.fillRect(x, y + H * 0.045, W * 0.06, Math.max(2, H * 0.005));
+    if (b) { ctx.font = font(400, H * 0.034); ctx.fillText(fitLine(ctx, b, W * 0.86), x, y + H * 0.095); }
+    ctx.shadowBlur = 0;
+    return;
+  }
+  // Classic: like the names on the stream — white box, blue box underneath.
+  const x = W * 0.055;
+  const pad = H * 0.02;
+  ctx.font = font(800, H * 0.05);
+  const t1 = fitLine(ctx, a, W * 0.8);
+  const w1 = ctx.measureText(t1).width + pad * 2;
+  const h1 = H * 0.05 * 1.25 + pad;
+  const y1 = H * (b ? 0.71 : 0.78);
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
+  ctx.fillRect(x, y1, w1, h1);
+  ctx.fillStyle = '#111827';
+  ctx.fillText(t1, x + pad, y1 + h1 / 2);
+  if (b) {
+    ctx.font = font(500, H * 0.034);
+    const t2 = fitLine(ctx, b, W * 0.8);
+    const w2 = ctx.measureText(t2).width + pad * 1.6;
+    const h2 = H * 0.034 * 1.3 + pad * 0.8;
+    ctx.fillStyle = 'rgba(37,99,235,0.95)';
+    ctx.fillRect(x, y1 + h1, w2, h2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(t2, x + pad * 0.8, y1 + h1 + h2 / 2);
+  }
+}
+
+// Draw at the stream's size and send to channel n, then switch it on.
+async function sendGraphic(info, n, label, draw) {
+  const { width: W, height: H } = info.size;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  try { await document.fonts.load(`700 ${Math.round(H * 0.05)}px Inter`); } catch { /* system font */ }
+  await draw(ctx, W, H);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  const res = await fetch(`/api/studio/gfx?n=${n}&label=${encodeURIComponent(label)}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not send the graphic');
+  await api('/api/studio/gfx/show', { n, on: true });
+}
+
+function GraphicsCard({ s, info }) {
+  const list = s.config.graphics || [];
+  const g1 = (s.gfx && s.gfx[1]) || {};
+  const fileRef = useRef();
+  const [busy, setBusy] = useState('');
+  const upload = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    setBusy('upload');
+    try {
+      const res = await fetch(`/api/media?kind=graphic&name=${encodeURIComponent(f.name.replace(/\.[^.]+$/, ''))}`, { method: 'POST', body: f, headers: { 'Content-Type': f.type } });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Upload failed');
+      toast('Picture added');
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const show = async (g) => {
+    if (!info) return;
+    setBusy(g.id);
+    try {
+      const img = await loadImage('/media/' + encodeURIComponent(g.file));
+      await sendGraphic(info, 1, g.id, (ctx, W, H) => drawPicture(ctx, W, H, img, g.position || 'tr'));
+    } catch (err) { fail(err); }
+    setBusy('');
+  };
+  const isOn = (g) => g1.on && g1.label === g.id;
+  return html`<div class="card gfx-card">
+    <div class="card-head"><b>Pictures</b><span class="note-r"><button class="btn small" disabled=${busy === 'upload'} onClick=${() => fileRef.current.click()}>${busy === 'upload' ? 'Adding…' : 'Add picture…'}</button></span></div>
+    <input ref=${fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange=${upload} />
+    ${!list.length && html`<div class="hint" style="margin:0">A logo in the corner, a QR code for giving, or a flyer. PNG pictures can have a see-through background.</div>`}
+    ${list.map((g) => html`<div class=${'gfx-row' + (isOn(g) ? ' on' : '')} key=${g.id}>
+      <img class="gfx-thumb" src=${'/media/' + encodeURIComponent(g.file)} alt="" />
+      <div class="gfx-info">
+        <span class="gfx-name">${g.name}</span>
+        <select class="select small" aria-label="Where" value=${g.position || 'tr'} onChange=${async (e) => { await api('/api/studio/graphic', { id: g.id, position: e.target.value }).catch(fail); if (isOn(g)) show({ ...g, position: e.target.value }); }}>
+          ${GFX_POSITIONS.map(([id, label]) => html`<option value=${id}>${label}</option>`)}
+        </select>
+      </div>
+      ${isOn(g)
+        ? html`<button class="btn small on-air" onClick=${() => api('/api/studio/gfx/show', { n: 1, on: false }).catch(fail)}>On</button>`
+        : html`<button class="btn small" disabled=${busy === g.id} onClick=${() => show(g)}>Off</button>`}
+      <button class="btn small ghost" aria-label=${'Remove ' + g.name} title="Remove" onClick=${() => { if (confirm(`Remove “${g.name}”?`)) { if (isOn(g)) api('/api/studio/gfx/show', { n: 1, on: false }); api('/api/studio/graphic/delete', { id: g.id }).catch(fail); } }}>×</button>
+    </div>`)}
+  </div>`;
+}
+
+function TitlesCard({ s, info }) {
+  const g2 = (s.gfx && s.gfx[2]) || {};
+  const style = s.config.titleStyle || 'classic';
+  const [tpl, setTpl] = useState('scripture');
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
+  const prev = useRef();
+  const t = TITLE_TEMPLATES.find((x) => x[0] === tpl) || TITLE_TEMPLATES[0];
+  const slide = s.live && s.live.item.slides[s.live.index];
+  const reading = s.live && s.live.item.kind === 'bible' && slide;
+  // A small preview of the title over a dark picture.
+  useEffect(() => {
+    const c = prev.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#273449';
+    ctx.fillRect(0, 0, c.width, c.height);
+    if (a.trim()) drawTitle(ctx, c.width, c.height, style, a.trim(), b.trim());
+  }, [a, b, style]);
+  const show = async () => {
+    if (!info || !a.trim()) return;
+    try { await sendGraphic(info, 2, a.trim(), (ctx, W, H) => drawTitle(ctx, W, H, style, a.trim(), b.trim())); } catch (err) { fail(err); }
+  };
+  return html`<div class="card gfx-card">
+    <div class="card-head"><b>Titles</b>${g2.on && html`<span class="note-r"><span class="tally-tag program">ON AIR</span></span>`}</div>
+    <div class="chips" style="margin-bottom:8px">${TITLE_TEMPLATES.map(([id, label]) => html`<button class=${'chip' + (tpl === id ? ' on' : '')} onClick=${() => setTpl(id)}>${label}</button>`)}</div>
+    <input class="input" placeholder=${t[2]} value=${a} maxlength="80" onInput=${(e) => setA(e.target.value)} />
+    <input class="input" style="margin-top:6px" placeholder=${t[3]} value=${b} maxlength="140" onInput=${(e) => setB(e.target.value)} />
+    ${tpl === 'scripture' && reading && html`<button class="btn small ghost" style="margin-top:6px" onClick=${() => { setA(slide.ref || s.live.item.title || ''); setB(String(slide.text || '').replace(/\s+/g, ' ').slice(0, 140)); }}>Use the reading on screen</button>`}
+    <div class="seg" role="radiogroup" aria-label="Title style" style="margin-top:8px;grid-template-columns:repeat(3,1fr)">
+      ${TITLE_STYLES.map(([id, label]) => html`<button role="radio" aria-checked=${style === id} class=${style === id ? 'on' : ''} onClick=${() => api('/api/config', { titleStyle: id }).catch(fail)}>${label}</button>`)}
+    </div>
+    <canvas ref=${prev} class="title-preview" width="640" height="360" aria-label="How the title looks"></canvas>
+    <div class="row" style="gap:8px">
+      <button class="btn primary grow" disabled=${!a.trim() || !info} onClick=${show}>${g2.on ? 'Update title' : 'Show title'}</button>
+      ${g2.on && html`<button class="btn on red" onClick=${() => api('/api/studio/gfx/show', { n: 2, on: false }).catch(fail)}>Take off</button>`}
+    </div>
+  </div>`;
+}
+
+// --- keyboard shortcuts (stream page) --------------------------------------------------
+const STUDIO_KEYS = [
+  ['1 – 9', 'Scene 1 to 9 (on air in Quick mode, into Preview in Studio mode)'], ['Space', 'Cut'], ['Enter', 'Auto transition'], ['D', 'Dip to black'],
+  ['F1 – F4', 'Camera 1 to 4'], ['G', 'Picture on / off'], ['N', 'Name on / off'], ['T', 'Ticker on / off'], ['R', 'Recording on / off'], ['?', 'This list'],
+];
+function ShortcutsDialog({ onClose }) {
+  return html`<${Modal} title="Keyboard shortcuts" onClose=${onClose} footer=${html`<button class="btn" onClick=${() => print()}>Print</button><button class="btn primary" onClick=${onClose}>Close</button>`}>
+    <div class="keys-grid">${STUDIO_KEYS.map(([k, what]) => html`<div class="keys-row"><kbd>${k}</kbd><span>${what}</span></div>`)}</div>
+    <div class="note" style="margin-top:14px">Have a Stream Deck? Give each button a <b>Hotkey</b> action with these keys while the stream page is in front.</div>
+  </${Modal}>`;
+}
+
+// --- the scene editor ------------------------------------------------------------------
+const L = (source, x, y, w, h, border) => ({ source, x, y, w, h, border: !!border });
+const LAYOUTS = [
+  ['Full', (src) => [L(src[0], 0, 0, 1, 1)]],
+  ['Corner', (src) => [L(src[0], 0, 0, 1, 1), L(src[1], 0.671, 0.652, 0.3, 0.3, true)]],
+  ['Top corner', (src) => [L(src[0], 0, 0, 1, 1), L(src[1], 0.66, 0.04, 0.3, 0.3, true)]],
+  ['Side by side', (src) => [L(src[0], 0, 0.25, 0.5, 0.5), L(src[1], 0.5, 0.25, 0.5, 0.5)]],
+  ['Three', (src) => [L(src[0], 0, 0.25, 0.5, 0.5), L(src[1], 0.5, 0, 0.5, 0.5), L(src[2], 0.5, 0.5, 0.5, 0.5)]],
+  ['Four', (src) => [L(src[0], 0, 0, 0.5, 0.5), L(src[1], 0.5, 0, 0.5, 0.5), L(src[2], 0, 0.5, 0.5, 0.5), L(src[3], 0.5, 0.5, 0.5, 0.5)]],
+];
+const round3 = (v) => Math.round(v * 1000) / 1000;
+// Snap to the edges and the middle when close.
+const snap = (v) => { for (const t of [0, 0.25, 0.5, 0.75, 1]) if (Math.abs(v - t) < 0.015) return t; return v; };
+
+function SceneEditor({ info, scene: start, isNew, onClose }) {
+  const [sc, setSc] = useState(() => ({ ...start, layers: start.layers.map((l) => ({ crop: { l: 0, t: 0, r: 0, b: 0 }, ...l })) }));
+  const [sel, setSel] = useState(sc.layers.length - 1);
+  const [busy, setBusy] = useState(false);
+  const area = useRef();
+  const sources = info ? info.sources.filter((x) => x.id !== 'black') : [{ id: 'cam1', name: 'Camera 1' }];
+  const setLayer = (i, patch) => setSc((cur) => ({ ...cur, layers: cur.layers.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
+  const applyLayout = (make) => {
+    const used = sc.layers.map((l) => l.source);
+    const pool = [...used, ...sources.map((x) => x.id).filter((id) => !used.includes(id))];
+    setSc((cur) => ({ ...cur, layers: make(pool).map((l) => ({ ...l, crop: { l: 0, t: 0, r: 0, b: 0 } })) }));
+    setSel(0);
+  };
+  // Drag to move; drag the corner to resize (keeping the 16:9 shape unless Shift is held).
+  const drag = (e, i, mode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSel(i);
+    const box = area.current.getBoundingClientRect();
+    const l0 = sc.layers[i];
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const move = (ev) => {
+      const dx = (ev.clientX - x0) / box.width;
+      const dy = (ev.clientY - y0) / box.height;
+      if (mode === 'move') setLayer(i, { x: round3(snap(l0.x + dx)), y: round3(snap(l0.y + dy)) });
+      else {
+        const w = Math.max(0.05, Math.min(1, snap(l0.x + l0.w + dx) - l0.x));
+        const h = ev.shiftKey ? Math.max(0.05, Math.min(1, snap(l0.y + l0.h + dy) - l0.y)) : w * (l0.h / l0.w);
+        setLayer(i, { w: round3(w), h: round3(h) });
+      }
+    };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  };
+  const save = async (thenPreview) => {
+    setBusy(true);
+    try {
+      const r = await api('/api/studio/scene', { scene: sc });
+      if (thenPreview) await api('/api/studio/preview', { id: r.scene.id });
+      toast('Scene saved');
+      onClose();
+    } catch (err) { fail(err); setBusy(false); }
+  };
+  const remove = async () => {
+    if (!confirm(start.builtin ? `Put “${sc.name}” back the way it was?` : `Delete the scene “${sc.name}”?`)) return;
+    try { await api('/api/studio/scene/delete', { id: sc.id }); onClose(); } catch (err) { fail(err); }
+  };
+  const num = (v) => Math.round(v * 1000) / 10;
+  const l = sc.layers[sel];
+  return html`<${Modal} title=${isNew ? 'New scene' : 'Edit scene'} onClose=${onClose} wide=${true} footer=${html`
+      ${!isNew && html`<button class="btn danger ghost" onClick=${remove}>${start.builtin ? 'Reset' : 'Delete scene'}</button>`}
+      <span class="spacer"></span>
+      <button class="btn" disabled=${busy} onClick=${() => save(true)}>Save and put in Preview</button>
+      <button class="btn primary" disabled=${busy} onClick=${() => save(false)}>Save scene</button>`}>
+    <div class="row wrap" style="gap:12px;margin-bottom:12px">
+      <label class="tr-label">Name<input class="input" value=${sc.name} maxlength="60" onInput=${(e) => setSc({ ...sc, name: e.target.value })} /></label>
+      <label class="tr-label">Group<input class="input" list="scene-groups" value=${sc.group || ''} placeholder="e.g. Sermon" maxlength="40" onInput=${(e) => setSc({ ...sc, group: e.target.value })} /></label>
+      <datalist id="scene-groups">${[...new Set((info ? info.scenes : []).map((x) => x.group).filter(Boolean))].map((g) => html`<option value=${g} />`)}</datalist>
+    </div>
+    <div class="editor">
+      <div>
+        <div class="layouts">${LAYOUTS.map(([name, make]) => html`<button class="layout-btn" onClick=${() => applyLayout(make)}><${SceneThumb} layers=${make(['cam1', 'cam2', 'cam3', 'cam4'])} /><span>${name}</span></button>`)}</div>
+        <div class="editor-area" ref=${area} onPointerDown=${() => setSel(-1)}>
+          ${sc.layers.map((ly, i) => html`<div class=${'editor-layer' + (i === sel ? ' sel' : '') + (ly.border ? ' border' : '')} style=${`left:${ly.x * 100}%;top:${ly.y * 100}%;width:${ly.w * 100}%;height:${ly.h * 100}%;z-index:${i + 1}`}
+              onPointerDown=${(e) => drag(e, i, 'move')}>
+            <${SourcePicture} info=${info} source=${ly.source} />
+            <span class="layer-tag">${i + 1} · ${sceneName(info, ly.source)}</span>
+            ${i === sel && html`<span class="layer-handle" onPointerDown=${(e) => drag(e, i, 'size')} title="Drag to resize (Shift: any shape)"></span>`}
+          </div>`)}
+        </div>
+        <div class="hint">Drag a layer to move it and its corner to resize it. It snaps to the edges and the middle.</div>
+      </div>
+      <div class="layer-list">
+        <div class="seg-label">Layers (back to front)</div>
+        ${sc.layers.map((ly, i) => html`<div class=${'layer-row' + (i === sel ? ' sel' : '')} onClick=${() => setSel(i)}>
+          <span class="layer-n">${i + 1}</span>
+          <select class="select" aria-label="Source" value=${ly.source} onChange=${(e) => setLayer(i, { source: e.target.value })}>
+            ${sources.map((x) => html`<option value=${x.id}>${x.name}</option>`)}
+          </select>
+          <button class="btn small ghost" aria-label="Remove layer" onClick=${(e) => { e.stopPropagation(); setSc({ ...sc, layers: sc.layers.filter((_, k) => k !== i) }); setSel(Math.max(0, i - 1)); }}>×</button>
+        </div>`)}
+        ${sc.layers.length < 4 && html`<button class="btn small" onClick=${() => { setSc({ ...sc, layers: [...sc.layers, { source: sources[Math.min(sc.layers.length, sources.length - 1)].id, x: 0.6, y: 0.06, w: 0.34, h: 0.34, border: true, crop: { l: 0, t: 0, r: 0, b: 0 } }] }); setSel(sc.layers.length); }}>+ Add layer</button>`}
+        ${l && html`<div class="layer-props">
+          <div class="seg-label">Layer ${sel + 1}</div>
+          <div class="prop-grid">
+            ${[['x', 'Left'], ['y', 'Top'], ['w', 'Width'], ['h', 'Height']].map(([k, lab]) => html`<label class="tr-label">${lab} %<input class="input" type="number" step="1" value=${num(l[k])} onChange=${(e) => setLayer(sel, { [k]: round3((+e.target.value || 0) / 100) })} /></label>`)}
+          </div>
+          <label class="switch" style="min-height:34px"><input type="checkbox" checked=${!!l.border} onChange=${(e) => setLayer(sel, { border: e.target.checked })} /><span>White border</span></label>
+          <div class="seg-label" style="margin-top:6px">Crop the picture</div>
+          <div class="prop-grid">
+            ${[['l', 'Left'], ['r', 'Right'], ['t', 'Top'], ['b', 'Bottom']].map(([k, lab]) => html`<label class="tr-label">${lab} %<input type="range" min="0" max="40" value=${Math.round((l.crop?.[k] || 0) * 100)} onInput=${(e) => setLayer(sel, { crop: { ...l.crop, [k]: +e.target.value / 100 } })} /></label>`)}
+          </div>
+        </div>`}
+      </div>
+    </div>
+  </${Modal}>`;
+}
+
+// ---------------------------------------------------------------------------------------
 function Root() {
   const [s, setS] = useState(null);
   const [online, setOnline] = useState(true);
@@ -2870,7 +3577,10 @@ function Root() {
     const stop = connect((st) => {
       setOnline(!!st);
       if (st) { SAB = st.sabbath; st.receivedAt = Date.now(); setS((cur) => ({ ...st, lan: cur ? cur.lan : st.lan })); updateProgram(st); }
-    }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })));
+    }, (m) => meterBus.dispatchEvent(new CustomEvent('m', { detail: m })), {
+      page: location.pathname === '/stream' ? 'stream' : '',
+      events: { levels: (v) => levelsBus.dispatchEvent(new CustomEvent('l', { detail: v })) },
+    });
     const pop = () => setRoute(location.pathname);
     addEventListener('popstate', pop);
     return () => { stop(); removeEventListener('popstate', pop); };
@@ -2886,7 +3596,7 @@ function Root() {
   let view;
   if (route === '/setup') view = html`<${SetupView} s=${s} />`;
   else if (route === '/settings') view = html`<${SettingsView} s=${s} />`;
-  else if (route === '/stream') view = html`<${StreamView} s=${s} />`;
+  else if (route === '/stream') view = s.studioOn ? html`<${StudioView} s=${s} />` : html`<${StreamView} s=${s} />`;
   else view = html`<${ControlView} s=${s} />`;
   return html`${!online && html`<div class="banner red fixed">Connection to ChurchStream lost — reconnecting…</div>`}${view}<${Toasts} />`;
 }

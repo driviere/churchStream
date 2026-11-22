@@ -25,6 +25,7 @@ ChurchStream runs your church's projector and live stream from one simple contro
 | Feature | What it does |
 | --- | --- |
 | YouTube and Facebook at once | Streams to both at the same time, from one encode, so the second platform costs no extra computer power. If one drops, the other keeps going and the dropped one reconnects. |
+| Studio | On the stream page: scenes of up to four pictures (side by side, picture-in-picture, slides + camera, four cameras), Preview → Program, and Cut, Fade, Dip, Slide and Wipe transitions with a T-bar, inside the stream. Up to four cameras, a live multiview of every source, and a scene editor. |
 | Stream page | A second person can run the stream from another laptop at **/stream**: the live picture, go live/end, cameras, what the stream shows, names, ticker, recording and the stream settings, while the main laptop runs the slides. |
 | Stream on the screens | One switch shows the live stream picture (camera, slides, names) on the projector, e.g. for an overflow room. |
 | Phone as a camera | Scan a QR code with any phone on the church Wi-Fi and it becomes camera 1 or 2: nothing to install. If the phone drops off, the stream shows a waiting picture and recovers by itself. |

@@ -61,12 +61,15 @@ export function slideHtml(slide) {
 }
 
 // Live-updating state over Server-Sent Events (auto-reconnects).
-export function connect(onState, onMeter) {
+// page: 'stream' tells ChurchStream a stream page is open (the control panel then hides its
+// simple camera / scene switches).
+export function connect(onState, onMeter, { page, events = {} } = {}) {
   let es;
   const open = () => {
-    es = new EventSource('/events');
+    es = new EventSource('/events' + (page ? '?page=' + encodeURIComponent(page) : ''));
     es.addEventListener('state', (e) => onState(JSON.parse(e.data)));
     if (onMeter) es.addEventListener('meter', (e) => onMeter(JSON.parse(e.data)));
+    for (const [name, fn] of Object.entries(events)) es.addEventListener(name, (e) => fn(JSON.parse(e.data)));
     es.onerror = () => { onState(null); };
   };
   open();
