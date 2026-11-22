@@ -9,6 +9,7 @@
 # Needs: Xcode command line tools, cmake, and from Homebrew: nasm meson ninja pkg-config.
 # Takes 10–20 minutes; CI caches the result (see .github/workflows/windows-build.yml).
 set -Eeuo pipefail
+# (macOS's bash 3.2 calls an empty array unbound under set -u, hence the ${a[@]+"${a[@]}"} below.)
 ARCH=${1:?arm64 or x86_64}
 OUT=$(cd "$(dirname "${2:?output zip}")" && pwd)/$(basename "$2")
 
@@ -86,7 +87,7 @@ endian = 'little'
 EOF
   CROSSFILE=(--cross-file "$WORK/cross.txt")
 fi
-meson setup "$SRC/harfbuzz/b" "$SRC/harfbuzz" "${CROSSFILE[@]}" --prefix="$PREFIX" --libdir=lib --buildtype=release --default-library=static \
+meson setup "$SRC/harfbuzz/b" "$SRC/harfbuzz" ${CROSSFILE[@]+"${CROSSFILE[@]}"} --prefix="$PREFIX" --libdir=lib --buildtype=release --default-library=static \
   -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dicu=disabled -Dgraphite2=disabled \
   -Dtests=disabled -Ddocs=disabled -Dintrospection=disabled -Dutilities=disabled -Dbenchmark=disabled -Dcoretext=disabled >> "$LOG" 2>&1
 ninja -C "$SRC/harfbuzz/b" >> "$LOG" 2>&1
@@ -98,7 +99,7 @@ get "$X264_URL" x264
   cd "$SRC/x264"
   HOSTARG=(); [ $CROSS = 1 ] && HOSTARG=(--host="$ARCH-apple-darwin")
   [ "$ARCH" = arm64 ] && [ $CROSS = 1 ] && HOSTARG=(--host=aarch64-apple-darwin)
-  ./configure --prefix="$PREFIX" --enable-static --disable-cli --enable-pic "${HOSTARG[@]}" \
+  ./configure --prefix="$PREFIX" --enable-static --disable-cli --enable-pic ${HOSTARG[@]+"${HOSTARG[@]}"} \
     --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" >> "$LOG" 2>&1
   make -j "$JOBS" >> "$LOG" 2>&1
   make install >> "$LOG" 2>&1
@@ -113,7 +114,7 @@ done
 mkdir -p "$SRC/ffmpeg" && tar -xf "$SRC/ffmpeg.tar" -C "$SRC/ffmpeg" --strip-components 1
 cd "$SRC/ffmpeg"
 CROSSARGS=(); [ $CROSS = 1 ] && CROSSARGS=(--enable-cross-compile)
-./configure --prefix="$PREFIX" --arch="$ARCH" --target-os=darwin --cc=clang --cxx=clang++ "${CROSSARGS[@]}" \
+./configure --prefix="$PREFIX" --arch="$ARCH" --target-os=darwin --cc=clang --cxx=clang++ ${CROSSARGS[@]+"${CROSSARGS[@]}"} \
   --extra-cflags="$CFLAGS -I$PREFIX/include" --extra-ldflags="$LDFLAGS -L$PREFIX/lib" --extra-libs="-lc++" \
   --pkg-config=pkg-config --pkg-config-flags=--static \
   --enable-gpl --enable-version3 --enable-static --disable-shared --disable-ffplay --disable-doc --disable-debug \
