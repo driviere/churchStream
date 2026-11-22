@@ -1,0 +1,35 @@
+# Temporary: which macOS FFmpeg builds have the zmq filter (needed for the studio)?
+name: Probe Mac FFmpeg builds
+on:
+  push:
+    branches: ['ccr-52d411eb-xdwr62']
+    paths: ['.github/workflows/mac-ffmpeg-probe.yml']
+jobs:
+  probe:
+    runs-on: macos-latest
+    steps:
+      - name: Check each build for zmq
+        shell: bash
+        run: |
+          set -u
+          check() { # name url
+            d="$RUNNER_TEMP/p-$1"; mkdir -p "$d"; cd "$d"
+            if curl -sfL --max-time 120 -o f.zip "$2"; then
+              unzip -qo f.zip 2>/dev/null || true
+              ff=$(find . -type f -name ffmpeg | head -1)
+              if [ -n "$ff" ]; then
+                chmod +x "$ff"
+                echo "== $1: $(file -b "$ff" | cut -c1-40) | $("$ff" -hide_banner -version 2>/dev/null | head -1 | cut -c1-60)"
+                "$ff" -hide_banner -filters 2>/dev/null | grep -E " zmq " && echo "   >>> $1 HAS zmq" || echo "   --- $1: no zmq"
+                "$ff" -hide_banner -buildconf 2>/dev/null | grep -oE "enable-lib(zmq|x264)" | tr '\n' ' '; echo
+              else echo "== $1: no ffmpeg in the download"; fi
+            else echo "== $1: download failed"; fi
+            cd "$RUNNER_TEMP"
+          }
+          check riedl-arm64-release https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip
+          check riedl-arm64-snapshot https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip
+          check evermeet-release https://evermeet.cx/ffmpeg/getrelease/zip
+          check osxexperts-arm-8 https://www.osxexperts.net/ffmpeg80arm.zip
+          check osxexperts-arm-71 https://www.osxexperts.net/ffmpeg71arm.zip
+          echo "== Homebrew"
+          brew info --json=v2 ffmpeg | python3 -c 'import json,sys; f=json.load(sys.stdin)["formulae"][0]; print("deps:", ", ".join(f["dependencies"])); print("zeromq in deps:", "zeromq" in f["dependencies"])'
