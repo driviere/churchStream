@@ -1,7 +1,13 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { App } = require('../lib/app');
+
+const CLIP = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-media-')), 'clip-a.mp3');
+fs.writeFileSync(CLIP, '');
 
 // A stand-in for the app with just what the media controls use.
 function fakeApp({ type = 'audio', playing = true, desk = false } = {}) {
@@ -14,7 +20,7 @@ function fakeApp({ type = 'audio', playing = true, desk = false } = {}) {
     setVolume(v) { if (this.now) this.now.volume = v; },
   };
   const app = Object.create(App.prototype);
-  Object.assign(app, { state: { live: { item: live, index: 0 } }, relay, yt: { now: null }, cfg: { mediaSound: desk ? 'desk' : 'stream' }, plays, changed() {}, mediaPath: (f) => '/' + f });
+  Object.assign(app, { state: { live: { item: live, index: 0 } }, relay, yt: { now: null }, cfg: { mediaSound: desk ? 'desk' : 'stream' }, plays, changed() {}, mediaPath: () => CLIP });
   return app;
 }
 
@@ -54,4 +60,10 @@ test('media: with the sound desk, the stream gets no sound but the room keeps it
   app.mediaControl({ volume: 0.5 });
   assert.equal(app.relay.now.volume, 0);
   assert.equal(app.relay.now.roomVolume, 0.5);
+});
+
+test('media: a clip whose file is gone says so plainly', () => {
+  const app = fakeApp({ playing: false });
+  app.mediaPath = () => path.join(os.tmpdir(), 'no-such-clip.mp3');
+  assert.throws(() => app.playMedia(app.state.live.item), /isn't on this computer any more/);
 });

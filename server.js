@@ -274,7 +274,11 @@ function startHttps(port, attempts = 10) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const p = decodeURIComponent(url.pathname);
+  let p;
+  try { p = decodeURIComponent(url.pathname); } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    return res.end('Bad address');
+  }
 
   if (!OPEN.some((re) => re.test(p)) && !authorized(req)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="ChurchStream"', 'Content-Type': 'text/plain' });
@@ -414,8 +418,9 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  app.shutdown();
-  setTimeout(() => process.exit(0), 1600);
+  // Wait for FFmpeg to finish the recording (up to 5 s), then exit.
+  const done = setTimeout(() => process.exit(0), 5000);
+  Promise.resolve(app.shutdown()).catch(() => {}).then(() => { clearTimeout(done); process.exit(0); });
 }
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) { try { process.on(sig, shutdown); } catch { /* unsupported */ } }
 // On a Mac, keep the laptop and its screens awake while ChurchStream is open (built-in
