@@ -962,6 +962,34 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
 
 const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
+// Where a video / music item is, as a bar to drag or tap. While it's being dragged it shows
+// where it will jump to; letting go jumps there (once).
+function Scrubber({ shown, dur, loop, onSeek }) {
+  const [drag, setDrag] = useState(null);
+  const at = drag ?? shown;
+  const pct = dur ? Math.min(100, (at / dur) * 100) : 0;
+  return html`<div class="media-progress grow">
+    <input type="range" class="scrub" min="0" max=${dur || 1} step="0.1" value=${dur ? Math.min(at, dur) : 0} disabled=${!dur}
+      style=${`--p:${pct}%`} aria-label="Position" aria-valuetext=${`${fmtDur(at)} of ${dur ? fmtDur(dur) : 'unknown'}`}
+      onInput=${(e) => setDrag(+e.target.value)}
+      onChange=${(e) => { setDrag(null); onSeek(+e.target.value); }}
+      onBlur=${() => setDrag(null)} />
+    <span class="muted">${fmtDur(at)} / ${dur ? fmtDur(dur) : '–:––'}${loop ? ' · loops' : ''}</span></div>`;
+}
+
+// ‹ 10 s and 10 s › for a precise jump on a touch screen.
+const SkipButtons = ({ shown, dur, onSeek }) => html`
+  <button class="btn big ghost" title="Back 10 seconds" aria-label="Back 10 seconds" onClick=${() => onSeek(Math.max(0, shown - 10))}>‹ 10 s</button>
+  <button class="btn big ghost" title="Forward 10 seconds" aria-label="Forward 10 seconds" disabled=${!dur} onClick=${() => onSeek(Math.min(dur, shown + 10))}>10 s ›</button>`;
+
+// Jump to a place in the item: put it on screen first if it isn't (so dragging before Play works).
+const seekTo = async (isLive, onShow, at) => {
+  try {
+    if (!isLive) await onShow();
+    await api('/api/media/control', { action: 'seek', at });
+  } catch (err) { fail(err); }
+};
+
 // Video / music item: big transport controls instead of a slide grid.
 // A video/music item's current settings: from the item on screen, else the order of service.
 function currentMedia(s, item) {
@@ -1015,10 +1043,10 @@ function YouTubePanel({ s, item, isLive, onShow }) {
             ? html`<button class="btn big primary" onClick=${() => ctl({ action: 'resume' })}>${icons.play()} Resume</button>`
             : html`<button class="btn big" onClick=${() => ctl({ action: 'pause' })}>${icons.pause()} Pause</button>`}
                <button class="btn big" onClick=${() => ctl({ action: 'stop' })}>${icons.stop()} Stop</button>
-               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>`
+               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>
+               <${SkipButtons} shown=${shown} dur=${dur} onSeek=${(t) => seekTo(true, onShow, t)} />`
         : html`<button class="btn big primary" onClick=${() => (isLive ? ctl({ action: 'play' }) : onShow())}>${icons.play()} Play</button>`}
-      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
-        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <${Scrubber} shown=${shown} dur=${dur} loop=${m.loop} onSeek=${(t) => seekTo(isLive, onShow, t)} />
     </div>
     <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">Plays from YouTube on the projector, so it needs internet. The live stream shows a “now playing” card (or the camera), and online viewers hear it only through your microphones. To put the video itself into the stream, download it instead (+ Add → Video, music or YouTube).</div>
@@ -1046,10 +1074,10 @@ function FilePanel({ s, item, isLive, onShow }) {
     <div class="media-bar">
       ${playing
         ? html`<button class="btn big" onClick=${() => api('/api/media/control', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop</button>
-               <button class="btn big ghost" onClick=${() => api('/api/media/control', { action: 'restart' }).catch(fail)}>From the start</button>`
+               <button class="btn big ghost" onClick=${() => api('/api/media/control', { action: 'restart' }).catch(fail)}>From the start</button>
+               <${SkipButtons} shown=${shown} dur=${dur} onSeek=${(t) => seekTo(true, onShow, t)} />`
         : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
-      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
-        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <${Scrubber} shown=${shown} dur=${dur} loop=${m.loop} onSeek=${(t) => seekTo(isLive, onShow, t)} />
     </div>
     <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
@@ -1711,8 +1739,8 @@ function ControlView({ s }) {
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
   const showSlide = (i) => {
     if (i === null) { setSelected(null); return; }
-    if (s.live && item && s.live.item.key === item.key) api('/api/goto', { index: i }).catch(fail);
-    else show(item, i);
+    if (s.live && item && s.live.item.key === item.key) return api('/api/goto', { index: i }).catch(fail);
+    return show(item, i);
   };
   const step = (d) => {
     if (!s.live && item) return show(item, 0);

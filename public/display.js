@@ -22,27 +22,49 @@ setInterval(tickCountdown, 250);
 
 function syncPlayer(el, media, playing, state, isVideo) {
   if (!media) {
+    el._want = null;
     if (!el.paused) el.pause();
-    if (el.dataset.key) { el.removeAttribute('src'); el.load(); el.dataset.key = ''; }
+    if (el.dataset.key) { el.removeAttribute('src'); el.load(); el.dataset.key = ''; el.dataset.src = ''; }
     return;
   }
   const src = '/media/' + encodeURIComponent(media.file.replace(/^media:/, ''));
   const key = src + '|' + playing.startedAt;
   el.muted = isVideo ? !media.room : false;
   el.loop = !!media.loop;
-  el.volume = Math.max(0, Math.min(1, playing.volume ?? 1));
-  if (el.dataset.key === key) return;
-  el.dataset.key = key;
-  el.src = src;
-  const startAt = () => {
-    const skew = state.now - Date.now();
+  el.volume = Math.max(0, Math.min(1, playing.roomVolume ?? playing.volume ?? 1));
+  // Where it should be now, by the server's clock (worked out now, not after loading).
+  const skew = state.now - Date.now();
+  el._want = () => {
     let t = Math.max(0, (Date.now() + skew - playing.startedAt) / 1000);
     if (media.loop && el.duration) t %= el.duration;
+    return t;
+  };
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  // Same file, new place (a jump or a restart): move there without reloading the file.
+  if (el.dataset.src === src && el.readyState >= 1) {
+    const t = el._want();
+    if (!el.duration || t < el.duration) el.currentTime = t;
+    el.play().catch(() => {});
+    return;
+  }
+  el.dataset.src = src;
+  el.src = src;
+  el.addEventListener('loadedmetadata', () => {
+    const t = el._want ? el._want() : 0;
     if (t > 0.3 && (!el.duration || t < el.duration)) el.currentTime = t;
     el.play().catch(() => {});
-  };
-  el.addEventListener('loadedmetadata', startAt, { once: true });
+  }, { once: true });
 }
+// Keep the room's copy in step with the stream: a stall or a busy computer would otherwise
+// leave it behind for the rest of the clip.
+setInterval(() => {
+  for (const el of [$('vid').firstElementChild, $('aud')]) {
+    if (!el || !el._want || el.paused || el.seeking || el.readyState < 2) continue;
+    const t = el._want();
+    if ((!el.duration || t < el.duration) && Math.abs(el.currentTime - t) > 1) el.currentTime = t;
+  }
+}, 2000);
 
 let musicKey = '';
 function syncMusic(state) {
@@ -51,7 +73,7 @@ function syncMusic(state) {
   const files = state.config.musicFiles || [];
   const on = !!(m && !m.youtube && files.length && state.config.musicRoom !== false);
   const key = on ? files.join('|') + '|' + m.startedAt : '';
-  el.volume = on ? Math.max(0, Math.min(1, (m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
+  el.volume = on ? Math.max(0, Math.min(1, (m.roomVolume ?? m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
   if (key === musicKey) return;
   musicKey = key;
   el.pause();
@@ -260,7 +282,7 @@ function render(state) {
   const isMedia = !!(item && item.kind === 'media' && item.media);
   const mediaOn = isMedia && playing && playing.id === item.key;
   syncPlayer($('vid').firstElementChild, mediaOn && item.media.type === 'video' && !state.black ? item.media : null, playing, state, true);
-  syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room ? item.media : null, playing, state, false);
+  syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room !== false ? item.media : null, playing, state, false);
   $('vid').classList.toggle('hidden', !(mediaOn && item.media.type === 'video' && !state.black && !state.logo));
   syncMusic(state);
   syncYouTube(state, item, playing);
