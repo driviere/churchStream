@@ -164,7 +164,7 @@ On the screens, each slide is labelled, and the congregation's words are shown i
 The file needs the whole Bible, or at least the whole New Testament. Importing the same short name again replaces the earlier copy, and **Remove** deletes it. An imported translation stays **on this computer only**: saved services carry just the reading references, so another computer shows them in its own Bible.
 
 ### Editing, reordering and removing
-- **Edit:** open the item and click **Edit** (songs, text, responsive readings and countdowns).
+- **Edit:** every item can be changed: open it and click **Edit**, or hover its card in the order of service and click the pencil. Songs, text, responsive readings and countdowns change their words; **slides** can be renamed, put in a different order, removed or added to; a **reading** can change its passage or translation; a **video, music or YouTube** item can be renamed and set to repeat.
 - **Reorder:** drag an item along the order of service. On a phone or tablet, **press and hold** it for half a second, then drag.
 - **Remove:** point at the item and click the small **×**. An **Undo** button appears for a few seconds. You can also press **Ctrl + Z**.
 
