@@ -35,10 +35,21 @@ function syncPlayer(el, media, playing, state, isVideo) {
   // Where it should be now, by the server's clock (worked out now, not after loading).
   const skew = state.now - Date.now();
   el._want = () => {
-    let t = Math.max(0, (Date.now() + skew - playing.startedAt) / 1000);
+    let t = Math.max(0, ((playing.paused ? playing.pausedAt : Date.now() + skew) - playing.startedAt) / 1000);
     if (media.loop && el.duration) t %= el.duration;
     return t;
   };
+  el._paused = !!playing.paused;
+  // Paused: hold the room's copy at the same place.
+  if (playing.paused) {
+    if (!el.paused) el.pause();
+    if (el.dataset.src === src && el.readyState >= 1) {
+      const t = el._want();
+      if (Math.abs(el.currentTime - t) > 0.5 && (!el.duration || t < el.duration)) el.currentTime = t;
+    }
+    el.dataset.key = key + '|paused';
+    return;
+  }
   if (el.dataset.key === key) return;
   el.dataset.key = key;
   // Same file, new place (a jump or a restart): move there without reloading the file.
@@ -53,7 +64,7 @@ function syncPlayer(el, media, playing, state, isVideo) {
   el.addEventListener('loadedmetadata', () => {
     const t = el._want ? el._want() : 0;
     if (t > 0.3 && (!el.duration || t < el.duration)) el.currentTime = t;
-    el.play().catch(() => {});
+    if (!el._paused) el.play().catch(() => {});
   }, { once: true });
 }
 // Keep the room's copy in step with the stream: a stall or a busy computer would otherwise

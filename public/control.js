@@ -1117,23 +1117,32 @@ function FilePanel({ s, item, isLive, onShow }) {
   const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
-  useEffect(() => { if (!playing) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt]);
+  const paused = !!(playing && playing.paused);
+  useEffect(() => { if (!playing || paused) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt, paused]);
   const skew = s.now - (s.receivedAt || s.now);
-  const elapsed = playing ? (Date.now() + skew - playing.startedAt) / 1000 : 0;
+  const elapsed = playing ? ((paused ? playing.pausedAt : Date.now() + skew) - playing.startedAt) / 1000 : 0;
   const dur = m.duration || 0;
   const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
   const src = '/media/' + encodeURIComponent((m.file || '').replace(/^media:/, ''));
+  const ctl = (body) => api('/api/media/control', body).catch(fail);
   return html`<div class="media-panel">
     <div class="media-view">
       ${m.type === 'video'
-        ? html`<video src=${src} muted preload="metadata" ref=${(el) => { if (el && playing && Math.abs(el.currentTime - shown) > 1) { el.currentTime = shown; el.play().catch(() => {}); } else if (el && !playing && !el.paused) el.pause(); }}></video>`
+        ? html`<video src=${src} muted preload="metadata" ref=${(el) => {
+          if (!el) return;
+          if (playing && Math.abs(el.currentTime - shown) > 1) el.currentTime = shown;
+          if (playing && !paused) { if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
+        }}></video>`
         : html`<div class="media-audio">${icons.music()}<span>${item.title}</span></div>`}
-      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${m.type === 'video' ? 'PLAYING ON SCREEN & STREAM' : 'PLAYING'}</span>`}
+      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${paused ? 'PAUSED' : m.type === 'video' ? 'PLAYING ON SCREEN & STREAM' : 'PLAYING'}</span>`}
     </div>
     <div class="media-bar">
       ${playing
-        ? html`<button class="btn big" onClick=${() => api('/api/media/control', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop</button>
-               <button class="btn big ghost" onClick=${() => api('/api/media/control', { action: 'restart' }).catch(fail)}>From the start</button>
+        ? html`${paused
+            ? html`<button class="btn big primary" onClick=${() => ctl({ action: 'resume' })}>${icons.play()} Resume</button>`
+            : html`<button class="btn big" onClick=${() => ctl({ action: 'pause' })}>${icons.pause()} Pause</button>`}
+               <button class="btn big" onClick=${() => ctl({ action: 'stop' })}>${icons.stop()} Stop</button>
+               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>
                <${SkipButtons} shown=${shown} dur=${dur} onSeek=${(t) => seekTo(true, onShow, t)} />`
         : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
       <${Scrubber} shown=${shown} dur=${dur} loop=${m.loop} onSeek=${(t) => seekTo(isLive, onShow, t)} />
@@ -1821,6 +1830,7 @@ function ControlView({ s }) {
     api('/api/goto', { delta: d }).catch(fail);
   };
   const toggle = (name) => api('/api/toggle', { name }).catch(fail);
+  const toggleLogo = () => { toggle('logo'); if (!s.logo && !(s.config.theme || {}).logo) toast('Tip: upload your church logo in Settings → General'); };
 
   // After the live item moves on (e.g. Next past the end), keep the centre in sync.
   const liveKey = s.live && s.live.item.key;
@@ -1838,7 +1848,8 @@ function ControlView({ s }) {
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); step(-1); }
       else if (e.key === 'b' || e.key === 'B' || e.key === '.') toggle('black');
       else if (e.key === 'c' || e.key === 'C') toggle('clear');
-      else if (e.key === 'l' || e.key === 'L') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
+      else if (e.key === 'l' || e.key === 'L') toggleLogo();
+      else if (e.key === 'n' || e.key === 'N') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
       else if (/^[1-4]$/.test(e.key) && cameraNumbers(s).includes(+e.key) && !(s.streamPageOpen && s.studioOn)) api('/api/camera', { camera: +e.key }).catch(fail);
     };
     addEventListener('keydown', k);
@@ -1947,7 +1958,7 @@ function ControlView({ s }) {
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
         <button class=${'btn' + (s.clear ? ' on' : '')} onClick=${() => toggle('clear')} title="Hide the words, keep the background (C)">Clear<small>C</small></button>
-        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${() => { toggle('logo'); if (!s.logo && !(s.config.theme || {}).logo) toast('Tip: upload your church logo in Settings → General'); }} title="Show the church logo">Logo</button>
+        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${toggleLogo} title="Show the church logo (L)">Logo<small>L</small></button>
         <button class=${'btn black' + (s.black ? ' on' : '')} onClick=${() => toggle('black')} title="Black screen (B)">${s.black ? 'Black ✓' : 'Black'}<small>B</small></button>
       </div>
     </div>

@@ -67,3 +67,16 @@ test('media: a clip whose file is gone says so plainly', () => {
   app.mediaPath = () => path.join(os.tmpdir(), 'no-such-clip.mp3');
   assert.throws(() => app.playMedia(app.state.live.item), /isn't on this computer any more/);
 });
+
+test('media: Pause and Resume for a file; a jump while paused stays paused', () => {
+  const app = fakeApp();
+  const calls = [];
+  app.relay.pause = () => { calls.push('pause'); app.relay.now.paused = true; app.relay.now.pausedAt = Date.now(); return true; };
+  app.relay.resume = () => { calls.push('resume'); return true; };
+  app.mediaControl({ action: 'pause' });
+  app.mediaControl({ action: 'seek', at: 90 });
+  assert.equal(app.plays.length, 0, 'a jump while paused does not start it');
+  assert.equal(app.relay.now.pausedAt - app.relay.now.startedAt, 90000);
+  app.mediaControl({ action: 'resume' });
+  assert.deepEqual(calls, ['pause', 'resume']);
+});

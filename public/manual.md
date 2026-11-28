@@ -380,7 +380,7 @@ Click **Save / open** above the order of service.
 ### Videos and music files
 **+ Add → Video, music or YouTube → Add video or music…** and choose MP4, MOV or WebM videos (e.g. Mission Spotlight) or MP3/M4A music. The files stay on this computer.
 - A video fills the projector **and** the stream, with sound, while names and the ticker stay on top.
-- Use **Play**, **Stop** and **From the start**. To go to another place, drag or tap the bar under the player, or use **‹ 10 s** and **10 s ›**. You can also drag the bar before pressing Play, to start part-way through. The projector and the stream jump there together.
+- Use **Play**, **Pause** / **Resume**, **Stop** and **From the start**. While paused, the stream keeps the last picture and goes quiet. To go to another place, drag or tap the bar under the player, or use **‹ 10 s** and **10 s ›**. You can also drag the bar before pressing Play, to start part-way through. The projector and the stream jump there together.
 - Under the player you can change the item's settings at any time, even after it was added or while it plays: **Repeat until stopped**, **Play the sound in the room too**, **Volume**, and for YouTube links **Start at**. They're saved in the order of service; turning Repeat on while a video plays takes effect straight away.
 - Videos without sound (for example a silent announcement loop) play too.
 - Background music steps aside automatically while a video plays.
@@ -405,7 +405,8 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
 | **←**, **↑**, **Page Up** | Back |
 | **B** (or **.**) | Black on/off |
 | **C** | Clear the words on/off |
-| **L** | Name (lower third) on/off |
+| **L** | Church logo on/off |
+| **N** | Name (lower third) on/off |
 | **1**–**4** | Put that camera on the stream (cameras you have set up; while the stream page runs the studio, use its keys instead) |
 | **/** | Go to the search bar |
 | **Enter** in search | Show the result now |
