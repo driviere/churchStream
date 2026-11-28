@@ -126,7 +126,11 @@ class YtSlot {
     const w = this.want;
     if (!w) { if (this.loaded) { try { p.stopVideo(); } catch { /* */ } this.loaded = ''; } return; }
     const y = w.youtube;
-    const key = `${y.id}|${y.list}|${w.startedAt}`;
+    // `run` stays the same through pause, resume and jumps (only Play / From the start change
+    // it), so those move the playing video instead of loading it again.
+    const key = `${y.id}|${y.list}|${w.run ?? w.startedAt}`;
+    const jumped = key === this.loaded && this.startedAt !== undefined && this.startedAt !== w.startedAt;
+    this.startedAt = w.startedAt;
     if (key !== this.loaded) {
       this.loaded = key;
       if (y.list && (!y.id || !this.syncPos)) { p.loadPlaylist({ list: y.list, listType: 'playlist', index: 0 }); p.setLoop(true); p.setShuffle(false); }
@@ -143,7 +147,7 @@ class YtSlot {
         let t = this.pos(w);
         const d = p.getDuration();
         if (w.loop && d) t %= d;
-        if (Math.abs(p.getCurrentTime() - t) > 2.5 && (!d || t < d)) p.seekTo(t, true);
+        if ((jumped || Math.abs(p.getCurrentTime() - t) > 2.5) && (!d || t < d)) p.seekTo(t, true);
       }
     } catch { /* player still starting */ }
   }

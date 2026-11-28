@@ -67,3 +67,14 @@ test('stream: "Go live" while already live keeps the stream, and cancels a pendi
   await app.startStream('live');
   assert.equal(starts, 1);
 });
+
+test('stream picture: a late, older slide picture never replaces a newer one', () => {
+  const { App } = require('../lib/app');
+  const app = Object.create(App.prototype);
+  app.programFile = path.join(tmp(), 'program.jpg');
+  const jpg = (n) => Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(200, n)]);
+  assert.equal(app.saveProgramImage(jpg(2), 'slide 2', 2000), true);
+  assert.equal(app.saveProgramImage(jpg(1), 'slide 1', 1000), false);
+  assert.equal(fs.readFileSync(app.programFile)[2], 2);
+  assert.equal(app.saveProgramImage(jpg(3), 'slide 3', 3000), true);
+});

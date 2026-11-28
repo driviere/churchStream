@@ -89,7 +89,9 @@ function authorized(req) {
 
 function broadcast(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) res.write(msg);
+  // Sound levels go only to pages that show them (not to every phone on the Wi-Fi).
+  const meters = event === 'meter' || event === 'levels';
+  for (const res of clients) if (!meters || res.wantsMeters) res.write(msg);
 }
 app.on('state', (s) => broadcast('state', s));
 app.on('meter', (v) => broadcast('meter', v));
@@ -207,7 +209,7 @@ const routes = {
   },
   'POST /api/media/remove': async (req) => { const { kind } = await json(req); app.updateConfig({ theme: { [kind]: '' } }); return { ok: true }; },
   'GET /api/backgrounds': () => app.backgrounds(),
-  'POST /api/program-image': async (req, url) => ({ ok: true, updated: app.saveProgramImage(await readBody(req, 4 * 1024 * 1024), url.searchParams.get('key') || '') }),
+  'POST /api/program-image': async (req, url) => ({ ok: true, updated: app.saveProgramImage(await readBody(req, 4 * 1024 * 1024), url.searchParams.get('key') || '', url.searchParams.get('at')) }),
   'POST /api/backgrounds/delete': async (req) => { app.deleteBackground((await json(req)).id); return { ok: true }; },
   // The phone camera addresses (for the QR codes), behind the password.
   'GET /api/phone-camera/info': () => phoneInfo(),
@@ -293,8 +295,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write(`retry: 1500\nevent: state\ndata: ${JSON.stringify(app.snapshot())}\n\n`);
+      // Older pages didn't ask for meters and still expect them.
+      res.wantsMeters = url.searchParams.get('meters') === '1' || !url.searchParams.has('v');
       clients.add(res);
-      const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+      // A real event (not a comment) so pages can tell the connection is alive.
+      const ping = setInterval(() => res.write('event: ping\ndata: 0\n\n'), 20000);
       // A stream page is open: the control panel hides its simple camera/scene switches.
       const streamPage = url.searchParams.get('page') === 'stream';
       if (streamPage) app.setStreamPages(app.streamPages + 1);
