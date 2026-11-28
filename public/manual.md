@@ -191,7 +191,7 @@ Build your usual service once: welcome, opening hymn, scripture reading, prayer,
 
 ### Clear, Logo and Black
 - **Clear** (**C**): hides the words but keeps the background.
-- **Logo**: shows your church logo full screen, on the projector and the stream.
+- **Logo**: shows your church logo (at the size chosen in Settings → Appearance), on the projector and the stream.
 - **Black** (**B**): turns the screens black.
 
 These buttons stay lit while they're on. Press again to turn them off.
@@ -282,7 +282,7 @@ A second person can run the live stream from another laptop or tablet while the 
 - **Show the live stream on the screens**, and a small picture of what the projector shows now;
 - the ⚙ button for the stream settings: cameras (including phone cameras) and sound, stream keys and quality, and names.
 
-Both laptops change the same settings, so everything stays in step. If a password is set (Settings → Advanced), the stream page asks for it.
+Both laptops change the same settings, so everything stays in step. If a password is set (Settings → General), the stream page asks for it.
 
 ### The studio: scenes and transitions
 With the studio (on by default when ChurchStream's FFmpeg supports it), the **stream page** works like a vision mixer:
@@ -380,7 +380,7 @@ Click **Save / open** above the order of service.
 ### Videos and music files
 **+ Add → Video, music or YouTube → Add video or music…** and choose MP4, MOV or WebM videos (e.g. Mission Spotlight) or MP3/M4A music. The files stay on this computer.
 - A video fills the projector **and** the stream, with sound, while names and the ticker stay on top.
-- Use **Play**, **Stop** and **From the start**.
+- Use **Play**, **Stop** and **From the start**. To go to another place, drag or tap the bar under the player, or use **‹ 10 s** and **10 s ›**. You can also drag the bar before pressing Play, to start part-way through. The projector and the stream jump there together.
 - Under the player you can change the item's settings at any time, even after it was added or while it plays: **Repeat until stopped**, **Play the sound in the room too**, **Volume**, and for YouTube links **Start at**. They're saved in the order of service; turning Repeat on while a video plays takes effect straight away.
 - Videos without sound (for example a silent announcement loop) play too.
 - Background music steps aside automatically while a video plays.
@@ -401,12 +401,12 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
 
 | Key | Does |
 |---|---|
-| **→**, **Space**, **Page Down** | Next slide (a presentation clicker uses these) |
-| **←**, **Page Up** | Back |
+| **→**, **↓**, **Space**, **Page Down** | Next slide (a presentation clicker uses these) |
+| **←**, **↑**, **Page Up** | Back |
 | **B** (or **.**) | Black on/off |
 | **C** | Clear the words on/off |
 | **L** | Name (lower third) on/off |
-| **1**, **2** | Put camera 1 or camera 2 on the stream (with two cameras) |
+| **1**–**4** | Put that camera on the stream (cameras you have set up; while the stream page runs the studio, use its keys instead) |
 | **/** | Go to the search bar |
 | **Enter** in search | Show the result now |
 | **Shift + Enter** in search | Add the result to the order of service |
@@ -420,7 +420,7 @@ Paste a YouTube link in **+ Add → Video, music or YouTube** and click **Find**
 |---|---|
 | **"Windows protected your PC"** | Click **More info → Run anyway**. It appears because the app isn't code-signed. |
 | **Mac: "can't be opened" / "Apple could not verify"** | System Settings → Privacy & Security → **Open Anyway** (or Control-click → Open). |
-| **Mac: no camera or microphone in the list** | System Settings → Privacy & Security → **Camera** and **Microphone**: turn on **Terminal**, then restart ChurchStream. |
+| **Mac: no camera or microphone in the list** | System Settings → Privacy & Security → **Camera** and **Microphone**: turn on **ChurchStream** (or **Terminal**, if you start it with *Start ChurchStream.command*), then restart ChurchStream. |
 | **Camera not found or busy** | Close other apps that use the camera (Zoom, Teams, the Camera app), check the cable, then pick the camera again in Settings → Camera & sound. |
 | **No sound on the stream** | Check the microphone or sound desk is on and selected in Settings → Camera & sound, and that the meter moves when someone speaks. |
 | **Sound comes before the picture** | Move **Lip-sync** to the right (Settings → Camera & sound). |

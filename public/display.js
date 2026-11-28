@@ -92,7 +92,8 @@ function loadYT() {
       window.onYouTubeIframeAPIReady = () => { resolve(window.YT); if (last) render(last); };
       const sc = document.createElement('script');
       sc.src = 'https://www.youtube.com/iframe_api';
-      sc.onerror = () => { ytApi = null; resolve(null); }; // offline: try again next time
+      // Offline: remove the failed script and wait 30 s before trying again (not on every update).
+      sc.onerror = () => { sc.remove(); resolve(null); setTimeout(() => { ytApi = null; }, 30000); };
       document.head.appendChild(sc);
     });
   }
@@ -214,6 +215,7 @@ function render(state) {
     for (const c of ['font-segoe', 'font-serif', 'font-arial', 'align-left', 'outline', 'pos-bottom']) $('screen').classList.remove(c);
     for (const c of tcls.split(' ').filter(Boolean)) $('screen').classList.add(c);
     lastThemeCls = tcls;
+    lastAnn = null; // a countdown's announcement is fitted again in the new font
   }
   const liveItem = state.live && state.live.item;
   const bg = bgInfo(effectiveBg(currentSlide(state), liveItem, theme));
@@ -250,13 +252,17 @@ function render(state) {
   const tk = state.ticker || {};
   const tickOn = !!(state.config.tickerOnProjector && tk.visible && tk.text && !state.black && !state.streamOnScreens);
   const span = $('ticker').firstElementChild;
-  if (tickOn && span.textContent !== tk.text) {
-    span.textContent = tk.text;
-    const secs = Math.max(8, tk.text.length / ({ slow: 4, fast: 11 }[state.config.tickerSpeed] || 7));
-    $('ticker').style.setProperty('--tick-dur', secs + 's');
+  if (tickOn && span.textContent !== tk.text) span.textContent = tk.text;
+  if (tickOn) {
+    // Worked out every time, so changing "Ticker speed" applies to a ticker already running.
+    const secs = Math.max(8, tk.text.length / ({ slow: 4, fast: 11 }[state.config.tickerSpeed] || 7)) + 's';
+    if ($('ticker').style.getPropertyValue('--tick-dur') !== secs) $('ticker').style.setProperty('--tick-dur', secs);
   }
   $('ticker').classList.toggle('hidden', !tickOn);
-  $('screen').classList.toggle('has-ticker', tickOn);
+  if ($('screen').classList.contains('has-ticker') !== tickOn) {
+    $('screen').classList.toggle('has-ticker', tickOn);
+    shownKey = null; // the words get a little less room above the ticker
+  }
 
   const slide = currentSlide(state);
   const item = state.live && state.live.item;
@@ -267,6 +273,7 @@ function render(state) {
   $('count').classList.toggle('hidden', !isCount);
   if (isCount) {
     const ann = state.clear || !slide || !slide.text ? '' : slide.text;
+    // lastAnn is reset after a resize, the fonts loading or a change of font: fit it again.
     if (ann !== lastAnn) {
       lastAnn = ann;
       $('count').lastElementChild.innerHTML = ann ? `<div class="screen-text">${escapeHtml(ann)}</div>` : '';
@@ -305,8 +312,8 @@ function render(state) {
 
 let last = null;
 connect((s) => { if (s) last = s; render(s); });
-addEventListener('resize', () => { shownKey = null; if (last) render(last); });
-document.fonts && document.fonts.ready.then(() => { shownKey = null; if (last) render(last); });
+addEventListener('resize', () => { shownKey = null; lastAnn = null; if (last) render(last); });
+document.fonts && document.fonts.ready.then(() => { shownKey = null; lastAnn = null; if (last) render(last); });
 
 // "Stream on screens": the live stream picture (camera, slides, names — what viewers see).
 // The picture keeps coming over one connection; if it breaks (ChurchStream restarted), try again.

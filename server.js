@@ -109,10 +109,12 @@ function serveFile(res, file, type, req) {
       start = Math.max(0, start); end = Math.min(st.size - 1, end);
       if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
       res.writeHead(206, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache' });
-      return fs.createReadStream(file, { start, end }).pipe(res);
+      // pipeline closes the file when the browser stops reading (the projector seeking, a
+      // closed page), so files aren't left open (on Windows that would stop deleting them).
+      return require('stream').pipeline(fs.createReadStream(file, { start, end }), res, () => {});
     }
     res.writeHead(200, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache', 'Content-Length': st.size });
-    fs.createReadStream(file).pipe(res);
+    require('stream').pipeline(fs.createReadStream(file), res, () => {});
   });
 }
 

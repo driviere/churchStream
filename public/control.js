@@ -1,4 +1,4 @@
-import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
+import { html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
 import { connect, fitText, textSizes, WRAP_GAIN, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
@@ -184,18 +184,46 @@ function Toasts() {
     toastBus.addEventListener('t', on);
     return () => toastBus.removeEventListener('t', on);
   }, []);
-  return html`<div class="toasts">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}${t.action && html`<button class="toast-act" onClick=${() => { setList((l) => l.filter((x) => x.id !== t.id)); t.action.run(); }}>${t.action.label}</button>`}</div>`)}</div>`;
+  return html`<div class="toasts" role="status" aria-live="polite">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}${t.action && html`<button class="toast-act" onClick=${() => { setList((l) => l.filter((x) => x.id !== t.id)); t.action.run(); }}>${t.action.label}</button>`}</div>`)}</div>`;
 }
 
-function Modal({ title, onClose, children, footer, wide }) {
+// Has anything in an editor changed since it opened?
+function useChanged(...vals) {
+  const first = useRef(JSON.stringify(vals));
+  return JSON.stringify(vals) !== first.current;
+}
+
+let modalSeq = 0;
+// dirty: something typed would be lost, so Escape, the ✕ and a click beside the dialog ask first.
+function Modal({ title, onClose, children, footer, wide, dirty }) {
+  const close = () => { if (!dirty || confirm('Close without saving? Your changes will be lost.')) onClose(); };
+  const ref = useRef();
+  const [id] = useState(() => 'modal-title-' + ++modalSeq);
   useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    const k = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      // Keep Tab inside the dialog.
+      if (e.key === 'Tab' && ref.current) {
+        const f = [...ref.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent !== null);
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
-  }, [onClose]);
-  return html`<div class="overlay" onMouseDown=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div class=${'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true">
-      <header><h2>${title}</h2><span class="spacer"></span><button class="btn ghost icon" onClick=${onClose} aria-label="Close">${icons.x()}</button></header>
+  });
+  // Focus moves into the dialog when it opens (its first box, or the dialog), and back after.
+  useEffect(() => {
+    const before = document.activeElement;
+    const el = ref.current;
+    const first = el && (el.querySelector('[autofocus]') || el.querySelector('.body input, .body textarea, .body select'));
+    (first || el).focus({ preventScroll: true });
+    return () => { if (before && before.focus && document.contains(before)) before.focus({ preventScroll: true }); };
+  }, []);
+  return html`<div class="overlay" onMouseDown=${(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div ref=${ref} tabindex="-1" class=${'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-labelledby=${id}>
+      <header><h2 id=${id}>${title}</h2><span class="spacer"></span><button class="btn ghost icon" onClick=${close} aria-label="Close">${icons.x()}</button></header>
       <div class="body">${children}</div>
       ${footer && html`<footer>${footer}</footer>`}
     </div>
@@ -204,6 +232,9 @@ function Modal({ title, onClose, children, footer, wide }) {
 
 // ---------------------------------------------------------------------------------------
 // status pill in the top bar
+// Now, by ChurchStream's clock (a tablet's own clock can be minutes out).
+const serverNow = (s) => Date.now() + (s.now - (s.receivedAt || s.now));
+
 function StreamStatus({ s }) {
   const st = s.stream;
   const [, tick] = useState(0);
@@ -214,7 +245,7 @@ function StreamStatus({ s }) {
   const dests = Object.values(st.destinations || {});
   const health = st.problem ? html`<span class="bad">${st.state === 'retrying' ? 'Reconnecting' : 'Check connection'}</span>` : html`<span class="ok">Connection good</span>`;
   return html`<div class=${'status live' + (st.problem ? ' warn' : '')} title=${dests.map((d) => `${d.label}: ${d.state}`).join(', ')}>
-    <span class="dot"></span>Live · <span style="font-variant-numeric:tabular-nums">${fmtTime(Date.now() - (st.liveSince || Date.now()))}</span>
+    <span class="dot"></span>Live · <span style="font-variant-numeric:tabular-nums">${fmtTime(Math.max(0, serverNow(s) - (st.liveSince || serverNow(s))))}</span>
     <span class="sep extra">·</span><span class="extra">${health}</span>
   </div>`;
 }
@@ -434,7 +465,8 @@ function Plan({ s, locked, selectedKey, onOpen, onEdit, onNewSong, onNewText, on
       ${items.map((it, i) => {
         const isLive = i === liveAt;
         const n = isLive ? live.item.slides.length : it.count || 0;
-        return html`<li key=${it.uid} data-i=${i} onPointerDown=${(e) => start(e, i)}
+        return html`<li key=${it.uid} data-i=${i} onPointerDown=${(e) => start(e, i)} tabindex="0" role="button" aria-label=${`${kindLabel(it)}: ${it.title}`}
+          onKeyDown=${(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onOpen(it.uid); } }}
           class=${[it.uid === selectedKey && 'sel', isLive && 'live', liveAt >= 0 && i < liveAt && 'done', drag === i && 'dragging', over === i && drag !== null && drag !== i && 'over'].filter(Boolean).join(' ')}>
           <span class=${'k ' + it.kind}>${kindLabel(it)}</span>
           <span class="t">${it.title}</span>
@@ -508,7 +540,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
         </div>`;
       })()}
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
-      ${item.kind === 'media' ? html`<${MediaPanel} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
+      ${item.kind === 'media' ? html`<${MediaPanel} key=${item.key} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
       <div class="slides-scroll"><div class="slides">
         ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} onBackground=${inPlan ? () => onBackground(i) : null} />`)}
       </div></div>`}`}
@@ -628,7 +660,7 @@ function Aside({ s, onGoLive, onStop, active }) {
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
       <${StreamPhase} s=${s} />
       ${s.streamPageOpen && s.studioOn
-        ? html`<div class="note stream-elsewhere">${icons.stream ? icons.stream() : ''}<span><b>The stream is being run from the stream page.</b> Cameras, scenes and transitions are on that screen. Go live and End stay here too.</span></div>`
+        ? html`<div class="note stream-elsewhere"><span><b>The stream is being run from the stream page.</b> Cameras, scenes and transitions are on that screen. Go live and End stay here too.</span></div>`
         : html`<${CameraSwitch} s=${s} /><${StreamScene} s=${s} />`}
       <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
@@ -680,7 +712,7 @@ function StreamPhase({ s }) {
   const [, tick] = useState(0);
   useEffect(() => { if (!ph) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [ph && ph.until]);
   if (!ph) return null;
-  const left = Math.max(0, Math.round((ph.until - Date.now()) / 1000));
+  const left = Math.max(0, Math.round((ph.until - serverNow(s)) / 1000));
   return html`<div class="note row" style="margin:0;gap:8px">
     <span class="grow">${ph.kind === 'start'
       ? html`<b>Starting screen</b> on the stream until ${clock(ph.until)}`
@@ -825,7 +857,8 @@ function SongEditor({ song, addToService, onClose, onSaved }) {
     onSaved && onSaved(null);
     onClose();
   };
-  return html`<${Modal} wide title=${song.id ? 'Edit song' : 'New song'} onClose=${onClose} footer=${html`
+  const dirty = useChanged(title, author, lyrics);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${song.id ? 'Edit song' : 'New song'} onClose=${onClose} footer=${html`
       ${song.id && html`<button class="btn ghost" onClick=${del}>Delete</button>`}<span class="spacer"></span>
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy || !title.trim() || !sections.length} onClick=${save}>${addToService ? 'Save and add to service' : 'Save song'}</button>`}>
@@ -863,7 +896,8 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave, preset }) {
       <button class="btn primary" disabled=${busy || !slides.length} onClick=${async () => { setBusy(true); await onSave(name(), slides, auto); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, text, auto);
+  return html`<${Modal} dirty=${dirty && !busy} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
     <div class="field"><label class="label">Name (shown in the order of service)</label><input class="input" value=${title} placeholder="e.g. Announcements" onInput=${(e) => setTitle(e.target.value)} /></div>
     <label class="label">Text</label>
     <textarea class="textarea" style="min-height:220px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'} autofocus=${editing}></textarea>
@@ -922,7 +956,8 @@ function ResponsiveEditor({ onClose, onAdd, onShow, initial, onSave }) {
       <button class="btn primary" disabled=${!slides.length} onClick=${async () => { await onSave(name(), slides); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit responsive reading' : 'Responsive reading'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, text);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${editing ? 'Edit responsive reading' : 'Responsive reading'} onClose=${onClose} footer=${footer}>
     <div class="editor">
       <div>
         <div class="field"><label class="label" for="rr-ref">Start from a Bible passage (optional)</label>
@@ -958,7 +993,8 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
   const footer = editing
     ? html`<button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${async () => { const it = item(); await onSave(it); onClose(); }}>Save changes</button>`
     : html`<button class="btn" onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button><button class="btn primary" onClick=${() => { onShow(item()); onClose(); }}>Start now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit countdown' : 'Countdown'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, mode, minutes, until, message, endText, text, auto);
+  return html`<${Modal} wide dirty=${dirty} title=${editing ? 'Edit countdown' : 'Countdown'} onClose=${onClose} footer=${footer}>
     <div class="editor">
       <div>
         <div class="choices" style="margin-bottom:12px">
@@ -1105,7 +1141,7 @@ function FilePanel({ s, item, isLive, onShow }) {
     <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
       ? 'The video fills the projector and the stream while it plays (names and the ticker stay on top). Background music pauses during the video.'
-      : 'The music plays on the stream' + (m.room ? ' and through this computer’s speakers.' : '.')}</div>
+      : 'The music plays on the stream' + (m.room !== false ? ' and through this computer’s speakers.' : '.')}</div>
   </div>`;
 }
 
@@ -1154,7 +1190,8 @@ function YouTubeBox({ s, onItem, onDownloaded }) {
   const [busy, setBusy] = useState(false);
   const [loop, setLoop] = useState(false);
   const dl = s.download;
-  const doneRef = useRef(null);
+  // A download that finished before this was opened (e.g. last week's) isn't picked again.
+  const doneRef = useRef(dl && dl.state === 'done' && dl.clip ? dl.clip.id : null);
   useEffect(() => {
     if (dl && dl.state === 'done' && dl.clip && doneRef.current !== dl.clip.id) { doneRef.current = dl.clip.id; onDownloaded(dl.clip); }
   }, [dl && dl.state, dl && dl.clip && dl.clip.id]);
@@ -1255,7 +1292,8 @@ function MediaEditor({ initial, onClose, onSave }) {
     await onSave(t, { ...m, loop, ...(m.type === 'youtube' ? {} : { room }) });
     onClose();
   };
-  return html`<${Modal} title=${m.type === 'audio' ? 'Edit music' : m.type === 'youtube' ? 'Edit YouTube video' : 'Edit video'} onClose=${onClose} footer=${html`
+  const dirty = useChanged(title, loop, room);
+  return html`<${Modal} dirty=${dirty && !busy} title=${m.type === 'audio' ? 'Edit music' : m.type === 'youtube' ? 'Edit YouTube video' : 'Edit video'} onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy} onClick=${save}>Save changes</button>`}>
     <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} autofocus onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && save()} /></div>
@@ -1379,7 +1417,8 @@ function SlidesImport({ onClose, onAdd, onShow, initial, onSave }) {
       <button class="btn primary" disabled=${!ready} onClick=${async () => { setBusy('Saving…'); await onSave(title.trim() || 'Slides', numbered(), auto); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit slides' : 'Slides'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, slides.map((x) => x.image), auto);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${editing ? 'Edit slides' : 'Slides'} onClose=${onClose} footer=${footer}>
     <div class="note" style="margin-bottom:14px">Pick a <b>PowerPoint</b> file, a PDF, or pictures (one per slide). You can also drop them here. PowerPoint on this computer opens the file, so the slides look exactly the same. Animations, videos and sounds inside it don't carry over. From Google Slides, choose File → Download → PDF.</div>
     <div class="row wrap" style="margin-bottom:12px" onDragOver=${(e) => e.preventDefault()} onDrop=${onDrop}>
       <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PowerPoint, PDF or pictures…'}</button>
@@ -1422,7 +1461,8 @@ function BibleEditor({ s, initial, onClose, onSave }) {
     await onSave({ title: found.title, subtitle: found.translation, ref: found.title, translation: tr, slides: found.slides });
     onClose();
   };
-  return html`<${Modal} wide title="Edit reading" onClose=${onClose} footer=${html`
+  const dirty = useChanged(ref, tr);
+  return html`<${Modal} wide dirty=${dirty && !busy} title="Edit reading" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy || !found} onClick=${save}>Save changes</button>`}>
     <div class="editor">
@@ -1689,7 +1729,8 @@ function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
   const current = scope === 'slide' ? ((plan.slideBackgrounds || {})[i] || '') : (plan.background || '');
   const [pick, setPick] = useState(current);
   useEffect(() => setPick(current), [scope]);
-  const slide = item.slides[i];
+  // The slide the button was pressed on (after splitting), for the preview and its name.
+  const slide = item.slides[slideIndex ?? 0] || item.slides[0];
   const previewBg = scope === 'slide' ? (pick || plan.background || s.config.theme.background) : (pick || s.config.theme.background);
   const apply = async () => {
     const items = s.plan.items.map((x) => {
@@ -1709,7 +1750,7 @@ function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
     <div class="bg-dialog">
       <div>
         ${slideIndex !== null && html`<div class="choices" style="margin-bottom:14px">
-          <button class=${'choice' + (scope === 'slide' ? ' on' : '')} onClick=${() => setScope('slide')}><b>Only this slide</b><span>${slide.label || 'Slide ' + (i + 1)}</span></button>
+          <button class=${'choice' + (scope === 'slide' ? ' on' : '')} onClick=${() => setScope('slide')}><b>Only this slide</b><span>${slide.label || 'Slide ' + ((slideIndex ?? 0) + 1)}</span></button>
           <button class=${'choice' + (scope === 'item' ? ' on' : '')} onClick=${() => setScope('item')}><b>Every slide of this item</b><span>${item.slides.length} slides</span></button>
         </div>`}
         <${BackgroundGallery} value=${pick} onPick=${setPick} defaultTile=${scope === 'slide'
@@ -2027,6 +2068,7 @@ function LocationField({ s }) {
   const saveLoc = (a = lat, b = lng) => {
     const la = parseFloat(a); const lo = parseFloat(b);
     if (a === '' && b === '') return save({ location: { lat: null, lng: null } });
+    if (a === '' || b === '') return; // still typing the other one
     if (!(la >= -90 && la <= 90 && lo >= -180 && lo <= 180)) return fail(new Error('Latitude must be between -90 and 90, longitude between -180 and 180.'));
     save({ location: { lat: la, lng: lo } }, 'Location saved');
   };
