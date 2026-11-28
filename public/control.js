@@ -340,7 +340,7 @@ const kindLabel = (it) => {
   return m ? `${m[1] === 'Church Hymnal' ? 'CH' : 'HYMN'} ${m[2]}` : 'SONG';
 };
 
-function Plan({ s, locked, selectedKey, onOpen, onNewSong, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
+function Plan({ s, locked, selectedKey, onOpen, onEdit, onNewSong, onNewText, onNewCountdown, onNewSlides, onNewMedia, onNewSunset, onNewResponsive, onTemplates, onServices, onNewService }) {
   const items = s.plan.items;
   const live = s.live;
   const liveAt = live ? items.findIndex((x) => x.uid === live.item.key) : -1;
@@ -362,7 +362,7 @@ function Plan({ s, locked, selectedKey, onOpen, onNewSong, onNewText, onNewCount
     return () => el.removeEventListener('touchmove', block);
   }, []);
   const start = (e, i) => {
-    if (e.button > 0 || e.target.closest('.x')) return;
+    if (e.button > 0 || e.target.closest('.x, .ed')) return;
     const touch = e.pointerType !== 'mouse';
     const x0 = e.clientX;
     const y0 = e.clientY;
@@ -419,6 +419,7 @@ function Plan({ s, locked, selectedKey, onOpen, onNewSong, onNewText, onNewCount
           <span class="t">${it.title}</span>
           ${it.kind === 'song' && it.verses && it.verses.length > 0 && html`<span class="verses-tag">v. ${it.verses.join(', ')}</span>`}
           ${n > 0 && html`<span class="dots">${Array.from({ length: Math.min(n, 12) }, (_, d) => html`<i class=${isLive ? (d === live.index ? 'now' : d < live.index ? 'past' : '') : ''}></i>`)}</span>`}
+          <button class="ed" title="Edit" aria-label=${'Edit ' + it.title} onClick=${(e) => { e.stopPropagation(); onEdit(it.uid); }}>${icons.edit()}</button>
           <button class="x" title="Remove" aria-label=${'Remove ' + it.title} onClick=${(e) => { e.stopPropagation(); remove(it.uid); }}>${icons.x()}</button>
         </li>`;
       })}
@@ -467,7 +468,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
           <h1>${item.title}</h1>
           <div class="sub">${[item.subtitle, `${item.slides.length} slide${item.slides.length === 1 ? '' : 's'}`, 'tap any slide to show it'].filter(Boolean).join(' · ')}</div>
         </div>
-        ${(item.kind === 'song' || item.kind === 'text' || item.kind === 'countdown') && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
+        ${onEdit && html`<button class="btn small" onClick=${onEdit}>${icons.edit()} Edit</button>`}
         ${inPlan && item.kind !== 'media' && html`<button class="btn small" onClick=${() => onBackground(null)}>${icons.image()} Background</button>`}
         ${!inPlan && html`<button class="btn small" onClick=${onAdd}>${icons.plus()} Add to service</button>`}
       </div>
@@ -1183,6 +1184,29 @@ function MediaDialog({ s, onClose, onAdd, onShow }) {
   </${Modal}>`;
 }
 
+// Edit a video, music or YouTube item: its name, repeating, and (for files) the room speakers.
+function MediaEditor({ initial, onClose, onSave }) {
+  const m = initial.media || {};
+  const [title, setTitle] = useState(initial.title);
+  const [loop, setLoop] = useState(!!m.loop);
+  const [room, setRoom] = useState(m.room !== false);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    const t = title.trim() || initial.title;
+    await onSave(t, { ...m, loop, ...(m.type === 'youtube' ? {} : { room }) });
+    onClose();
+  };
+  return html`<${Modal} title=${m.type === 'audio' ? 'Edit music' : m.type === 'youtube' ? 'Edit YouTube video' : 'Edit video'} onClose=${onClose} footer=${html`
+      <button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" disabled=${busy} onClick=${save}>Save changes</button>`}>
+    <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} autofocus onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && save()} /></div>
+    <label class="switch"><input type="checkbox" checked=${loop} onChange=${(e) => setLoop(e.target.checked)} /><span>Repeat until stopped</span></label>
+    ${m.type !== 'youtube' && html`<label class="switch"><input type="checkbox" checked=${room} onChange=${(e) => setRoom(e.target.checked)} /><span>Play the sound through this computer too (for the room)</span></label>`}
+    <div class="hint">To use a different file or link, remove this item and add the new one with + Add.</div>
+  </${Modal}>`;
+}
+
 // Background music: plays quietly under everything (and pauses for videos).
 function MusicCard({ s }) {
   const [clips, load] = useClips();
@@ -1235,11 +1259,13 @@ async function uploadSlideImage(blob) {
 
 const PPT_RE = /\.(pptx|ppt|ppsx|pps|pptm|odp|key)$/i;
 const SLIDE_ACCEPT = '.pptx,.ppt,.ppsx,.pps,.pptm,.odp,.key,application/pdf,.pdf,image/png,image/jpeg,image/webp';
-function SlidesImport({ onClose, onAdd, onShow }) {
-  const [title, setTitle] = useState('');
-  const [slides, setSlides] = useState([]);
+function SlidesImport({ onClose, onAdd, onShow, initial, onSave }) {
+  const editing = !!(initial && onSave);
+  const [title, setTitle] = useState(editing ? initial.title : '');
+  const [slides, setSlides] = useState(editing ? initial.slides.filter((sl) => sl.image).map((sl) => ({ label: sl.label || '', text: '', image: sl.image })) : []);
   const [busy, setBusy] = useState('');
-  const [auto, setAuto] = useState(0);
+  const [auto, setAuto] = useState((editing && initial.autoAdvance) || 0);
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= slides.length) return; const next = slides.slice(); [next[i], next[j]] = [next[j], next[i]]; setSlides(next); };
   // A PDF (bytes) → slide pictures, 1920 px wide.
   const renderPdf = async (bytes, out) => {
     const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
@@ -1286,11 +1312,16 @@ function SlidesImport({ onClose, onAdd, onShow }) {
   };
   const pick = () => pickFiles(SLIDE_ACCEPT, true, addFiles);
   const onDrop = (e) => { e.preventDefault(); if (!busy && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); };
-  const item = () => ({ key: 'images:' + Date.now(), kind: 'images', title: title.trim() || 'Slides', subtitle: '', slides, autoAdvance: auto });
+  const item = () => ({ key: 'images:' + Date.now(), kind: 'images', title: title.trim() || 'Slides', subtitle: '', slides: numbered(), autoAdvance: auto });
   const ready = slides.length > 0 && !busy;
-  return html`<${Modal} wide title="Slides" onClose=${onClose} footer=${html`
-      <button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
-      <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`}>
+  // Slides named “Slide 3” follow their new place after reordering; names typed elsewhere stay.
+  const numbered = () => slides.map((sl, i) => ({ ...sl, label: /^Slide \d+$/.test(sl.label || '') || !sl.label ? `Slide ${i + 1}` : sl.label }));
+  const footer = editing
+    ? html`<button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" disabled=${!ready} onClick=${async () => { setBusy('Saving…'); await onSave(title.trim() || 'Slides', numbered(), auto); onClose(); }}>Save changes</button>`
+    : html`<button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
+      <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
+  return html`<${Modal} wide title=${editing ? 'Edit slides' : 'Slides'} onClose=${onClose} footer=${footer}>
     <div class="note" style="margin-bottom:14px">Pick a <b>PowerPoint</b> file, a PDF, or pictures (one per slide). You can also drop them here. PowerPoint on this computer opens the file, so the slides look exactly the same. Animations, videos and sounds inside it don't carry over. From Google Slides, choose File → Download → PDF.</div>
     <div class="row wrap" style="margin-bottom:12px" onDragOver=${(e) => e.preventDefault()} onDrop=${onDrop}>
       <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PowerPoint, PDF or pictures…'}</button>
@@ -1303,7 +1334,52 @@ function SlidesImport({ onClose, onAdd, onShow }) {
     </div>
     ${slides.length > 0 && html`<div class="bg-grid" style="max-height:340px;overflow:auto;padding:4px">${slides.map((sl, i) => html`<div class="bg-tile" key=${i}>
       <div class="bg-thumb" style=${`background:#000 url("${bgInfo(sl.image).url}") center/contain no-repeat;cursor:default`}></div>
-      <div class="row" style="justify-content:space-between"><span class="bg-name">${i + 1}</span><button class="btn ghost small" onClick=${() => setSlides(slides.filter((_, j) => j !== i))}>Remove</button></div></div>`)}</div>`}
+      <div class="row" style="justify-content:space-between;gap:2px"><span class="bg-name">${i + 1}</span>
+        <span class="row" style="gap:2px">
+          <button class="btn ghost small" disabled=${i === 0} title="Move earlier" aria-label=${'Move slide ' + (i + 1) + ' earlier'} onClick=${() => move(i, -1)}>‹</button>
+          <button class="btn ghost small" disabled=${i === slides.length - 1} title="Move later" aria-label=${'Move slide ' + (i + 1) + ' later'} onClick=${() => move(i, 1)}>›</button>
+          <button class="btn ghost small" onClick=${() => setSlides(slides.filter((_, j) => j !== i))}>Remove</button></span></div></div>`)}</div>`}
+  </${Modal}>`;
+}
+
+// Edit a Bible reading: change the passage or the translation.
+function BibleEditor({ s, initial, onClose, onSave }) {
+  const have = (s.library && s.library.translations) || [];
+  const [ref, setRef] = useState(initial.ref || initial.title || '');
+  const [tr, setTr] = useState(String(initial.translation || (initial.subtitle || '')).toLowerCase() || s.config.bible.translation);
+  const [found, setFound] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!ref.trim()) { setFound(null); setError(''); return undefined; }
+    let gone = false;
+    const t = setTimeout(() => get('/api/bible', { ref: ref.trim(), t: tr })
+      .then((r) => { if (gone) return; if (r.error || !r.slides) { setFound(null); setError(r.error || 'Not found'); } else { setFound(r); setError(''); } })
+      .catch((err) => { if (!gone) { setFound(null); setError(err.message); } }), 250);
+    return () => { gone = true; clearTimeout(t); };
+  }, [ref, tr]);
+  const save = async () => {
+    if (!found) return;
+    setBusy(true);
+    await onSave({ title: found.title, subtitle: found.translation, ref: found.title, translation: tr, slides: found.slides });
+    onClose();
+  };
+  return html`<${Modal} wide title="Edit reading" onClose=${onClose} footer=${html`
+      <button class="btn" onClick=${onClose}>Cancel</button>
+      <button class="btn primary" disabled=${busy || !found} onClick=${save}>Save changes</button>`}>
+    <div class="editor">
+      <div>
+        <div class="field"><label class="label">Passage</label><input class="input" value=${ref} autofocus placeholder="e.g. John 3:16-18 or Ps 23" onInput=${(e) => setRef(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && save()} /></div>
+        <div class="field"><label class="label">Translation</label>
+          <select class="select" value=${tr} onChange=${(e) => setTr(e.target.value)}>
+            ${!have.some((t) => t.id === tr) && html`<option value=${tr}>${tr.toUpperCase()}</option>`}
+            ${have.map((t) => html`<option value=${t.id}>${t.name} (${t.abbrev})</option>`)}
+          </select></div>
+        <div class="hint">${error || (found ? `${found.title} · ${found.translation} · ${found.slides.length} slide${found.slides.length === 1 ? '' : 's'}` : '')}</div>
+      </div>
+      <div><label class="label">Preview</label>
+        <div class="preview-list">${(found ? found.slides : []).slice(0, 30).map((sl, i) => html`<div key=${i}><div class="lbl">${sl.ref}</div><${Screen} slide=${sl} kind="bible" /></div>`)}</div></div>
+    </div>
   </${Modal}>`;
 }
 
@@ -1667,9 +1743,20 @@ function ControlView({ s }) {
     return () => removeEventListener('keydown', k);
   });
 
-  const editSong = async () => {
-    try { setDialog({ type: 'song', song: await get('/api/song', { id: songIdOf(item) }) }); } catch (err) { fail(err); }
+  const editSong = async (it = item) => {
+    try { setDialog({ type: 'song', song: await get('/api/song', { id: songIdOf(it) }) }); } catch (err) { fail(err); }
   };
+  // Every kind of item has an editor.
+  const editItem = (it) => {
+    if (!it) return;
+    if (it.kind === 'song') return editSong(it);
+    if (it.kind === 'text') return setDialog({ type: isResponsive(it) ? 'responsive' : 'text', item: unsplit(it) });
+    if (it.kind === 'countdown') return setDialog({ type: 'countdown', item: it });
+    if (it.kind === 'images') return setDialog({ type: 'slides', item: it });
+    if (it.kind === 'media') return setDialog({ type: 'media-edit', item: it });
+    if (it.kind === 'bible') return setDialog({ type: 'bible', item: it });
+  };
+  const editPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); editItem(it); }).catch(fail);
   // Text items live inside the order of service, so editing saves the plan (and refreshes the
   // projector if that item is on screen right now).
   // Save edited text / countdown slides. Items in the order of service are saved there and
@@ -1696,6 +1783,11 @@ function ControlView({ s }) {
     saveEdited(uid, { kind: 'text', title, slides, autoAdvance }, (i) => i).catch(fail);
   const saveCountdown = (uid, edited) =>
     saveEdited(uid, { kind: 'countdown', title: edited.title, slides: edited.slides, autoAdvance: edited.autoAdvance, countdown: edited.countdown }, () => 0).catch(fail);
+  const saveImages = (uid, title, slides, autoAdvance) =>
+    saveEdited(uid, { kind: 'images', title, slides, autoAdvance }, (i) => i).catch(fail);
+  const saveMedia = (uid, title, media) =>
+    saveEdited(uid, { kind: 'media', title, media, slides: [{ label: title, text: '' }] }, () => 0).catch(fail);
+  const saveBible = (uid, edited) => saveEdited(uid, { kind: 'bible', ...edited }, () => 0).catch(fail);
   // After a background change, reload the item (and refresh the screens if it is showing).
   // Sing only some verses of a hymn in the order of service.
   const setVerses = async (uid, verses) => {
@@ -1739,12 +1831,12 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && item.kind === 'text' ? () => setDialog({ type: isResponsive(item) ? 'responsive' : 'text', item: unsplit(item) }) : item && item.kind === 'countdown' ? () => setDialog({ type: 'countdown', item }) : editSong} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && (item.kind !== 'song' || songIdOf(item)) ? () => editItem(item) : null} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
         onVerses=${(verses) => setVerses(item.key, verses)} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
     <div class="bottom">
-      <${Plan} s=${s} locked=${vol} selectedKey=${item && item.key} onOpen=${openPlan} onNewSong=${() => setDialog({ type: 'song', song: {}, addToService: true })} onNewText=${() => setDialog({ type: 'text' })}
+      <${Plan} s=${s} locked=${vol} selectedKey=${item && item.key} onOpen=${openPlan} onEdit=${editPlan} onNewSong=${() => setDialog({ type: 'song', song: {}, addToService: true })} onNewText=${() => setDialog({ type: 'text' })}
         onNewCountdown=${() => setDialog({ type: 'countdown' })} onNewSlides=${() => setDialog({ type: 'slides' })} onNewMedia=${() => setDialog({ type: 'media' })}
         onNewResponsive=${() => setDialog({ type: 'responsive' })}
         onNewSunset=${() => setDialog({ type: 'text', preset: { title: 'Sunset times', text: 'This Sabbath ends at sunset\n{sabbath-ends}\n\nNext Sabbath begins\n{next-sabbath-begins}' } })} onTemplates=${() => setDialog({ type: 'templates' })}
@@ -1769,7 +1861,10 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'templates' && html`<${TemplatesDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'services' && html`<${ServicesDialog} s=${s} onClose=${() => setDialog(null)} />`}
     ${dialog && dialog.type === 'newservice' && html`<${NewServiceDialog} s=${s} onClose=${() => setDialog(null)} onTemplates=${() => setDialog({ type: 'templates' })} />`}
-    ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
+    ${dialog && dialog.type === 'slides' && html`<${SlidesImport} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)}
+      initial=${dialog.item} onSave=${dialog.item ? (title, slides, auto) => saveImages(dialog.item.key, title, slides, auto) : null} />`}
+    ${dialog && dialog.type === 'media-edit' && html`<${MediaEditor} initial=${dialog.item} onClose=${() => setDialog(null)} onSave=${(title, media) => saveMedia(dialog.item.key, title, media)} />`}
+    ${dialog && dialog.type === 'bible' && html`<${BibleEditor} s=${s} initial=${dialog.item} onClose=${() => setDialog(null)} onSave=${(edited) => saveBible(dialog.item.key, edited)} />`}
     ${dialog && dialog.type === 'media' && html`<${MediaDialog} s=${s} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} addToService=${dialog.addToService} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }

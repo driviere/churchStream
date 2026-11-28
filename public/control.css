@@ -246,6 +246,10 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .plan li:hover .x, .plan li.sel .x { opacity: 1; }
 .plan .x:hover { background: var(--panel); color: var(--text); }
 .plan .x svg { width: 14px; height: 14px; }
+.plan .ed { position: absolute; top: 4px; right: 30px; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--faint); cursor: pointer; opacity: 0; display: grid; place-items: center; }
+.plan li:hover .ed, .plan li.sel .ed { opacity: 1; }
+.plan .ed:hover { background: var(--panel); color: var(--text); }
+.plan .ed svg { width: 13px; height: 13px; }
 .plan-add { flex: 0 0 auto; min-height: 64px; padding: 0 16px; border-radius: var(--radius-sm); border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font-weight: 600; cursor: pointer; }
 .plan-add:hover { color: var(--text); background: var(--panel-3); }
 .plan-empty { color: var(--muted); font-size: 14px; padding: 12px 2px; }
@@ -660,7 +664,7 @@ kbd { white-space: nowrap; font-family: inherit; font-size: 11px; padding: 1px 6
 .toast-act:hover { background: rgba(255, 255, 255, .26); }
 
 /* Volunteer mode: only what's needed to run the slides */
-.volunteer .vol-hide, .volunteer .plan .x, .volunteer .plan-head .btn, .volunteer .add-menu, .volunteer .item-head .btn,
+.volunteer .vol-hide, .volunteer .plan .x, .volunteer .plan .ed, .volunteer .plan-head .btn, .volunteer .add-menu, .volunteer .item-head .btn,
 .volunteer .bg-btn, .volunteer .verse-pick, .volunteer .result .acts { display: none !important; }
 .vol-chip { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 99px;
   border: 1px solid var(--next-line); background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: 13px; font-weight: 700;
