@@ -73,14 +73,22 @@
 
   const toBlob = () => new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.78));
 
+  let loopGen = 0;
   async function loop() {
-    while (running) {
+    // Stop → Start while a frame was still on its way must not leave two loops sending.
+    const gen = ++loopGen;
+    while (running && gen === loopGen) {
       const t0 = performance.now();
       if (document.visibilityState === 'visible' && draw()) {
         const blob = await toBlob();
         if (!running) break;
         try {
-          const r = await fetch(`/api/phone-camera/frame?cam=${cam}&k=${encodeURIComponent(key)}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
+          // A frame that takes over 3 s means the Wi-Fi has gone quiet: count it as a failure
+          // (so the badge stops saying "connected") instead of waiting for ever.
+          const ac = new AbortController();
+          const limit = setTimeout(() => ac.abort(), 3000);
+          let r;
+          try { r = await fetch(`/api/phone-camera/frame?cam=${cam}&k=${encodeURIComponent(key)}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store', signal: ac.signal }); } finally { clearTimeout(limit); }
           const d = await r.json().catch(() => ({}));
           if (!r.ok) {
             if (r.status === 403) { msg(d.error || 'This camera address is out of date. Scan the QR code again.'); badge('bad', 'Not connected'); stop(); break; }
@@ -157,6 +165,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && running) {
       keepAwake();
+      onAir = null; // replace "Keep this page open…" with the connection message again
       // Some phones stop the camera while the page is hidden.
       const track = stream && stream.getVideoTracks()[0];
       if (!track || track.readyState !== 'live') openCamera().catch(() => msg('Tap Stop, then Start camera.'));

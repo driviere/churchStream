@@ -22,27 +22,60 @@ setInterval(tickCountdown, 250);
 
 function syncPlayer(el, media, playing, state, isVideo) {
   if (!media) {
+    el._want = null;
     if (!el.paused) el.pause();
-    if (el.dataset.key) { el.removeAttribute('src'); el.load(); el.dataset.key = ''; }
+    if (el.dataset.key) { el.removeAttribute('src'); el.load(); el.dataset.key = ''; el.dataset.src = ''; }
     return;
   }
   const src = '/media/' + encodeURIComponent(media.file.replace(/^media:/, ''));
   const key = src + '|' + playing.startedAt;
   el.muted = isVideo ? !media.room : false;
   el.loop = !!media.loop;
-  el.volume = Math.max(0, Math.min(1, playing.volume ?? 1));
+  el.volume = Math.max(0, Math.min(1, playing.roomVolume ?? playing.volume ?? 1));
+  // Where it should be now, by the server's clock (worked out now, not after loading).
+  const skew = state.now - Date.now();
+  el._want = () => {
+    let t = Math.max(0, ((playing.paused ? playing.pausedAt : Date.now() + skew) - playing.startedAt) / 1000);
+    if (media.loop && el.duration) t %= el.duration;
+    return t;
+  };
+  el._paused = !!playing.paused;
+  // Paused: hold the room's copy at the same place.
+  if (playing.paused) {
+    if (!el.paused) el.pause();
+    if (el.dataset.src === src && el.readyState >= 1) {
+      const t = el._want();
+      if (Math.abs(el.currentTime - t) > 0.5 && (!el.duration || t < el.duration)) el.currentTime = t;
+    }
+    el.dataset.key = key + '|paused';
+    return;
+  }
   if (el.dataset.key === key) return;
   el.dataset.key = key;
-  el.src = src;
-  const startAt = () => {
-    const skew = state.now - Date.now();
-    let t = Math.max(0, (Date.now() + skew - playing.startedAt) / 1000);
-    if (media.loop && el.duration) t %= el.duration;
-    if (t > 0.3 && (!el.duration || t < el.duration)) el.currentTime = t;
+  // Same file, new place (a jump or a restart): move there without reloading the file.
+  if (el.dataset.src === src && el.readyState >= 1) {
+    const t = el._want();
+    if (!el.duration || t < el.duration) el.currentTime = t;
     el.play().catch(() => {});
-  };
-  el.addEventListener('loadedmetadata', startAt, { once: true });
+    return;
+  }
+  el.dataset.src = src;
+  el.src = src;
+  el.addEventListener('loadedmetadata', () => {
+    const t = el._want ? el._want() : 0;
+    if (t > 0.3 && (!el.duration || t < el.duration)) el.currentTime = t;
+    if (!el._paused) el.play().catch(() => {});
+  }, { once: true });
 }
+// Keep the room's copy in step with the stream: a stall or a busy computer would otherwise
+// leave it behind for the rest of the clip.
+setInterval(() => {
+  for (const el of [$('vid').firstElementChild, $('aud')]) {
+    if (!el || !el._want || el.paused || el.seeking || el.readyState < 2) continue;
+    const t = el._want();
+    if ((!el.duration || t < el.duration) && Math.abs(el.currentTime - t) > 1) el.currentTime = t;
+  }
+}, 2000);
 
 let musicKey = '';
 function syncMusic(state) {
@@ -51,7 +84,7 @@ function syncMusic(state) {
   const files = state.config.musicFiles || [];
   const on = !!(m && !m.youtube && files.length && state.config.musicRoom !== false);
   const key = on ? files.join('|') + '|' + m.startedAt : '';
-  el.volume = on ? Math.max(0, Math.min(1, (m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
+  el.volume = on ? Math.max(0, Math.min(1, (m.roomVolume ?? m.volume ?? 0.4) * (state.media.now ? 0 : 1))) : 0;
   if (key === musicKey) return;
   musicKey = key;
   el.pause();
@@ -70,7 +103,8 @@ function loadYT() {
       window.onYouTubeIframeAPIReady = () => { resolve(window.YT); if (last) render(last); };
       const sc = document.createElement('script');
       sc.src = 'https://www.youtube.com/iframe_api';
-      sc.onerror = () => { ytApi = null; resolve(null); }; // offline: try again next time
+      // Offline: remove the failed script and wait 30 s before trying again (not on every update).
+      sc.onerror = () => { sc.remove(); resolve(null); setTimeout(() => { ytApi = null; }, 30000); };
       document.head.appendChild(sc);
     });
   }
@@ -104,7 +138,11 @@ class YtSlot {
     const w = this.want;
     if (!w) { if (this.loaded) { try { p.stopVideo(); } catch { /* */ } this.loaded = ''; } return; }
     const y = w.youtube;
-    const key = `${y.id}|${y.list}|${w.startedAt}`;
+    // `run` stays the same through pause, resume and jumps (only Play / From the start change
+    // it), so those move the playing video instead of loading it again.
+    const key = `${y.id}|${y.list}|${w.run ?? w.startedAt}`;
+    const jumped = key === this.loaded && this.startedAt !== undefined && this.startedAt !== w.startedAt;
+    this.startedAt = w.startedAt;
     if (key !== this.loaded) {
       this.loaded = key;
       if (y.list && (!y.id || !this.syncPos)) { p.loadPlaylist({ list: y.list, listType: 'playlist', index: 0 }); p.setLoop(true); p.setShuffle(false); }
@@ -121,7 +159,7 @@ class YtSlot {
         let t = this.pos(w);
         const d = p.getDuration();
         if (w.loop && d) t %= d;
-        if (Math.abs(p.getCurrentTime() - t) > 2.5 && (!d || t < d)) p.seekTo(t, true);
+        if ((jumped || Math.abs(p.getCurrentTime() - t) > 2.5) && (!d || t < d)) p.seekTo(t, true);
       }
     } catch { /* player still starting */ }
   }
@@ -188,6 +226,7 @@ function render(state) {
     for (const c of ['font-segoe', 'font-serif', 'font-arial', 'align-left', 'outline', 'pos-bottom']) $('screen').classList.remove(c);
     for (const c of tcls.split(' ').filter(Boolean)) $('screen').classList.add(c);
     lastThemeCls = tcls;
+    lastAnn = null; // a countdown's announcement is fitted again in the new font
   }
   const liveItem = state.live && state.live.item;
   const bg = bgInfo(effectiveBg(currentSlide(state), liveItem, theme));
@@ -224,13 +263,17 @@ function render(state) {
   const tk = state.ticker || {};
   const tickOn = !!(state.config.tickerOnProjector && tk.visible && tk.text && !state.black && !state.streamOnScreens);
   const span = $('ticker').firstElementChild;
-  if (tickOn && span.textContent !== tk.text) {
-    span.textContent = tk.text;
-    const secs = Math.max(8, tk.text.length / ({ slow: 4, fast: 11 }[state.config.tickerSpeed] || 7));
-    $('ticker').style.setProperty('--tick-dur', secs + 's');
+  if (tickOn && span.textContent !== tk.text) span.textContent = tk.text;
+  if (tickOn) {
+    // Worked out every time, so changing "Ticker speed" applies to a ticker already running.
+    const secs = Math.max(8, tk.text.length / ({ slow: 4, fast: 11 }[state.config.tickerSpeed] || 7)) + 's';
+    if ($('ticker').style.getPropertyValue('--tick-dur') !== secs) $('ticker').style.setProperty('--tick-dur', secs);
   }
   $('ticker').classList.toggle('hidden', !tickOn);
-  $('screen').classList.toggle('has-ticker', tickOn);
+  if ($('screen').classList.contains('has-ticker') !== tickOn) {
+    $('screen').classList.toggle('has-ticker', tickOn);
+    shownKey = null; // the words get a little less room above the ticker
+  }
 
   const slide = currentSlide(state);
   const item = state.live && state.live.item;
@@ -241,6 +284,7 @@ function render(state) {
   $('count').classList.toggle('hidden', !isCount);
   if (isCount) {
     const ann = state.clear || !slide || !slide.text ? '' : slide.text;
+    // lastAnn is reset after a resize, the fonts loading or a change of font: fit it again.
     if (ann !== lastAnn) {
       lastAnn = ann;
       $('count').lastElementChild.innerHTML = ann ? `<div class="screen-text">${escapeHtml(ann)}</div>` : '';
@@ -260,7 +304,7 @@ function render(state) {
   const isMedia = !!(item && item.kind === 'media' && item.media);
   const mediaOn = isMedia && playing && playing.id === item.key;
   syncPlayer($('vid').firstElementChild, mediaOn && item.media.type === 'video' && !state.black ? item.media : null, playing, state, true);
-  syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room ? item.media : null, playing, state, false);
+  syncPlayer($('aud'), mediaOn && item.media.type === 'audio' && item.media.room !== false ? item.media : null, playing, state, false);
   $('vid').classList.toggle('hidden', !(mediaOn && item.media.type === 'video' && !state.black && !state.logo));
   syncMusic(state);
   syncYouTube(state, item, playing);
@@ -279,8 +323,8 @@ function render(state) {
 
 let last = null;
 connect((s) => { if (s) last = s; render(s); });
-addEventListener('resize', () => { shownKey = null; if (last) render(last); });
-document.fonts && document.fonts.ready.then(() => { shownKey = null; if (last) render(last); });
+addEventListener('resize', () => { shownKey = null; lastAnn = null; if (last) render(last); });
+document.fonts && document.fonts.ready.then(() => { shownKey = null; lastAnn = null; if (last) render(last); });
 
 // "Stream on screens": the live stream picture (camera, slides, names — what viewers see).
 // The picture keeps coming over one connection; if it breaks (ChurchStream restarted), try again.

@@ -7,7 +7,24 @@ let S = null;
 
 const post = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
   .then((r) => r.json()).then((d) => { if (d && d.error) throw new Error(d.error); return d; })
-  .catch((err) => { $('offline').textContent = err.message; $('offline').classList.add('show'); setTimeout(() => $('offline').classList.remove('show'), 3000); });
+  .catch((err) => {
+    // A message from ChurchStream as it is; a network failure in plain words.
+    showError(/fetch|network|load failed/i.test(err.message) ? 'Couldn’t reach ChurchStream. Check the Wi-Fi.' : err.message);
+  });
+let online = true;
+let errorUntil = 0;
+function showError(msg) {
+  errorUntil = Date.now() + 3000;
+  $('offline').textContent = msg;
+  $('offline').classList.add('show');
+  setTimeout(() => { if (Date.now() >= errorUntil) showStatus(); }, 3000);
+}
+// The banner: shown while offline (it stays until the connection is back), or for an error.
+function showStatus() {
+  if (Date.now() < errorUntil) return;
+  $('offline').textContent = 'Reconnecting to ChurchStream…';
+  $('offline').classList.toggle('show', !online);
+}
 const buzz = () => { if (navigator.vibrate) navigator.vibrate(12); };
 
 const KIND = (it) => {
@@ -43,12 +60,15 @@ for (const name of ['clear', 'logo', 'black']) $(name).onclick = () => { buzz();
 
 // Swipe the picture: left = next, right = back.
 let x0 = null;
-$('mini').addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+let y0 = null;
+$('mini').addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
 $('mini').addEventListener('touchend', (e) => {
   if (x0 === null) return;
   const dx = e.changedTouches[0].clientX - x0;
+  const dy = e.changedTouches[0].clientY - y0;
   x0 = null;
-  if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+  // Mostly sideways: a swipe. Scrolling down the page (even a bit diagonally) is not.
+  if (Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
 });
 // A Bluetooth clicker or keyboard works here too.
 addEventListener('keydown', (e) => {
@@ -57,9 +77,10 @@ addEventListener('keydown', (e) => {
 });
 
 let lastWords = null;
+let lastPlanHtml = '';
 function render(s) {
-  $('offline').textContent = 'Reconnecting to ChurchStream…';
-  $('offline').classList.toggle('show', !s);
+  online = !!s;
+  showStatus();
   if (!s) return;
   S = s;
   const cfg = s.config;
@@ -104,9 +125,12 @@ function render(s) {
 
   for (const name of ['clear', 'logo', 'black']) $(name).classList.toggle('on', !!s[name]);
 
-  $('plan').innerHTML = items.length
+  // Only rebuilt when it changed: while streaming an update comes every second, and replacing
+  // the buttons under a finger would lose the tap.
+  const planHtml = items.length
     ? items.map((it, i) => `<li><button data-uid="${escapeHtml(it.uid)}" class="${i === at ? 'live' : at >= 0 && i < at ? 'done' : ''}"><span class="k ${escapeHtml(it.kind)}">${escapeHtml(KIND(it))}</span><span class="t">${escapeHtml(it.title)}</span></button></li>`).join('')
     : '<li class="empty">The order of service is empty.</li>';
+  if (planHtml !== lastPlanHtml) { lastPlanHtml = planHtml; $('plan').innerHTML = planHtml; }
 }
 $('plan').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-uid]');

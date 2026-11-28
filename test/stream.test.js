@@ -362,3 +362,34 @@ test('media relay: the picture goes as timed frames, a few a second while nothin
   assert.ok(Math.abs(times[0] - 0.2) < 0.05, 'stamped with the head start');
   for (let i = 1; i < times.length; i++) assert.ok(Math.abs(times[i] - times[i - 1] - 1 / IDLE_FPS) < 0.06, `steady: ${times}`);
 });
+
+test('media relay: pause keeps the clip and its last picture; resume carries on from there', { skip: spawnSync('ffmpeg', ['-version']).status !== 0, timeout: 30000 }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { MediaRelay } = require('../lib/media');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-pause-'));
+  const clip = path.join(dir, 'clip.mp4');
+  spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=25:d=10', '-f', 'lavfi', '-i', 'sine=d=10', '-pix_fmt', 'yuv420p', '-shortest', clip]);
+  const relay = new MediaRelay({ ffmpegPath: 'ffmpeg' });
+  await relay.ready;
+  relay.configure({ width: 160, height: 90, fps: 25 });
+  let ended = false;
+  relay.on('ended', () => { ended = true; });
+  relay.play({ id: 'x', kind: 'video', path: clip, title: 'Clip', loop: false });
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.ok(relay.pause());
+  const frame = relay.currentFrame();
+  assert.notEqual(frame, relay.black, 'the last picture stays on the stream');
+  assert.equal(relay.status().now.paused, true);
+  const pos = relay.pausedPosition();
+  assert.ok(pos > 1 && pos < 2.5, `paused at ${pos}`);
+  await new Promise((r) => setTimeout(r, 800));
+  assert.equal(ended, false, 'pausing is not the end of the clip');
+  assert.ok(Math.abs(relay.pausedPosition() - pos) < 0.01, 'time stands still while paused');
+  assert.ok(relay.resume());
+  assert.equal(relay.status().now.paused, false);
+  assert.ok(Math.abs((Date.now() - relay.now.startedAt) / 1000 - pos) < 0.2, 'resumes where it paused');
+  assert.equal(relay.currentFrame(), frame, 'no black between pause and the next picture');
+  relay.close();
+});

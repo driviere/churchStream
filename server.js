@@ -89,7 +89,9 @@ function authorized(req) {
 
 function broadcast(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) res.write(msg);
+  // Sound levels go only to pages that show them (not to every phone on the Wi-Fi).
+  const meters = event === 'meter' || event === 'levels';
+  for (const res of clients) if (!meters || res.wantsMeters) res.write(msg);
 }
 app.on('state', (s) => broadcast('state', s));
 app.on('meter', (v) => broadcast('meter', v));
@@ -107,10 +109,12 @@ function serveFile(res, file, type, req) {
       start = Math.max(0, start); end = Math.min(st.size - 1, end);
       if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
       res.writeHead(206, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache' });
-      return fs.createReadStream(file, { start, end }).pipe(res);
+      // pipeline closes the file when the browser stops reading (the projector seeking, a
+      // closed page), so files aren't left open (on Windows that would stop deleting them).
+      return require('stream').pipeline(fs.createReadStream(file, { start, end }), res, () => {});
     }
     res.writeHead(200, { 'Content-Type': ctype, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache', 'Content-Length': st.size });
-    fs.createReadStream(file).pipe(res);
+    require('stream').pipeline(fs.createReadStream(file), res, () => {});
   });
 }
 
@@ -207,7 +211,7 @@ const routes = {
   },
   'POST /api/media/remove': async (req) => { const { kind } = await json(req); app.updateConfig({ theme: { [kind]: '' } }); return { ok: true }; },
   'GET /api/backgrounds': () => app.backgrounds(),
-  'POST /api/program-image': async (req, url) => ({ ok: true, updated: app.saveProgramImage(await readBody(req, 4 * 1024 * 1024), url.searchParams.get('key') || '') }),
+  'POST /api/program-image': async (req, url) => ({ ok: true, updated: app.saveProgramImage(await readBody(req, 4 * 1024 * 1024), url.searchParams.get('key') || '', url.searchParams.get('at')) }),
   'POST /api/backgrounds/delete': async (req) => { app.deleteBackground((await json(req)).id); return { ok: true }; },
   // The phone camera addresses (for the QR codes), behind the password.
   'GET /api/phone-camera/info': () => phoneInfo(),
@@ -274,7 +278,11 @@ function startHttps(port, attempts = 10) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const p = decodeURIComponent(url.pathname);
+  let p;
+  try { p = decodeURIComponent(url.pathname); } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    return res.end('Bad address');
+  }
 
   if (!OPEN.some((re) => re.test(p)) && !authorized(req)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="ChurchStream"', 'Content-Type': 'text/plain' });
@@ -289,8 +297,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write(`retry: 1500\nevent: state\ndata: ${JSON.stringify(app.snapshot())}\n\n`);
+      // Older pages didn't ask for meters and still expect them.
+      res.wantsMeters = url.searchParams.get('meters') === '1' || !url.searchParams.has('v');
       clients.add(res);
-      const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+      // A real event (not a comment) so pages can tell the connection is alive.
+      const ping = setInterval(() => res.write('event: ping\ndata: 0\n\n'), 20000);
       // A stream page is open: the control panel hides its simple camera/scene switches.
       const streamPage = url.searchParams.get('page') === 'stream';
       if (streamPage) app.setStreamPages(app.streamPages + 1);
@@ -414,8 +425,9 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  app.shutdown();
-  setTimeout(() => process.exit(0), 1600);
+  // Wait for FFmpeg to finish the recording (up to 5 s), then exit.
+  const done = setTimeout(() => process.exit(0), 5000);
+  Promise.resolve(app.shutdown()).catch(() => {}).then(() => { clearTimeout(done); process.exit(0); });
 }
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) { try { process.on(sig, shutdown); } catch { /* unsupported */ } }
 // On a Mac, keep the laptop and its screens awake while ChurchStream is open (built-in

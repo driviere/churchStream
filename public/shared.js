@@ -63,17 +63,42 @@ export function slideHtml(slide) {
 // Live-updating state over Server-Sent Events (auto-reconnects).
 // page: 'stream' tells ChurchStream a stream page is open (the control panel then hides its
 // simple camera / scene switches).
+//
+// A phone or tablet can lose the connection without the browser noticing (Wi-Fi roaming, the
+// screen locked). The server sends a ping every 20 s, so 45 s of silence, a connection the
+// browser has given up on, or the page coming back into view all start a fresh connection.
 export function connect(onState, onMeter, { page, events = {} } = {}) {
   let es;
+  let quiet = null;
+  let stopped = false;
+  const params = new URLSearchParams({ v: '2' });
+  if (page) params.set('page', page);
+  if (onMeter || events.levels) params.set('meters', '1'); // only pages that show sound levels get them
+  const heard = () => { clearTimeout(quiet); quiet = setTimeout(reopen, 45000); };
   const open = () => {
-    es = new EventSource('/events' + (page ? '?page=' + encodeURIComponent(page) : ''));
-    es.addEventListener('state', (e) => onState(JSON.parse(e.data)));
+    es = new EventSource('/events' + (params.toString() ? '?' + params : ''));
+    es.addEventListener('state', (e) => { heard(); onState(JSON.parse(e.data)); });
+    es.addEventListener('ping', heard);
     if (onMeter) es.addEventListener('meter', (e) => onMeter(JSON.parse(e.data)));
     for (const [name, fn] of Object.entries(events)) es.addEventListener(name, (e) => fn(JSON.parse(e.data)));
-    es.onerror = () => { onState(null); };
+    es.onerror = () => {
+      onState(null);
+      if (es.readyState === 2) setTimeout(reopen, 2000); // the browser stopped trying: try again ourselves
+    };
+    heard();
   };
+  const reopen = () => { if (stopped) return; try { es.close(); } catch { /* closed */ } onState(null); open(); };
+  const wake = () => { if (document.visibilityState === 'visible' && (!es || es.readyState !== 1)) reopen(); };
+  document.addEventListener('visibilitychange', wake);
+  addEventListener('online', reopen);
   open();
-  return () => es && es.close();
+  return () => {
+    stopped = true;
+    clearTimeout(quiet);
+    document.removeEventListener('visibilitychange', wake);
+    removeEventListener('online', reopen);
+    if (es) es.close();
+  };
 }
 
 export function currentSlide(state) {

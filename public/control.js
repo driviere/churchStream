@@ -1,4 +1,4 @@
-import { h, html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
+import { html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from '/vendor/preact-htm.js';
 import { connect, fitText, textSizes, WRAP_GAIN, slideHtml, bgInfo, effectiveBg, countdownParts, fillSabbath, logoParts, themeClasses, FONTS, PARTS } from '/shared.js';
 
 let SAB = null; // latest sunset / Sabbath times from the server (for previews)
@@ -184,18 +184,46 @@ function Toasts() {
     toastBus.addEventListener('t', on);
     return () => toastBus.removeEventListener('t', on);
   }, []);
-  return html`<div class="toasts">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}${t.action && html`<button class="toast-act" onClick=${() => { setList((l) => l.filter((x) => x.id !== t.id)); t.action.run(); }}>${t.action.label}</button>`}</div>`)}</div>`;
+  return html`<div class="toasts" role="status" aria-live="polite">${list.map((t) => html`<div key=${t.id} class=${'toast ' + t.kind}>${t.msg}${t.action && html`<button class="toast-act" onClick=${() => { setList((l) => l.filter((x) => x.id !== t.id)); t.action.run(); }}>${t.action.label}</button>`}</div>`)}</div>`;
 }
 
-function Modal({ title, onClose, children, footer, wide }) {
+// Has anything in an editor changed since it opened?
+function useChanged(...vals) {
+  const first = useRef(JSON.stringify(vals));
+  return JSON.stringify(vals) !== first.current;
+}
+
+let modalSeq = 0;
+// dirty: something typed would be lost, so Escape, the ✕ and a click beside the dialog ask first.
+function Modal({ title, onClose, children, footer, wide, dirty }) {
+  const close = () => { if (!dirty || confirm('Close without saving? Your changes will be lost.')) onClose(); };
+  const ref = useRef();
+  const [id] = useState(() => 'modal-title-' + ++modalSeq);
   useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    const k = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      // Keep Tab inside the dialog.
+      if (e.key === 'Tab' && ref.current) {
+        const f = [...ref.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent !== null);
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
-  }, [onClose]);
-  return html`<div class="overlay" onMouseDown=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div class=${'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true">
-      <header><h2>${title}</h2><span class="spacer"></span><button class="btn ghost icon" onClick=${onClose} aria-label="Close">${icons.x()}</button></header>
+  });
+  // Focus moves into the dialog when it opens (its first box, or the dialog), and back after.
+  useEffect(() => {
+    const before = document.activeElement;
+    const el = ref.current;
+    const first = el && (el.querySelector('[autofocus]') || el.querySelector('.body input, .body textarea, .body select'));
+    (first || el).focus({ preventScroll: true });
+    return () => { if (before && before.focus && document.contains(before)) before.focus({ preventScroll: true }); };
+  }, []);
+  return html`<div class="overlay" onMouseDown=${(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div ref=${ref} tabindex="-1" class=${'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-labelledby=${id}>
+      <header><h2 id=${id}>${title}</h2><span class="spacer"></span><button class="btn ghost icon" onClick=${close} aria-label="Close">${icons.x()}</button></header>
       <div class="body">${children}</div>
       ${footer && html`<footer>${footer}</footer>`}
     </div>
@@ -204,6 +232,9 @@ function Modal({ title, onClose, children, footer, wide }) {
 
 // ---------------------------------------------------------------------------------------
 // status pill in the top bar
+// Now, by ChurchStream's clock (a tablet's own clock can be minutes out).
+const serverNow = (s) => Date.now() + (s.now - (s.receivedAt || s.now));
+
 function StreamStatus({ s }) {
   const st = s.stream;
   const [, tick] = useState(0);
@@ -214,14 +245,24 @@ function StreamStatus({ s }) {
   const dests = Object.values(st.destinations || {});
   const health = st.problem ? html`<span class="bad">${st.state === 'retrying' ? 'Reconnecting' : 'Check connection'}</span>` : html`<span class="ok">Connection good</span>`;
   return html`<div class=${'status live' + (st.problem ? ' warn' : '')} title=${dests.map((d) => `${d.label}: ${d.state}`).join(', ')}>
-    <span class="dot"></span>Live · <span style="font-variant-numeric:tabular-nums">${fmtTime(Date.now() - (st.liveSince || Date.now()))}</span>
+    <span class="dot"></span>Live · <span style="font-variant-numeric:tabular-nums">${fmtTime(Math.max(0, serverNow(s) - (st.liveSince || serverNow(s))))}</span>
     <span class="sep extra">·</span><span class="extra">${health}</span>
   </div>`;
 }
 
 // ---------------------------------------------------------------------------------------
 // omnibox: songs, hymn numbers and Bible references in one search
-function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
+// The rows of a search reply, in the order shown.
+const searchRows = (res) => {
+  if (!res) return [];
+  const r = [];
+  if (res.bible) r.push({ type: 'bible', data: res.bible });
+  for (const b of res.books) r.push({ type: 'book', data: b });
+  for (const s of res.songs) r.push({ type: 'song', data: s });
+  return r;
+};
+
+function Omnibox({ onOpen, onShow, onAdd, onNewSong, locked }) {
   const [q, setQ] = useState('');
   const [res, setRes] = useState(null);
   const [sel, setSel] = useState(0);
@@ -234,20 +275,16 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
     return () => removeEventListener('keydown', k);
   }, []);
 
+  // Each reply remembers what it was for; a slow reply to an earlier query is ignored.
+  const latest = useRef('');
   useEffect(() => {
+    latest.current = q.trim();
     if (!q.trim()) { setRes(null); return undefined; }
-    const t = setTimeout(() => get('/api/search', { q }).then((r) => { setRes(r); setSel(0); }).catch(() => {}), 110);
+    const t = setTimeout(() => get('/api/search', { q }).then((r) => { if (latest.current === q.trim()) { setRes({ ...r, q: q.trim() }); setSel(0); } }).catch(() => {}), 110);
     return () => clearTimeout(t);
   }, [q]);
 
-  const rows = useMemo(() => {
-    if (!res) return [];
-    const r = [];
-    if (res.bible) r.push({ type: 'bible', data: res.bible });
-    for (const b of res.books) r.push({ type: 'book', data: b });
-    for (const s of res.songs) r.push({ type: 'song', data: s });
-    return r;
-  }, [res]);
+  const rows = useMemo(() => searchRows(res), [res]);
 
   const act = async (row, how) => {
     if (!row) return;
@@ -265,7 +302,18 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
   const onKey = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(rows.length - 1, s + 1)); setOpen(true); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); act(rows[sel], e.shiftKey ? 'add' : 'show'); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const how = e.shiftKey && !locked ? 'add' : 'show';
+      // Typed faster than the search answered (e.g. "123" + Enter): search for what's typed now
+      // and use its first result, never the results for "12".
+      if (!res || res.q !== q.trim()) {
+        if (!q.trim()) return;
+        get('/api/search', { q }).then((r) => act(searchRows(r)[0], how)).catch(fail);
+        return;
+      }
+      act(rows[sel], how);
+    }
     else if (e.key === 'Escape') { setOpen(false); if (!q) input.current.blur(); setQ(''); }
   };
 
@@ -295,8 +343,8 @@ function Omnibox({ onOpen, onShow, onAdd, onNewSong }) {
           <div class="grow"><div class="t">${row.data.title}</div><div class="s">${[row.data.hymnal === 'CH1941' ? 'Church Hymnal' : row.data.hymnal === 'SDAH' ? 'SDA Hymnal' : row.data.hymnal === 'AY' ? 'AY Sing ' + row.data.number : '', row.data.firstLine].filter(Boolean).join(' · ')}</div></div>
           <div class="acts"><button class="btn small" onClick=${(e) => { e.stopPropagation(); act(row, 'add'); }}>Add</button><button class="btn small primary" onClick=${(e) => { e.stopPropagation(); act(row, 'show'); }}>Show</button></div>
         </div>`)}
-      ${!rows.length && html`<div class="empty">Nothing found for “${q}”.<br/><button class="btn small" style="margin-top:10px" onClick=${() => { onNewSong(q); setOpen(false); }}>Create a song called “${q}”</button></div>`}
-      <div class="foot"><kbd>Enter</kbd> show now · <kbd>Shift</kbd>+<kbd>Enter</kbd> add to service · click to preview</div>
+      ${!rows.length && html`<div class="empty">Nothing found for “${q}”.${!locked && html`<br/><button class="btn small" style="margin-top:10px" onClick=${() => { onNewSong(q); setOpen(false); }}>Create a song called “${q}”</button>`}</div>`}
+      <div class="foot"><kbd>Enter</kbd> show now${!locked && html` · <kbd>Shift</kbd>+<kbd>Enter</kbd> add to service`} · click to preview</div>
     </div>`}
   </div>`;
 }
@@ -349,7 +397,11 @@ function Plan({ s, locked, selectedKey, onOpen, onEdit, onNewSong, onNewText, on
   const list = useRef();
 
   const save = (next) => api('/api/plan', { items: next }).catch(fail);
-  const remove = (uid) => { const it = items.find((x) => x.uid === uid); save(items.filter((x) => x.uid !== uid)).then(() => undoToast(`Removed “${it ? it.title : 'item'}”`)); };
+  // Undo is offered only once it really was removed (Undo would otherwise undo something else).
+  const remove = (uid) => {
+    const it = items.find((x) => x.uid === uid);
+    api('/api/plan', { items: items.filter((x) => x.uid !== uid) }).then(() => undoToast(`Removed “${it ? it.title : 'item'}”`)).catch(fail);
+  };
 
   // Reordering: with a mouse, just drag. On touch screens a swipe scrolls the list, a tap
   // opens the item, and press-and-hold (about half a second) picks a card up to drag it.
@@ -413,7 +465,8 @@ function Plan({ s, locked, selectedKey, onOpen, onEdit, onNewSong, onNewText, on
       ${items.map((it, i) => {
         const isLive = i === liveAt;
         const n = isLive ? live.item.slides.length : it.count || 0;
-        return html`<li key=${it.uid} data-i=${i} onPointerDown=${(e) => start(e, i)}
+        return html`<li key=${it.uid} data-i=${i} onPointerDown=${(e) => start(e, i)} tabindex="0" role="button" aria-label=${`${kindLabel(it)}: ${it.title}`}
+          onKeyDown=${(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onOpen(it.uid); } }}
           class=${[it.uid === selectedKey && 'sel', isLive && 'live', liveAt >= 0 && i < liveAt && 'done', drag === i && 'dragging', over === i && drag !== null && drag !== i && 'over'].filter(Boolean).join(' ')}>
           <span class=${'k ' + it.kind}>${kindLabel(it)}</span>
           <span class="t">${it.title}</span>
@@ -487,7 +540,7 @@ function Slides({ s, item, onShowSlide, onAdd, onEdit, inPlan, active, onBackgro
         </div>`;
       })()}
       ${live && !isLiveItem && html`<div class="jump">${icons.radio()}<span class="grow">On screen now: <b>${live.item.title}</b></span><button class="btn small" onClick=${() => onShowSlide(null)}>Go to it</button></div>`}
-      ${item.kind === 'media' ? html`<${MediaPanel} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
+      ${item.kind === 'media' ? html`<${MediaPanel} key=${item.key} s=${s} item=${item} isLive=${isLiveItem} onShow=${() => onShowSlide(0)} />` : html`
       <div class="slides-scroll"><div class="slides">
         ${item.slides.map((sl, i) => html`<${SlideCard} key=${i} slide=${sl} i=${i} item=${item} s=${s} isLive=${i === liveIdx} isNext=${isLiveItem && i === liveIdx + 1} onClick=${() => onShowSlide(i)} onBackground=${inPlan ? () => onBackground(i) : null} />`)}
       </div></div>`}`}
@@ -607,7 +660,7 @@ function Aside({ s, onGoLive, onStop, active }) {
       ${st.mode !== 'off' ? html`<${PreviewImage} running=${true} /><${Meter} />` : html`<div class="muted" style="font-size:13px">Camera is off. ${configured ? 'It starts when you go live.' : ''}</div>`}
       <${StreamPhase} s=${s} />
       ${s.streamPageOpen && s.studioOn
-        ? html`<div class="note stream-elsewhere">${icons.stream ? icons.stream() : ''}<span><b>The stream is being run from the stream page.</b> Cameras, scenes and transitions are on that screen. Go live and End stay here too.</span></div>`
+        ? html`<div class="note stream-elsewhere"><span><b>The stream is being run from the stream page.</b> Cameras, scenes and transitions are on that screen. Go live and End stay here too.</span></div>`
         : html`<${CameraSwitch} s=${s} /><${StreamScene} s=${s} />`}
       <${RecordingOptions} s=${s} compact=${true} />
       ${!configured
@@ -659,7 +712,7 @@ function StreamPhase({ s }) {
   const [, tick] = useState(0);
   useEffect(() => { if (!ph) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [ph && ph.until]);
   if (!ph) return null;
-  const left = Math.max(0, Math.round((ph.until - Date.now()) / 1000));
+  const left = Math.max(0, Math.round((ph.until - serverNow(s)) / 1000));
   return html`<div class="note row" style="margin:0;gap:8px">
     <span class="grow">${ph.kind === 'start'
       ? html`<b>Starting screen</b> on the stream until ${clock(ph.until)}`
@@ -766,7 +819,9 @@ function StopDialog({ s, onClose }) {
   const es = s.config.endScreen || {};
   const end = async () => {
     setBusy(true);
-    const r = await api('/api/stream/stop', { endScreen: !!es.enabled }).catch(fail);
+    let r;
+    // If ending failed the stream is still live: say so and keep the dialog open.
+    try { r = await api('/api/stream/stop', { endScreen: !!es.enabled }); } catch (err) { fail(err); setBusy(false); return; }
     onClose();
     toast(r && r.ending ? `Showing the thank-you screen; the stream ends in ${r.ending} seconds` : 'Stream ended');
   };
@@ -797,12 +852,13 @@ function SongEditor({ song, addToService, onClose, onSaved }) {
   };
   const del = async () => {
     if (!confirm(`Delete “${song.title}”?`)) return;
-    await api('/api/song/delete', { id: song.id }).catch(fail);
+    try { await api('/api/song/delete', { id: song.id }); } catch (err) { fail(err); return; }
     toast('Song deleted');
     onSaved && onSaved(null);
     onClose();
   };
-  return html`<${Modal} wide title=${song.id ? 'Edit song' : 'New song'} onClose=${onClose} footer=${html`
+  const dirty = useChanged(title, author, lyrics);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${song.id ? 'Edit song' : 'New song'} onClose=${onClose} footer=${html`
       ${song.id && html`<button class="btn ghost" onClick=${del}>Delete</button>`}<span class="spacer"></span>
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy || !title.trim() || !sections.length} onClick=${save}>${addToService ? 'Save and add to service' : 'Save song'}</button>`}>
@@ -840,7 +896,8 @@ function TextEditor({ onClose, onAdd, onShow, initial, onSave, preset }) {
       <button class="btn primary" disabled=${busy || !slides.length} onClick=${async () => { setBusy(true); await onSave(name(), slides, auto); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, text, auto);
+  return html`<${Modal} dirty=${dirty && !busy} title=${editing ? 'Edit text slides' : 'Text slides'} onClose=${onClose} footer=${footer}>
     <div class="field"><label class="label">Name (shown in the order of service)</label><input class="input" value=${title} placeholder="e.g. Announcements" onInput=${(e) => setTitle(e.target.value)} /></div>
     <label class="label">Text</label>
     <textarea class="textarea" style="min-height:220px" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Welcome to our service!\n\nA blank line starts a new slide.'} autofocus=${editing}></textarea>
@@ -899,7 +956,8 @@ function ResponsiveEditor({ onClose, onAdd, onShow, initial, onSave }) {
       <button class="btn primary" disabled=${!slides.length} onClick=${async () => { await onSave(name(), slides); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!slides.length} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!slides.length} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit responsive reading' : 'Responsive reading'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, text);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${editing ? 'Edit responsive reading' : 'Responsive reading'} onClose=${onClose} footer=${footer}>
     <div class="editor">
       <div>
         <div class="field"><label class="label" for="rr-ref">Start from a Bible passage (optional)</label>
@@ -935,7 +993,8 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
   const footer = editing
     ? html`<button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${async () => { const it = item(); await onSave(it); onClose(); }}>Save changes</button>`
     : html`<button class="btn" onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button><button class="btn primary" onClick=${() => { onShow(item()); onClose(); }}>Start now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit countdown' : 'Countdown'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, mode, minutes, until, message, endText, text, auto);
+  return html`<${Modal} wide dirty=${dirty} title=${editing ? 'Edit countdown' : 'Countdown'} onClose=${onClose} footer=${footer}>
     <div class="editor">
       <div>
         <div class="choices" style="margin-bottom:12px">
@@ -961,6 +1020,34 @@ function CountdownEditor({ onClose, onAdd, onShow, initial, onSave }) {
 }
 
 const fmtDur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+
+// Where a video / music item is, as a bar to drag or tap. While it's being dragged it shows
+// where it will jump to; letting go jumps there (once).
+function Scrubber({ shown, dur, loop, onSeek }) {
+  const [drag, setDrag] = useState(null);
+  const at = drag ?? shown;
+  const pct = dur ? Math.min(100, (at / dur) * 100) : 0;
+  return html`<div class="media-progress grow">
+    <input type="range" class="scrub" min="0" max=${dur || 1} step="0.1" value=${dur ? Math.min(at, dur) : 0} disabled=${!dur}
+      style=${`--p:${pct}%`} aria-label="Position" aria-valuetext=${`${fmtDur(at)} of ${dur ? fmtDur(dur) : 'unknown'}`}
+      onInput=${(e) => setDrag(+e.target.value)}
+      onChange=${(e) => { setDrag(null); onSeek(+e.target.value); }}
+      onBlur=${() => setDrag(null)} />
+    <span class="muted">${fmtDur(at)} / ${dur ? fmtDur(dur) : '–:––'}${loop ? ' · loops' : ''}</span></div>`;
+}
+
+// ‹ 10 s and 10 s › for a precise jump on a touch screen.
+const SkipButtons = ({ shown, dur, onSeek }) => html`
+  <button class="btn big ghost" title="Back 10 seconds" aria-label="Back 10 seconds" onClick=${() => onSeek(Math.max(0, shown - 10))}>‹ 10 s</button>
+  <button class="btn big ghost" title="Forward 10 seconds" aria-label="Forward 10 seconds" disabled=${!dur} onClick=${() => onSeek(Math.min(dur, shown + 10))}>10 s ›</button>`;
+
+// Jump to a place in the item: put it on screen first if it isn't (so dragging before Play works).
+const seekTo = async (isLive, onShow, at) => {
+  try {
+    if (!isLive) await onShow();
+    await api('/api/media/control', { action: 'seek', at });
+  } catch (err) { fail(err); }
+};
 
 // Video / music item: big transport controls instead of a slide grid.
 // A video/music item's current settings: from the item on screen, else the order of service.
@@ -1015,10 +1102,10 @@ function YouTubePanel({ s, item, isLive, onShow }) {
             ? html`<button class="btn big primary" onClick=${() => ctl({ action: 'resume' })}>${icons.play()} Resume</button>`
             : html`<button class="btn big" onClick=${() => ctl({ action: 'pause' })}>${icons.pause()} Pause</button>`}
                <button class="btn big" onClick=${() => ctl({ action: 'stop' })}>${icons.stop()} Stop</button>
-               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>`
+               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>
+               <${SkipButtons} shown=${shown} dur=${dur} onSeek=${(t) => seekTo(true, onShow, t)} />`
         : html`<button class="btn big primary" onClick=${() => (isLive ? ctl({ action: 'play' }) : onShow())}>${icons.play()} Play</button>`}
-      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
-        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <${Scrubber} shown=${shown} dur=${dur} loop=${m.loop} onSeek=${(t) => seekTo(isLive, onShow, t)} />
     </div>
     <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">Plays from YouTube on the projector, so it needs internet. The live stream shows a “now playing” card (or the camera), and online viewers hear it only through your microphones. To put the video itself into the stream, download it instead (+ Add → Video, music or YouTube).</div>
@@ -1030,31 +1117,40 @@ function FilePanel({ s, item, isLive, onShow }) {
   const m = currentMedia(s, item);
   const playing = s.media && s.media.now && s.media.now.id === item.key ? s.media.now : null;
   const [, tick] = useState(0);
-  useEffect(() => { if (!playing) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt]);
+  const paused = !!(playing && playing.paused);
+  useEffect(() => { if (!playing || paused) return undefined; const id = setInterval(() => tick((x) => x + 1), 500); return () => clearInterval(id); }, [playing && playing.startedAt, paused]);
   const skew = s.now - (s.receivedAt || s.now);
-  const elapsed = playing ? (Date.now() + skew - playing.startedAt) / 1000 : 0;
+  const elapsed = playing ? ((paused ? playing.pausedAt : Date.now() + skew) - playing.startedAt) / 1000 : 0;
   const dur = m.duration || 0;
   const shown = m.loop && dur ? elapsed % dur : Math.min(elapsed, dur || elapsed);
   const src = '/media/' + encodeURIComponent((m.file || '').replace(/^media:/, ''));
+  const ctl = (body) => api('/api/media/control', body).catch(fail);
   return html`<div class="media-panel">
     <div class="media-view">
       ${m.type === 'video'
-        ? html`<video src=${src} muted preload="metadata" ref=${(el) => { if (el && playing && Math.abs(el.currentTime - shown) > 1) { el.currentTime = shown; el.play().catch(() => {}); } else if (el && !playing && !el.paused) el.pause(); }}></video>`
+        ? html`<video src=${src} muted preload="metadata" ref=${(el) => {
+          if (!el) return;
+          if (playing && Math.abs(el.currentTime - shown) > 1) el.currentTime = shown;
+          if (playing && !paused) { if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
+        }}></video>`
         : html`<div class="media-audio">${icons.music()}<span>${item.title}</span></div>`}
-      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${m.type === 'video' ? 'PLAYING ON SCREEN & STREAM' : 'PLAYING'}</span>`}
+      ${playing && html`<span class="tag live" style="position:absolute;top:12px;left:12px">${paused ? 'PAUSED' : m.type === 'video' ? 'PLAYING ON SCREEN & STREAM' : 'PLAYING'}</span>`}
     </div>
     <div class="media-bar">
       ${playing
-        ? html`<button class="btn big" onClick=${() => api('/api/media/control', { action: 'stop' }).catch(fail)}>${icons.stop()} Stop</button>
-               <button class="btn big ghost" onClick=${() => api('/api/media/control', { action: 'restart' }).catch(fail)}>From the start</button>`
+        ? html`${paused
+            ? html`<button class="btn big primary" onClick=${() => ctl({ action: 'resume' })}>${icons.play()} Resume</button>`
+            : html`<button class="btn big" onClick=${() => ctl({ action: 'pause' })}>${icons.pause()} Pause</button>`}
+               <button class="btn big" onClick=${() => ctl({ action: 'stop' })}>${icons.stop()} Stop</button>
+               <button class="btn big ghost" onClick=${() => ctl({ action: 'restart' })}>From the start</button>
+               <${SkipButtons} shown=${shown} dur=${dur} onSeek=${(t) => seekTo(true, onShow, t)} />`
         : html`<button class="btn big primary" onClick=${() => (isLive ? api('/api/media/control', { action: 'play' }).catch(fail) : onShow())}>${icons.play()} Play</button>`}
-      <div class="media-progress grow"><div class="track"><i style=${`width:${dur ? Math.min(100, (shown / dur) * 100) : 0}%`}></i></div>
-        <span class="muted">${fmtDur(shown)} / ${dur ? fmtDur(dur) : '–:––'}${m.loop ? ' · loops' : ''}</span></div>
+      <${Scrubber} shown=${shown} dur=${dur} loop=${m.loop} onSeek=${(t) => seekTo(isLive, onShow, t)} />
     </div>
     <${MediaSettings} s=${s} item=${item} />
     <div class="hint" style="padding:0 18px 16px">${m.type === 'video'
       ? 'The video fills the projector and the stream while it plays (names and the ticker stay on top). Background music pauses during the video.'
-      : 'The music plays on the stream' + (m.room ? ' and through this computer’s speakers.' : '.')}</div>
+      : 'The music plays on the stream' + (m.room !== false ? ' and through this computer’s speakers.' : '.')}</div>
   </div>`;
 }
 
@@ -1103,7 +1199,8 @@ function YouTubeBox({ s, onItem, onDownloaded }) {
   const [busy, setBusy] = useState(false);
   const [loop, setLoop] = useState(false);
   const dl = s.download;
-  const doneRef = useRef(null);
+  // A download that finished before this was opened (e.g. last week's) isn't picked again.
+  const doneRef = useRef(dl && dl.state === 'done' && dl.clip ? dl.clip.id : null);
   useEffect(() => {
     if (dl && dl.state === 'done' && dl.clip && doneRef.current !== dl.clip.id) { doneRef.current = dl.clip.id; onDownloaded(dl.clip); }
   }, [dl && dl.state, dl && dl.clip && dl.clip.id]);
@@ -1163,7 +1260,14 @@ function MediaDialog({ s, onClose, onAdd, onShow }) {
     setUp(''); await load();
     if (last) { setPick(last); setTitle(last.name); }
   });
-  const del = async (c) => { if (confirm(`Delete “${c.name}” from this computer?`)) setClips(await api('/api/clips/delete', { id: c.id }).catch(fail)); };
+  const del = async (c) => {
+    if (!confirm(`Delete “${c.name}” from this computer?`)) return;
+    try {
+      const l = await api('/api/clips/delete', { id: c.id });
+      if (Array.isArray(l)) setClips(l);
+      if (pick && pick.id === c.id) { setPick(null); setTitle(''); } // it's gone: can't be added any more
+    } catch (err) { fail(err); }
+  };
   const item = () => ({ key: 'media:' + Date.now(), kind: 'media', title: title.trim() || pick.name, subtitle: '', slides: [{ label: title || pick.name, text: '' }],
     media: { file: pick.id, type: pick.type, duration: pick.duration, loop, room, volume: 1 } });
   return html`<${Modal} wide title="Video, music or YouTube" onClose=${onClose} footer=${html`
@@ -1197,7 +1301,8 @@ function MediaEditor({ initial, onClose, onSave }) {
     await onSave(t, { ...m, loop, ...(m.type === 'youtube' ? {} : { room }) });
     onClose();
   };
-  return html`<${Modal} title=${m.type === 'audio' ? 'Edit music' : m.type === 'youtube' ? 'Edit YouTube video' : 'Edit video'} onClose=${onClose} footer=${html`
+  const dirty = useChanged(title, loop, room);
+  return html`<${Modal} dirty=${dirty && !busy} title=${m.type === 'audio' ? 'Edit music' : m.type === 'youtube' ? 'Edit YouTube video' : 'Edit video'} onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy} onClick=${save}>Save changes</button>`}>
     <div class="field"><label class="label">Name in the order of service</label><input class="input" value=${title} autofocus onInput=${(e) => setTitle(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && save()} /></div>
@@ -1321,7 +1426,8 @@ function SlidesImport({ onClose, onAdd, onShow, initial, onSave }) {
       <button class="btn primary" disabled=${!ready} onClick=${async () => { setBusy('Saving…'); await onSave(title.trim() || 'Slides', numbered(), auto); onClose(); }}>Save changes</button>`
     : html`<button class="btn" disabled=${!ready} onClick=${() => { onAdd(item()); onClose(); }}>Add to service</button>
       <button class="btn primary" disabled=${!ready} onClick=${() => { onShow(item()); onClose(); }}>Show now</button>`;
-  return html`<${Modal} wide title=${editing ? 'Edit slides' : 'Slides'} onClose=${onClose} footer=${footer}>
+  const dirty = useChanged(title, slides.map((x) => x.image), auto);
+  return html`<${Modal} wide dirty=${dirty && !busy} title=${editing ? 'Edit slides' : 'Slides'} onClose=${onClose} footer=${footer}>
     <div class="note" style="margin-bottom:14px">Pick a <b>PowerPoint</b> file, a PDF, or pictures (one per slide). You can also drop them here. PowerPoint on this computer opens the file, so the slides look exactly the same. Animations, videos and sounds inside it don't carry over. From Google Slides, choose File → Download → PDF.</div>
     <div class="row wrap" style="margin-bottom:12px" onDragOver=${(e) => e.preventDefault()} onDrop=${onDrop}>
       <button class="btn primary" disabled=${!!busy} onClick=${pick}>${icons.plus()} ${slides.length ? 'Add more…' : 'Choose PowerPoint, PDF or pictures…'}</button>
@@ -1364,7 +1470,8 @@ function BibleEditor({ s, initial, onClose, onSave }) {
     await onSave({ title: found.title, subtitle: found.translation, ref: found.title, translation: tr, slides: found.slides });
     onClose();
   };
-  return html`<${Modal} wide title="Edit reading" onClose=${onClose} footer=${html`
+  const dirty = useChanged(ref, tr);
+  return html`<${Modal} wide dirty=${dirty && !busy} title="Edit reading" onClose=${onClose} footer=${html`
       <button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" disabled=${busy || !found} onClick=${save}>Save changes</button>`}>
     <div class="editor">
@@ -1391,11 +1498,14 @@ function TemplatesDialog({ s, onClose }) {
   const saveIt = async () => { try { setList(await api('/api/templates', { name, items: s.plan.items })); toast('Template saved'); } catch (err) { fail(err); } };
   const load = async (t) => {
     if (s.plan.items.length && !confirm(`Replace the current order of service with “${t.name}”?`)) return;
-    await api('/api/plan', { items: t.items }).catch(fail);
+    try { await api('/api/plan', { items: t.items }); } catch (err) { fail(err); return; }
     toast(`Loaded “${t.name}”`);
     onClose();
   };
-  const del = async (t) => { if (confirm(`Delete the template “${t.name}”?`)) setList(await api('/api/templates/delete', { name: t.name }).catch(fail)); };
+  const del = async (t) => {
+    if (!confirm(`Delete the template “${t.name}”?`)) return;
+    try { const l = await api('/api/templates/delete', { name: t.name }); if (Array.isArray(l)) setList(l); } catch (err) { fail(err); }
+  };
   return html`<${Modal} title="Service templates" onClose=${onClose}>
     <label class="label">Save this order of service (${s.plan.items.length} items) as</label>
     <div class="key-row"><input class="input" value=${name} onInput=${(e) => setName(e.target.value)} /><button class="btn primary" disabled=${!name.trim() || !s.plan.items.length} onClick=${saveIt}>Save</button></div>
@@ -1628,7 +1738,8 @@ function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
   const current = scope === 'slide' ? ((plan.slideBackgrounds || {})[i] || '') : (plan.background || '');
   const [pick, setPick] = useState(current);
   useEffect(() => setPick(current), [scope]);
-  const slide = item.slides[i];
+  // The slide the button was pressed on (after splitting), for the preview and its name.
+  const slide = item.slides[slideIndex ?? 0] || item.slides[0];
   const previewBg = scope === 'slide' ? (pick || plan.background || s.config.theme.background) : (pick || s.config.theme.background);
   const apply = async () => {
     const items = s.plan.items.map((x) => {
@@ -1648,7 +1759,7 @@ function BackgroundDialog({ s, item, slideIndex, onClose, onSaved }) {
     <div class="bg-dialog">
       <div>
         ${slideIndex !== null && html`<div class="choices" style="margin-bottom:14px">
-          <button class=${'choice' + (scope === 'slide' ? ' on' : '')} onClick=${() => setScope('slide')}><b>Only this slide</b><span>${slide.label || 'Slide ' + (i + 1)}</span></button>
+          <button class=${'choice' + (scope === 'slide' ? ' on' : '')} onClick=${() => setScope('slide')}><b>Only this slide</b><span>${slide.label || 'Slide ' + ((slideIndex ?? 0) + 1)}</span></button>
           <button class=${'choice' + (scope === 'item' ? ' on' : '')} onClick=${() => setScope('item')}><b>Every slide of this item</b><span>${item.slides.length} slides</span></button>
         </div>`}
         <${BackgroundGallery} value=${pick} onPick=${setPick} defaultTile=${scope === 'slide'
@@ -1711,14 +1822,15 @@ function ControlView({ s }) {
   const openPlan = (uid) => api('/api/plan/open', { uid }).then((it) => { setSelected(it); setTab('slides'); }).catch(fail);
   const showSlide = (i) => {
     if (i === null) { setSelected(null); return; }
-    if (s.live && item && s.live.item.key === item.key) api('/api/goto', { index: i }).catch(fail);
-    else show(item, i);
+    if (s.live && item && s.live.item.key === item.key) return api('/api/goto', { index: i }).catch(fail);
+    return show(item, i);
   };
   const step = (d) => {
     if (!s.live && item) return show(item, 0);
     api('/api/goto', { delta: d }).catch(fail);
   };
   const toggle = (name) => api('/api/toggle', { name }).catch(fail);
+  const toggleLogo = () => { toggle('logo'); if (!s.logo && !(s.config.theme || {}).logo) toast('Tip: upload your church logo in Settings → General'); };
 
   // After the live item moves on (e.g. Next past the end), keep the centre in sync.
   const liveKey = s.live && s.live.item.key;
@@ -1730,13 +1842,14 @@ function ControlView({ s }) {
 
   useEffect(() => {
     const k = (e) => {
-      if (!isTyping(e) && !dialog && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoPlan(); return; }
+      if (!vol && !isTyping(e) && !dialog && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoPlan(); return; }
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || dialog) return;
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); step(1); }
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); step(-1); }
       else if (e.key === 'b' || e.key === 'B' || e.key === '.') toggle('black');
       else if (e.key === 'c' || e.key === 'C') toggle('clear');
-      else if (e.key === 'l' || e.key === 'L') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
+      else if (e.key === 'l' || e.key === 'L') toggleLogo();
+      else if (e.key === 'n' || e.key === 'N') api('/api/lower-third', { visible: !s.lowerThird.visible }).catch(fail);
       else if (/^[1-4]$/.test(e.key) && cameraNumbers(s).includes(+e.key) && !(s.streamPageOpen && s.studioOn)) api('/api/camera', { camera: +e.key }).catch(fail);
     };
     addEventListener('keydown', k);
@@ -1812,7 +1925,7 @@ function ControlView({ s }) {
   return html`<div class=${'shell' + (vol ? ' volunteer' : '')}>
     <div class="topbar">
       <div class="brand"><img src="/logo.svg" alt="" /><span>${s.config.churchName || 'ChurchStream'}</span></div>
-      <${Omnibox} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
+      <${Omnibox} locked=${vol} onOpen=${(it) => { setSelected(it); setTab('slides'); }} onShow=${(it) => { show(it); setTab('slides'); }} onAdd=${addToPlan} onNewSong=${(t) => setDialog({ type: 'song', song: { title: t } })} />
       <span class="spacer"></span>
       ${s.sabbath && s.sabbath.label && html`<div class=${'status sun' + (s.sabbath.isSabbath ? ' sabbath' : '')} title="Sunset times for your church's location (Settings → General)">${icons.sun()}<span class="extra-sun">${s.sabbath.label}</span></div>`}
       <${StreamStatus} s=${s} />
@@ -1831,7 +1944,7 @@ function ControlView({ s }) {
       <button class=${tab === 'output' ? 'on' : ''} onClick=${() => setTab('output')}>Screens & stream${st.mode === 'live' ? ' ●' : ''}</button>
     </nav>
     <div class="main">
-      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) })} onEdit=${item && (item.kind !== 'song' || songIdOf(item)) ? () => editItem(item) : null} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
+      <${Slides} s=${s} item=${item} inPlan=${inPlan} active=${tab === 'slides'} onShowSlide=${showSlide} onAdd=${() => addToPlan({ ...item, songId: songIdOf(item) }).then((d) => { const uid = d && d.uids && d.uids[d.uids.length - 1]; if (uid) openPlan(uid); })} onEdit=${item && (item.kind !== 'song' || songIdOf(item)) ? () => editItem(item) : null} onBackground=${(i) => setDialog({ type: 'bg', item, slideIndex: i })}
         onVerses=${(verses) => setVerses(item.key, verses)} />
       <${Aside} s=${s} active=${tab === 'output'} onGoLive=${() => setDialog({ type: 'golive' })} onStop=${() => setDialog({ type: 'stop' })} />
     </div>
@@ -1845,7 +1958,7 @@ function ControlView({ s }) {
         <button class="btn" onClick=${() => step(-1)} title="Previous (←)">‹ Back${live && html`<small>${live.index + 1} of ${live.item.slides.length}</small>`}</button>
         <button class="btn primary next" onClick=${() => step(1)} title="Next (→, Space or a clicker)">Next ${icons.right()}</button>
         <button class=${'btn' + (s.clear ? ' on' : '')} onClick=${() => toggle('clear')} title="Hide the words, keep the background (C)">Clear<small>C</small></button>
-        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${() => { toggle('logo'); if (!s.logo && !(s.config.theme || {}).logo) toast('Tip: upload your church logo in Settings → General'); }} title="Show the church logo">Logo</button>
+        <button class=${'btn' + (s.logo ? ' on' : '')} onClick=${toggleLogo} title="Show the church logo (L)">Logo<small>L</small></button>
         <button class=${'btn black' + (s.black ? ' on' : '')} onClick=${() => toggle('black')} title="Black screen (B)">${s.black ? 'Black ✓' : 'Black'}<small>B</small></button>
       </div>
     </div>
@@ -1868,8 +1981,18 @@ function ControlView({ s }) {
     ${dialog && dialog.type === 'media' && html`<${MediaDialog} s=${s} onClose=${() => setDialog(null)} onAdd=${addToPlan} onShow=${(it) => show(it)} />`}
     ${dialog && dialog.type === 'song' && html`<${SongEditor} song=${dialog.song} addToService=${dialog.addToService} onClose=${() => setDialog(null)} onSaved=${(saved) => {
       if (!saved) { setSelected(null); return; }
-      const it = { key: planSong ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
-      setSelected(it);
+      // The order-of-service entry being edited, only if it is this song (not some other hymn
+      // that happened to be selected when "Create a song" was used).
+      const same = planSong && planSong.songId === saved.id;
+      const it = { key: same ? planSong.uid : 'song:' + saved.id, kind: 'song', title: saved.title, subtitle: hymnLabel(saved), slides: saved.slides, songId: saved.id };
+      if (same) refreshItem(planSong.uid).catch(fail); else setSelected(it);
+      // The song is on the screens now: put the corrected words up straight away.
+      const lv = s.live && s.live.item;
+      if (lv && lv.kind === 'song' && (lv.songId === saved.id || lv.key === 'song:' + saved.id) && !(same && lv.key === planSong.uid)) {
+        const inPlanNow = s.plan.items.some((x) => x.uid === lv.key);
+        (inPlanNow ? api('/api/plan/open', { uid: lv.key }) : Promise.resolve({ ...it, key: lv.key }))
+          .then((fresh) => api('/api/live', { item: fresh, index: Math.min(s.live.index, fresh.slides.length - 1) })).catch(fail);
+      }
       // Added from + Add: open it as an item of the order of service.
       if (dialog.addToService) addToPlan(it).then((d) => { const uid = d && d.uids && d.uids[d.uids.length - 1]; if (uid) openPlan(uid); });
     }} />`}
@@ -1956,6 +2079,7 @@ function LocationField({ s }) {
   const saveLoc = (a = lat, b = lng) => {
     const la = parseFloat(a); const lo = parseFloat(b);
     if (a === '' && b === '') return save({ location: { lat: null, lng: null } });
+    if (a === '' || b === '') return; // still typing the other one
     if (!(la >= -90 && la <= 90 && lo >= -180 && lo <= 180)) return fail(new Error('Latitude must be between -90 and 90, longitude between -180 and 180.'));
     save({ location: { lat: la, lng: lo } }, 'Location saved');
   };
@@ -2891,15 +3015,23 @@ async function renderProgram(s) {
 
 let lastProgramKey = null;
 let programTimer = null;
+let programSeq = 0;
 function updateProgram(s) {
   const key = programKey(s);
   if (key === lastProgramKey) return;
   clearTimeout(programTimer);
   programTimer = setTimeout(async () => {
     lastProgramKey = key;
+    const seq = ++programSeq;
     try {
       const blob = await renderProgram(s);
-      await fetch('/api/program-image?key=' + encodeURIComponent(key.length > 1500 ? String(key.length) + key.slice(0, 1500) : key), { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      // A newer picture was started while this one was drawing (e.g. a slow photo background,
+      // then Next): don't send the older one after it.
+      if (seq !== programSeq) return;
+      // `at` (the server's time of this state) lets the server ignore a late, older picture,
+      // also one from another tablet or laptop.
+      const q = new URLSearchParams({ key: key.length > 1500 ? String(key.length) + key.slice(0, 1500) : key, at: String(s.now || 0) });
+      await fetch('/api/program-image?' + q, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
     } catch { lastProgramKey = null; }
   }, 60);
 }

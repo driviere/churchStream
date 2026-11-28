@@ -116,6 +116,7 @@
 .screen-ticker span { white-space: nowrap; padding-left: 100%; animation: tick var(--tick-dur, 20s) linear infinite; }
 @keyframes tick { to { transform: translateX(-100%); } }
 .screen.has-ticker .screen-ref, .screen.has-ticker .screen-tag { bottom: 9cqh; }
+.screen.has-ticker:not(.has-lt) .screen-layer { padding-bottom: 15cqh; } /* the words stay above the reference */
 
 /* Picture slides (sermon PDFs / images): fill the screen, letterboxed on black. */
 .screen-img { position: absolute; inset: 0; background: #000; transition: opacity 300ms ease; }
@@ -133,6 +134,9 @@
 .screen.pos-bottom .screen-layer { align-items: flex-end; padding: 58cqh 5cqw 8cqh; }
 .screen.pos-bottom .screen-layer::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 46cqh; background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0)); pointer-events: none; }
 .screen.pos-bottom .screen-text { position: relative; }
+/* …and still clear of the name and the ticker (these must outrank the rule above). */
+.screen.pos-bottom.has-lt .screen-layer { padding-top: 30cqh; padding-bottom: 32cqh; }
+.screen.pos-bottom.has-ticker:not(.has-lt) .screen-layer { padding-bottom: 15cqh; }
 .screen.light-bg.pos-bottom .screen-layer::before { background: linear-gradient(to top, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); }
 
 /* ---------- responsive readings ---------- */

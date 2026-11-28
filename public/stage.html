@@ -18,6 +18,8 @@
   footer .label { color: #6b7483; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
   #next { color: #9aa3b2; font-size: clamp(16px, 2.8vw, 32px); line-height: 1.3; white-space: pre-line; max-height: 6.6em; overflow: hidden; }
   .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 14px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+  body.offline #now, body.offline #next { opacity: .35; }
+  body.offline #title { color: #f59e0b; }
 </style>
 </head>
 <body>
@@ -27,12 +29,16 @@
 <script type="module">
 import { connect, countdownParts } from '/shared.js';
 let cd = null;
-setInterval(() => { if (cd) { const p = countdownParts(cd.c, Date.now() + cd.skew); $('now').textContent = p.done ? p.message : `${p.message}\n${p.time}`; } }, 500);
+const tickStage = () => { if (cd) { const p = countdownParts(cd.c, Date.now() + cd.skew); $('now').textContent = p.done ? p.message : `${p.message}\n${p.time}`; } };
+setInterval(tickStage, 500);
+const END = { bible: 'End of reading', song: 'End of song' };
 const $ = (id) => document.getElementById(id);
 const tick = () => { const d = new Date(); $('clock').textContent = `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${d.getHours() < 12 ? 'am' : 'pm'}`; };
 tick(); setInterval(tick, 5000);
 connect((s) => {
-  if (!s) return;
+  // Lost the connection: say so, so nobody reads old words as current.
+  document.body.classList.toggle('offline', !s);
+  if (!s) { $('title').textContent = 'Reconnecting to ChurchStream…'; return; }
   const live = s.live;
   const item = live && live.item;
   const slide = item && item.slides[live.index];
@@ -40,9 +46,9 @@ connect((s) => {
   $('title').textContent = item ? `${item.title}${item.subtitle ? ' · ' + item.subtitle : ''}` : 'Waiting for the first slide…';
   if (s.black || s.clear) $('title').insertAdjacentHTML('beforeend', `<span class="pill">${s.black ? 'Black' : 'Cleared'}</span>`);
   cd = item && item.kind === 'countdown' ? { c: item.countdown, skew: s.now - Date.now() } : null;
-  $('now').textContent = cd ? '' : (slide ? slide.text : '');
+  if (cd) tickStage(); else $('now').textContent = slide ? slide.text : '';
   $('now').classList.toggle('blank', !slide);
-  $('next').textContent = next ? next.text : (item ? 'End of ' + (item.kind === 'bible' ? 'reading' : 'song') : '');
+  $('next').textContent = next ? next.text : (item ? END[item.kind] || 'End of this item' : '');
 });
 </script>
 </body>
